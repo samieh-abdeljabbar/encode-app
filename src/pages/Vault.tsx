@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import VaultBrowser from "../components/vault/VaultBrowser";
 import { useVaultStore } from "../stores/vault";
 import { readFile } from "../lib/tauri";
@@ -9,6 +9,17 @@ export default function VaultPage() {
     useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
 
+  // Load file content whenever selectedFile changes
+  useEffect(() => {
+    if (!selectedFile) {
+      setFileContent(null);
+      return;
+    }
+    readFile(selectedFile)
+      .then(setFileContent)
+      .catch(() => setFileContent(null));
+  }, [selectedFile]);
+
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     if (query) {
@@ -18,14 +29,8 @@ export default function VaultPage() {
     }
   };
 
-  const handleFileSelect = async (path: string) => {
+  const handleFileSelect = (path: string) => {
     useVaultStore.getState().selectFile(path);
-    try {
-      const content = await readFile(path);
-      setFileContent(content);
-    } catch {
-      setFileContent(null);
-    }
   };
 
   return (
