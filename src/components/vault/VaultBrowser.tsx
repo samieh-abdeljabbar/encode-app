@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useVaultStore } from "../../stores/vault";
+import { writeFile } from "../../lib/tauri";
 
 export default function VaultBrowser() {
   const {
@@ -11,8 +12,13 @@ export default function VaultBrowser() {
     loadFiles,
     selectFile,
     selectedFile,
+    createSubject,
   } = useVaultStore();
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+  const [creatingSubject, setCreatingSubject] = useState(false);
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [creatingFile, setCreatingFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
 
   useEffect(() => {
     loadSubjects();
@@ -25,6 +31,34 @@ export default function VaultBrowser() {
       setExpandedSubject(slug);
       loadFiles(slug);
     }
+    setCreatingFile(false);
+  };
+
+  const handleCreateSubject = async () => {
+    const name = newSubjectName.trim();
+    if (!name) return;
+    await createSubject(name);
+    setNewSubjectName("");
+    setCreatingSubject(false);
+  };
+
+  const handleCreateFile = async () => {
+    const name = newFileName.trim();
+    if (!name || !expandedSubject) return;
+
+    const slug = name.replace(/\s+/g, "-").toLowerCase();
+    const subjectName = subjects.find(
+      (s) => s.slug === expandedSubject,
+    )?.name;
+    const now = new Date().toISOString().slice(0, 19);
+    const content = `---\nsubject: ${subjectName ?? expandedSubject}\ntopic: ${name}\ntype: chapter\ncreated_at: ${now}\nstatus: unread\n---\n\n# ${name}\n\n`;
+    const path = `subjects/${expandedSubject}/chapters/${slug}.md`;
+
+    await writeFile(path, content);
+    setNewFileName("");
+    setCreatingFile(false);
+    loadFiles(expandedSubject);
+    selectFile(path);
   };
 
   if (error) {
@@ -33,10 +67,9 @@ export default function VaultBrowser() {
 
   return (
     <div>
-      {subjects.length === 0 && !loading && (
+      {subjects.length === 0 && !loading && !creatingSubject && (
         <p className="text-text-muted text-sm">
-          No subjects yet. Import content or create a subject folder in
-          ~/Encode/subjects/
+          No subjects yet. Create one below.
         </p>
       )}
 
@@ -83,10 +116,76 @@ export default function VaultBrowser() {
                   </button>
                 ))
               )}
+
+              {/* Create file */}
+              {creatingFile ? (
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="File name..."
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreateFile();
+                    if (e.key === "Escape") {
+                      setCreatingFile(false);
+                      setNewFileName("");
+                    }
+                  }}
+                  onBlur={() => {
+                    if (newFileName.trim()) {
+                      handleCreateFile();
+                    } else {
+                      setCreatingFile(false);
+                    }
+                  }}
+                  className="w-full px-2 py-1 mt-1 text-xs bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
+                />
+              ) : (
+                <button
+                  onClick={() => setCreatingFile(true)}
+                  className="w-full text-left px-2 py-1 mt-1 text-xs text-purple hover:text-text transition-colors"
+                >
+                  + New File
+                </button>
+              )}
             </div>
           )}
         </div>
       ))}
+
+      {/* Create subject */}
+      {creatingSubject ? (
+        <input
+          type="text"
+          autoFocus
+          placeholder="Subject name..."
+          value={newSubjectName}
+          onChange={(e) => setNewSubjectName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleCreateSubject();
+            if (e.key === "Escape") {
+              setCreatingSubject(false);
+              setNewSubjectName("");
+            }
+          }}
+          onBlur={() => {
+            if (newSubjectName.trim()) {
+              handleCreateSubject();
+            } else {
+              setCreatingSubject(false);
+            }
+          }}
+          className="w-full px-3 py-2 mt-2 text-sm bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
+        />
+      ) : (
+        <button
+          onClick={() => setCreatingSubject(true)}
+          className="w-full text-left px-3 py-2 mt-2 text-sm text-purple hover:text-text transition-colors"
+        >
+          + New Subject
+        </button>
+      )}
     </div>
   );
 }

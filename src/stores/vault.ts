@@ -16,6 +16,7 @@ interface VaultState {
   search: (query: string) => Promise<void>;
   selectFile: (path: string | null) => void;
   clearSearch: () => void;
+  createSubject: (name: string) => Promise<void>;
 }
 
 export const useVaultStore = create<VaultState>((set) => ({
@@ -64,4 +65,10 @@ export const useVaultStore = create<VaultState>((set) => ({
   selectFile: (path) => set({ selectedFile: path }),
 
   clearSearch: () => set({ searchQuery: "", searchResults: [] }),
+
+  createSubject: async (name) => {
+    await tauri.createSubject(name);
+    const subjects = await tauri.listSubjects();
+    set({ subjects });
+  },
 }));

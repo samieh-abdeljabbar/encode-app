@@ -140,17 +140,21 @@ export default function VaultPage() {
               </div>
             </div>
 
-            {/* Content area */}
+            {/* Content area — click to edit */}
             <div className="flex-1 overflow-y-auto">
               {editing ? (
                 <textarea
+                  autoFocus
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
                   spellCheck={false}
                 />
               ) : (
-                <pre className="p-8 text-sm text-text-muted whitespace-pre-wrap font-serif leading-relaxed">
+                <pre
+                  onClick={handleEdit}
+                  className="p-8 text-sm text-text-muted whitespace-pre-wrap font-serif leading-relaxed cursor-text min-h-full"
+                >
                   {parseFrontmatter(fileContent).content}
                 </pre>
               )}
