@@ -160,6 +160,11 @@ ollama_url = "{}"
 }
 
 #[tauri::command]
+fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<String, String> {
+    vault::create_subject_dir(&state.vault_path, &name)
+}
+
+#[tauri::command]
 fn rebuild_index(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     indexer::scan_vault(&state.vault_path, &state.db)
 }
@@ -280,6 +285,7 @@ pub fn run() {
             get_streak,
             get_config,
             save_config,
+            create_subject,
             rebuild_index,
         ])
         .run(tauri::generate_context!())

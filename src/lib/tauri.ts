@@ -24,6 +24,9 @@ export const readFile = (path: string) =>
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_vault_file", { path, content });
 
+export const createSubject = (name: string) =>
+  invoke<string>("create_subject", { name });
+
 // Search
 export const searchVault = (query: string) =>
   invoke<SearchResult[]>("search_vault", { query });

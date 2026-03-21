@@ -58,6 +58,38 @@ ollama_url = "http://localhost:11434"
     Ok(())
 }
 
+/// Create a new subject with its full folder structure
+pub fn create_subject_dir(vault_path: &Path, name: &str) -> Result<String, String> {
+    let slug: String = name
+        .trim()
+        .replace(' ', "-")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')
+        .collect();
+
+    if slug.is_empty() {
+        return Err("Subject name cannot be empty".to_string());
+    }
+
+    let subject_path = vault_path.join("subjects").join(&slug);
+    let subdirs = ["chapters", "flashcards", "quizzes", "teach-backs", "maps"];
+    for subdir in &subdirs {
+        fs::create_dir_all(subject_path.join(subdir))
+            .map_err(|e| format!("Failed to create {}: {}", subdir, e))?;
+    }
+
+    let meta = format!(
+        "---\nsubject: {}\ntype: subject\ncreated_at: {}\n---\n\n# {}\n",
+        name,
+        chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+        name
+    );
+    fs::write(subject_path.join("_subject.md"), meta)
+        .map_err(|e| format!("Failed to write _subject.md: {}", e))?;
+
+    Ok(slug)
+}
+
 /// List all subjects in the vault
 pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
     let subjects_dir = vault_path.join("subjects");
