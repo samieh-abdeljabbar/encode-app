@@ -1,8 +1,20 @@
+import { MemoryRouter, Routes, Route } from "react-router-dom";
+import Shell from "./components/layout/Shell";
+import Home from "./pages/Home";
+import VaultPage from "./pages/Vault";
+import Settings from "./pages/Settings";
+
 function App() {
   return (
-    <div className="flex items-center justify-center h-screen bg-bg text-text">
-      <h1 className="text-2xl font-bold text-purple">Encode</h1>
-    </div>
+    <MemoryRouter>
+      <Routes>
+        <Route element={<Shell />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/vault" element={<VaultPage />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>
   );
 }
 
