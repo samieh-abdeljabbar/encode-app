@@ -1,22 +1,29 @@
 import { useEffect, useState } from "react";
 import VaultBrowser from "../components/vault/VaultBrowser";
 import { useVaultStore } from "../stores/vault";
-import { readFile } from "../lib/tauri";
+import { readFile, writeFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 
 export default function VaultPage() {
   const { searchQuery, searchResults, search, clearSearch, selectedFile } =
     useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
     if (!selectedFile) {
       setFileContent(null);
+      setEditing(false);
       return;
     }
     readFile(selectedFile)
-      .then(setFileContent)
+      .then((content) => {
+        setFileContent(content);
+        setEditing(false);
+      })
       .catch(() => setFileContent(null));
   }, [selectedFile]);
 
@@ -31,6 +38,31 @@ export default function VaultPage() {
 
   const handleFileSelect = (path: string) => {
     useVaultStore.getState().selectFile(path);
+  };
+
+  const handleEdit = () => {
+    if (fileContent) {
+      setEditContent(fileContent);
+      setEditing(true);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditing(false);
+    setEditContent("");
+  };
+
+  const handleSave = async () => {
+    if (!selectedFile) return;
+    setSaving(true);
+    try {
+      await writeFile(selectedFile, editContent);
+      setFileContent(editContent);
+      setEditing(false);
+    } catch (e) {
+      console.error("Save failed:", e);
+    }
+    setSaving(false);
   };
 
   return (
@@ -71,19 +103,63 @@ export default function VaultPage() {
         )}
       </div>
 
-      {/* Right: file preview */}
-      <div className="flex-1 p-8 overflow-y-auto">
-        {selectedFile && fileContent ? (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">
-              {selectedFile.split("/").pop()?.replace(".md", "")}
-            </h3>
-            <pre className="text-sm text-text-muted whitespace-pre-wrap font-serif leading-relaxed">
-              {parseFrontmatter(fileContent).content}
-            </pre>
-          </div>
+      {/* Right: file preview / editor */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {selectedFile && fileContent !== null ? (
+          <>
+            {/* Header bar */}
+            <div className="flex items-center justify-between px-8 py-3 border-b border-border shrink-0">
+              <h3 className="text-lg font-semibold truncate">
+                {selectedFile.split("/").pop()?.replace(".md", "")}
+              </h3>
+              <div className="flex gap-2 shrink-0">
+                {editing ? (
+                  <>
+                    <button
+                      onClick={handleCancel}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-text-muted transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="px-3 py-1 text-xs bg-teal text-white rounded hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={handleEdit}
+                    className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Content area */}
+            <div className="flex-1 overflow-y-auto">
+              {editing ? (
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                  spellCheck={false}
+                />
+              ) : (
+                <pre className="p-8 text-sm text-text-muted whitespace-pre-wrap font-serif leading-relaxed">
+                  {parseFrontmatter(fileContent).content}
+                </pre>
+              )}
+            </div>
+          </>
         ) : (
-          <p className="text-text-muted">Select a file to preview</p>
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-text-muted">Select a file to preview</p>
+          </div>
         )}
       </div>
     </div>
