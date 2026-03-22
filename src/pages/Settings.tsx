@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
-import { rebuildIndex, getVaultPath } from "../lib/tauri";
+import { rebuildIndex, getVaultPath, checkOllama } from "../lib/tauri";
 
 export default function Settings() {
   const { config, loadConfig, saveConfig } = useAppStore();
@@ -32,11 +32,9 @@ export default function Settings() {
   // Check Ollama availability
   useEffect(() => {
     setOllamaStatus("checking");
-    fetch(`${ollamaUrl}/api/tags`)
-      .then((res) => {
-        setOllamaStatus(res.ok ? "available" : "unavailable");
-      })
-      .catch(() => setOllamaStatus("unavailable"));
+    checkOllama(ollamaUrl).then((available) => {
+      setOllamaStatus(available ? "available" : "unavailable");
+    });
   }, [ollamaUrl]);
 
   const handleSave = async () => {

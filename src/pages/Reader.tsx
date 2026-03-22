@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useReaderStore } from "../stores/reader";
 import { useVaultStore } from "../stores/vault";
@@ -17,10 +17,12 @@ export default function ReaderPage() {
     gateOpen,
     gateResponses,
     loading,
+    error,
     loadFile,
     advanceSection,
     goToSection,
     submitGateResponse,
+    clearError,
     closeReader,
   } = useReaderStore();
 
@@ -37,6 +39,11 @@ export default function ReaderPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentSectionIndex, gateOpen]);
+
+  const handleBack = useCallback(() => {
+    closeReader();
+    navigate("/vault");
+  }, [closeReader, navigate]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -56,12 +63,7 @@ export default function ReaderPage() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [gateOpen, currentSectionIndex, advanceSection, goToSection]);
-
-  const handleBack = () => {
-    closeReader();
-    navigate("/vault");
-  };
+  }, [gateOpen, currentSectionIndex, advanceSection, goToSection, handleBack]);
 
   if (!selectedFile) {
     return (
@@ -123,6 +125,12 @@ export default function ReaderPage() {
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[720px] mx-auto px-8 py-8">
+          {error && (
+            <div className="mx-auto max-w-[720px] mb-4 p-3 bg-[#3a1a1a] border border-[#D85A30] rounded text-[#D85A30] flex justify-between items-center">
+              <span>{error}</span>
+              <button onClick={clearError} className="ml-4 text-[#D85A30] hover:text-white">&times;</button>
+            </div>
+          )}
           {/* Render all revealed sections */}
           {sections.slice(0, currentSectionIndex + 1).map((section, i) => (
             <div

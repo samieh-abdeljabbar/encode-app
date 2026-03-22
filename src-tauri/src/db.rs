@@ -181,6 +181,12 @@ impl Database {
         conn.execute_batch("DELETE FROM vault_fts; DELETE FROM file_index;")
             .map_err(|e| e.to_string())
     }
+
+    /// Execute a raw SQL statement (for transaction control)
+    pub fn execute(&self, sql: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute_batch(sql).map_err(|e| e.to_string())
+    }
 }
 
 fn calculate_current_streak(dates: &[String], today: &str) -> u32 {

@@ -2,6 +2,18 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+fn validate_vault_path(vault_path: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let full_path = vault_path.join(relative_path);
+    let canonical = full_path.canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+    let vault_canonical = vault_path.canonicalize()
+        .map_err(|e| format!("Invalid vault path: {}", e))?;
+    if !canonical.starts_with(&vault_canonical) {
+        return Err("Path escapes vault boundary".to_string());
+    }
+    Ok(canonical)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Subject {
     pub slug: String,
@@ -146,7 +158,7 @@ pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
 
 /// Read a file from the vault. Path is relative to vault root.
 pub fn read_file(vault_path: &Path, relative_path: &str) -> Result<String, String> {
-    let full_path = vault_path.join(relative_path);
+    let full_path = validate_vault_path(vault_path, relative_path)?;
     fs::read_to_string(&full_path)
         .map_err(|e| format!("Failed to read {:?}: {}", full_path, e))
 }
@@ -154,20 +166,26 @@ pub fn read_file(vault_path: &Path, relative_path: &str) -> Result<String, Strin
 /// Write content to a file in the vault. Creates parent directories if needed.
 pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Result<(), String> {
     let full_path = vault_path.join(relative_path);
+    // Create parent directories first (they must exist for canonicalize)
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(|e| format!("Failed to create directories: {}", e))?;
+        // Validate parent directory stays in vault
+        let parent_canonical = parent.canonicalize()
+            .map_err(|e| format!("Invalid parent path: {}", e))?;
+        let vault_canonical = vault_path.canonicalize()
+            .map_err(|e| format!("Invalid vault path: {}", e))?;
+        if !parent_canonical.starts_with(&vault_canonical) {
+            return Err("Path escapes vault boundary".to_string());
+        }
     }
     fs::write(&full_path, content)
-        .map_err(|e| format!("Failed to write {:?}: {}", full_path, e))
+        .map_err(|e| format!("Failed to write file: {}", e))
 }
 
 /// Delete a file from the vault.
 pub fn delete_file(vault_path: &Path, relative_path: &str) -> Result<(), String> {
-    let full_path = vault_path.join(relative_path);
-    if !full_path.exists() {
-        return Err(format!("File not found: {:?}", full_path));
-    }
+    let full_path = validate_vault_path(vault_path, relative_path)?;
     fs::remove_file(&full_path)
         .map_err(|e| format!("Failed to delete {:?}: {}", full_path, e))
 }

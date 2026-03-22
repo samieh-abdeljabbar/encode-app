@@ -5,7 +5,7 @@ interface DigestionGateProps {
   promptType: GatePromptType;
   prompt: string;
   sectionHeading: string | null;
-  onSubmit: (response: string) => void;
+  onSubmit: (response: string) => Promise<void>;
 }
 
 export default function DigestionGate({
@@ -23,9 +23,14 @@ export default function DigestionGate({
   const handleSubmit = async () => {
     if (!response.trim()) return;
     setSubmitting(true);
-    onSubmit(response.trim());
-    setResponse("");
-    setSubmitting(false);
+    try {
+      await onSubmit(response.trim());
+      setResponse("");
+    } catch {
+      // Error is handled by the store
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (

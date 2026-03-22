@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { useNavigate } from "react-router-dom";
 import VaultBrowser from "../components/vault/VaultBrowser";
 import ImportDialog from "../components/vault/ImportDialog";
@@ -133,7 +134,7 @@ export default function VaultPage() {
                 </div>
                 <div
                   className="text-text-muted mt-1"
-                  dangerouslySetInnerHTML={{ __html: r.excerpt }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(r.excerpt, { ALLOWED_TAGS: ["mark"] }) }}
                 />
               </button>
             ))}

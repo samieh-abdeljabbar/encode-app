@@ -156,6 +156,10 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
     Ok(config)
 }
 
+fn escape_toml_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 #[tauri::command]
 fn save_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(), String> {
     let toml = format!(
@@ -164,7 +168,9 @@ provider = "{}"
 ollama_model = "{}"
 ollama_url = "{}"
 "#,
-        config.ai_provider, config.ollama_model, config.ollama_url
+        escape_toml_string(&config.ai_provider),
+        escape_toml_string(&config.ollama_model),
+        escape_toml_string(&config.ollama_url),
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
@@ -194,6 +200,18 @@ async fn import_url(
 #[tauri::command]
 fn rebuild_index(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     indexer::scan_vault(&state.vault_path, &state.db)
+}
+
+#[tauri::command]
+async fn check_ollama(url: String) -> Result<bool, String> {
+    let client = reqwest::Client::new();
+    match client.get(&format!("{}/api/tags", url))
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .await {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false),
+    }
 }
 
 // === Helpers ===
@@ -316,6 +334,7 @@ pub fn run() {
             create_subject,
             import_url,
             rebuild_index,
+            check_ollama,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

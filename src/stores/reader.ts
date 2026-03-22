@@ -17,11 +17,13 @@ interface ReaderState {
   gateOpen: boolean;
   gateResponses: GateResponse[];
   loading: boolean;
+  error: string | null;
 
   loadFile: (path: string) => Promise<void>;
   advanceSection: () => void;
   goToSection: (index: number) => void;
   submitGateResponse: (response: string) => Promise<void>;
+  clearError: () => void;
   closeReader: () => void;
 }
 
@@ -33,6 +35,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   gateOpen: false,
   gateResponses: [],
   loading: false,
+  error: null,
 
   loadFile: async (path) => {
     set({ loading: true });
@@ -133,8 +136,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       });
     } catch (e) {
       console.error("Failed to save digestion:", e);
+      set({ error: "Failed to save gate response. Please try again." });
     }
   },
+
+  clearError: () => set({ error: null }),
 
   closeReader: () => {
     set({

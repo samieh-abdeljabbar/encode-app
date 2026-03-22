@@ -55,3 +55,7 @@ export const saveConfig = (config: AppConfig) =>
 
 // Indexer
 export const rebuildIndex = () => invoke<number>("rebuild_index");
+
+// AI availability
+export const checkOllama = (url: string) =>
+  invoke<boolean>("check_ollama", { url });

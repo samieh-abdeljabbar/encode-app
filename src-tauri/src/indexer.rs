@@ -6,26 +6,41 @@ use walkdir::WalkDir;
 
 /// Scan all markdown files in the vault and index them
 pub fn scan_vault(vault_path: &Path, db: &Database) -> Result<usize, String> {
-    db.clear_index()?;
+    db.execute("BEGIN")?;
 
-    let mut count = 0;
-    for entry in WalkDir::new(vault_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path().extension().is_some_and(|ext| ext == "md")
-                && !e.path().starts_with(vault_path.join(".encode"))
-        })
-    {
-        let path = entry.path();
-        if let Err(e) = index_single_file(path, vault_path, db) {
-            eprintln!("Failed to index {:?}: {}", path, e);
-        } else {
-            count += 1;
+    let result = (|| {
+        db.clear_index()?;
+
+        let mut count = 0;
+        for entry in WalkDir::new(vault_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path().extension().is_some_and(|ext| ext == "md")
+                    && !e.path().starts_with(vault_path.join(".encode"))
+            })
+        {
+            let path = entry.path();
+            if let Err(e) = index_single_file(path, vault_path, db) {
+                eprintln!("Failed to index {:?}: {}", path, e);
+            } else {
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    })();
+
+    match result {
+        Ok(count) => {
+            db.execute("COMMIT")?;
+            Ok(count)
+        }
+        Err(e) => {
+            let _ = db.execute("ROLLBACK");
+            Err(e)
         }
     }
-
-    Ok(count)
 }
 
 /// Index a single markdown file

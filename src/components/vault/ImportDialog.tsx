@@ -25,6 +25,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
         subject,
         topic.trim() || undefined,
       );
+      setLoading(false);
       onImported(filePath);
     } catch (e) {
       setError(String(e));

@@ -19,10 +19,17 @@ export default function VaultBrowser() {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [creatingFile, setCreatingFile] = useState(false);
   const [newFileName, setNewFileName] = useState("");
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
 
   useEffect(() => {
     loadSubjects();
   }, [loadSubjects]);
+
+  useEffect(() => {
+    if (confirmDeleteFile === null) return;
+    const timer = setTimeout(() => setConfirmDeleteFile(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmDeleteFile]);
 
   const handleSubjectClick = (slug: string) => {
     if (expandedSubject === slug) {
@@ -63,6 +70,11 @@ export default function VaultBrowser() {
 
   const handleDeleteFile = async (filePath: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (confirmDeleteFile !== filePath) {
+      setConfirmDeleteFile(filePath);
+      return;
+    }
+    setConfirmDeleteFile(null);
     try {
       await deleteFile(filePath);
       if (selectedFile === filePath) {
@@ -135,10 +147,19 @@ export default function VaultBrowser() {
                     </button>
                     <button
                       onClick={(e) => handleDeleteFile(file.file_path, e)}
-                      className="hidden group-hover:block px-1 text-xs text-text-muted hover:text-coral shrink-0"
-                      title="Delete file"
+                      onBlur={() => setConfirmDeleteFile(null)}
+                      className={`px-1 text-xs shrink-0 ${
+                        confirmDeleteFile === file.file_path
+                          ? "block text-coral"
+                          : "hidden group-hover:block text-text-muted hover:text-coral"
+                      }`}
+                      title={
+                        confirmDeleteFile === file.file_path
+                          ? "Click again to confirm delete"
+                          : "Delete file"
+                      }
                     >
-                      &times;
+                      {confirmDeleteFile === file.file_path ? "?" : "\u00d7"}
                     </button>
                   </div>
                 ))
@@ -160,11 +181,8 @@ export default function VaultBrowser() {
                     }
                   }}
                   onBlur={() => {
-                    if (newFileName.trim()) {
-                      handleCreateFile();
-                    } else {
-                      setCreatingFile(false);
-                    }
+                    setCreatingFile(false);
+                    setNewFileName("");
                   }}
                   className="w-full px-2 py-1 mt-1 text-xs bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
                 />
@@ -197,11 +215,8 @@ export default function VaultBrowser() {
             }
           }}
           onBlur={() => {
-            if (newSubjectName.trim()) {
-              handleCreateSubject();
-            } else {
-              setCreatingSubject(false);
-            }
+            setCreatingSubject(false);
+            setNewSubjectName("");
           }}
           className="w-full px-3 py-2 mt-2 text-sm bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
         />

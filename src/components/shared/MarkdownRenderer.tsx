@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 // Configure marked for GFM (tables, strikethrough, etc.)
 marked.setOptions({
@@ -17,7 +18,7 @@ export default function MarkdownRenderer({
   className = "",
 }: MarkdownRendererProps) {
   const html = useMemo(() => {
-    return marked.parse(content) as string;
+    return DOMPurify.sanitize(marked.parse(content) as string);
   }, [content]);
 
   // Intercept link clicks to open in system browser
