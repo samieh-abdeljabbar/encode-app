@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import VaultBrowser from "../components/vault/VaultBrowser";
+import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import { useVaultStore } from "../stores/vault";
 import { readFile, writeFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
@@ -151,12 +152,14 @@ export default function VaultPage() {
                   spellCheck={false}
                 />
               ) : (
-                <pre
+                <div
                   onClick={handleEdit}
-                  className="p-8 text-sm text-text-muted whitespace-pre-wrap font-serif leading-relaxed cursor-text min-h-full"
+                  className="p-8 cursor-text min-h-full"
                 >
-                  {parseFrontmatter(fileContent).content}
-                </pre>
+                  <MarkdownRenderer
+                    content={parseFrontmatter(fileContent).content}
+                  />
+                </div>
               )}
             </div>
           </>
