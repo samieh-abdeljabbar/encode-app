@@ -9,8 +9,16 @@ pub fn import_url(
     subject_slug: &str,
     topic: Option<&str>,
 ) -> Result<String, String> {
-    // Fetch the HTML
-    let html = reqwest::blocking::get(url)
+    // Fetch the HTML with proper User-Agent and timeout
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("Encode/0.1 (study-app)")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let html = client
+        .get(url)
+        .send()
         .map_err(|e| format!("Failed to fetch URL: {}", e))?
         .text()
         .map_err(|e| format!("Failed to read response: {}", e))?;

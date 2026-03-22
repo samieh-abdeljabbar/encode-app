@@ -166,13 +166,18 @@ fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<Str
 }
 
 #[tauri::command]
-fn import_url(
+async fn import_url(
     state: tauri::State<'_, AppState>,
     url: String,
     subject: String,
     topic: Option<String>,
 ) -> Result<String, String> {
-    importer::import_url(&state.vault_path, &url, &subject, topic.as_deref())
+    let vault_path = state.vault_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        importer::import_url(&vault_path, &url, &subject, topic.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Import task failed: {}", e))?
 }
 
 #[tauri::command]
