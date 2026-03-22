@@ -71,9 +71,11 @@ fn extract_title(html: &str) -> Option<String> {
 fn html_to_markdown(html: &str) -> String {
     let mut text = html.to_string();
 
-    // Remove script and style blocks entirely
-    let script_re = Regex::new(r"(?is)<(script|style|nav|footer|header)[^>]*>.*?</\1>").unwrap();
-    text = script_re.replace_all(&text, "").to_string();
+    // Remove script, style, nav, footer, header blocks entirely
+    for tag in &["script", "style", "nav", "footer", "header"] {
+        let re = Regex::new(&format!(r"(?is)<{tag}[^>]*>.*?</{tag}>")).unwrap();
+        text = re.replace_all(&text, "").to_string();
+    }
 
     // Convert headings
     for level in (1..=6).rev() {
