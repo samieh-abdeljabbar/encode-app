@@ -81,6 +81,19 @@ export interface AppConfig {
   ollama_url: string;
 }
 
+/** Digestion gate prompt types — rotate after each section */
+export type GatePromptType = "summarize" | "connect" | "predict" | "apply";
+
+/** A completed gate response for one section */
+export interface GateResponse {
+  sectionIndex: number;
+  promptType: GatePromptType;
+  prompt: string;
+  response: string;
+  feedback: string | null;
+  timestamp: string;
+}
+
 /** Navigation routes */
 export type Route =
   | "home"
