@@ -109,11 +109,15 @@ fn html_to_markdown(html: &str) -> String {
     text = br_re.replace_all(&text, "\n").to_string();
 
     // Convert bold/italic
-    let bold_re = Regex::new(r"(?is)<(strong|b)>(.*?)</\1>").unwrap();
-    text = bold_re.replace_all(&text, "**$2**").to_string();
+    for tag in &["strong", "b"] {
+        let re = Regex::new(&format!(r"(?is)<{tag}>(.*?)</{tag}>")).unwrap();
+        text = re.replace_all(&text, "**$1**").to_string();
+    }
 
-    let italic_re = Regex::new(r"(?is)<(em|i)>(.*?)</\1>").unwrap();
-    text = italic_re.replace_all(&text, "*$2*").to_string();
+    for tag in &["em", "i"] {
+        let re = Regex::new(&format!(r"(?is)<{tag}>(.*?)</{tag}>")).unwrap();
+        text = re.replace_all(&text, "*$1*").to_string();
+    }
 
     // Convert links
     let link_re = Regex::new(r#"(?is)<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#).unwrap();
