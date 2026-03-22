@@ -196,8 +196,14 @@ export default function VaultPage() {
           onClose={() => setShowImport(false)}
           onImported={(filePath) => {
             setShowImport(false);
-            useVaultStore.getState().selectFile(filePath);
-            useVaultStore.getState().loadSubjects();
+            const store = useVaultStore.getState();
+            store.selectFile(filePath);
+            store.loadSubjects();
+            // Extract subject slug from path to refresh file list
+            const parts = filePath.split("/");
+            if (parts.length >= 2) {
+              store.loadFiles(parts[1]); // subjects/{slug}/...
+            }
           }}
         />
       )}
