@@ -27,6 +27,10 @@ export const writeFile = (path: string, content: string) =>
 export const createSubject = (name: string) =>
   invoke<string>("create_subject", { name });
 
+// Import
+export const importUrl = (url: string, subject: string, topic?: string) =>
+  invoke<string>("import_url", { url, subject, topic });
+
 // Search
 export const searchVault = (query: string) =>
   invoke<SearchResult[]>("search_vault", { query });

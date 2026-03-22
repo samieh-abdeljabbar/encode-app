@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import VaultBrowser from "../components/vault/VaultBrowser";
+import ImportDialog from "../components/vault/ImportDialog";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import { useVaultStore } from "../stores/vault";
 import { readFile, writeFile } from "../lib/tauri";
@@ -14,6 +15,7 @@ export default function VaultPage() {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
@@ -72,13 +74,22 @@ export default function VaultPage() {
     <div className="flex h-full">
       {/* Left: browser + search */}
       <div className="w-[280px] border-r border-border p-4 overflow-y-auto shrink-0">
-        <input
-          type="text"
-          placeholder="Search vault..."
-          value={searchQuery}
-          onChange={handleSearch}
-          className="w-full px-3 py-2 mb-4 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
-        />
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            placeholder="Search vault..."
+            value={searchQuery}
+            onChange={handleSearch}
+            className="flex-1 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
+          />
+          <button
+            onClick={() => setShowImport(true)}
+            title="Import from URL"
+            className="px-3 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 transition-opacity shrink-0"
+          >
+            +URL
+          </button>
+        </div>
 
         {searchQuery && searchResults.length > 0 ? (
           <div className="space-y-2">
@@ -179,6 +190,17 @@ export default function VaultPage() {
           </div>
         )}
       </div>
+      {/* Import dialog */}
+      {showImport && (
+        <ImportDialog
+          onClose={() => setShowImport(false)}
+          onImported={(filePath) => {
+            setShowImport(false);
+            useVaultStore.getState().selectFile(filePath);
+            useVaultStore.getState().loadSubjects();
+          }}
+        />
+      )}
     </div>
   );
 }

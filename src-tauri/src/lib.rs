@@ -1,4 +1,5 @@
 mod db;
+mod importer;
 mod indexer;
 mod vault;
 
@@ -165,6 +166,16 @@ fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<Str
 }
 
 #[tauri::command]
+fn import_url(
+    state: tauri::State<'_, AppState>,
+    url: String,
+    subject: String,
+    topic: Option<String>,
+) -> Result<String, String> {
+    importer::import_url(&state.vault_path, &url, &subject, topic.as_deref())
+}
+
+#[tauri::command]
 fn rebuild_index(state: tauri::State<'_, AppState>) -> Result<usize, String> {
     indexer::scan_vault(&state.vault_path, &state.db)
 }
@@ -286,6 +297,7 @@ pub fn run() {
             get_config,
             save_config,
             create_subject,
+            import_url,
             rebuild_index,
         ])
         .run(tauri::generate_context!())
