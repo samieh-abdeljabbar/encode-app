@@ -70,13 +70,30 @@ export default function VaultPage() {
     setSaving(false);
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const handleDelete = async () => {
     if (!selectedFile) return;
-    if (!confirm("Delete this file? This cannot be undone.")) return;
-    await deleteFile(selectedFile);
-    useVaultStore.getState().selectFile(null);
-    useVaultStore.getState().loadSubjects();
-    setFileContent(null);
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    try {
+      await deleteFile(selectedFile);
+      const store = useVaultStore.getState();
+      // Extract subject slug to refresh file list
+      const parts = selectedFile.split("/");
+      store.selectFile(null);
+      store.loadSubjects();
+      if (parts.length >= 2) {
+        store.loadFiles(parts[1]);
+      }
+      setFileContent(null);
+      setConfirmDelete(false);
+    } catch (e) {
+      console.error("Delete failed:", e);
+      setConfirmDelete(false);
+    }
   };
 
   return (
@@ -168,9 +185,14 @@ export default function VaultPage() {
                     </button>
                     <button
                       onClick={handleDelete}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-coral hover:border-coral transition-colors"
+                      onBlur={() => setConfirmDelete(false)}
+                      className={`px-3 py-1 text-xs rounded transition-colors ${
+                        confirmDelete
+                          ? "bg-coral text-white"
+                          : "text-text-muted border border-border hover:text-coral hover:border-coral"
+                      }`}
                     >
-                      Delete
+                      {confirmDelete ? "Confirm?" : "Delete"}
                     </button>
                   </>
                 )}

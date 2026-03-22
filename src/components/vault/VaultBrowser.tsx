@@ -63,14 +63,17 @@ export default function VaultBrowser() {
 
   const handleDeleteFile = async (filePath: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this file? This cannot be undone.")) return;
-    await deleteFile(filePath);
-    if (selectedFile === filePath) {
-      selectFile(null);
-    }
-    if (expandedSubject) {
-      loadFiles(expandedSubject);
-      loadSubjects();
+    try {
+      await deleteFile(filePath);
+      if (selectedFile === filePath) {
+        selectFile(null);
+      }
+      if (expandedSubject) {
+        loadFiles(expandedSubject);
+        loadSubjects();
+      }
+    } catch (err) {
+      console.error("Delete failed:", err);
     }
   };
 
