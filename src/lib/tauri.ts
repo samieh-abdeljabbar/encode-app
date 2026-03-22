@@ -27,6 +27,9 @@ export const writeFile = (path: string, content: string) =>
 export const createSubject = (name: string) =>
   invoke<string>("create_subject", { name });
 
+export const deleteFile = (path: string) =>
+  invoke<void>("delete_vault_file", { path });
+
 // Import
 export const importUrl = (url: string, subject: string, topic?: string) =>
   invoke<string>("import_url", { url, subject, topic });

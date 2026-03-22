@@ -76,6 +76,17 @@ fn write_vault_file(
 }
 
 #[tauri::command]
+fn delete_vault_file(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    vault::delete_file(&state.vault_path, &path)?;
+    // Also remove from search index
+    state.db.remove_file(&path)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn search_vault(
     state: tauri::State<'_, AppState>,
     query: String,
@@ -295,6 +306,7 @@ pub fn run() {
             list_files,
             read_vault_file,
             write_vault_file,
+            delete_vault_file,
             search_vault,
             get_daily_commitment,
             save_daily_commitment,

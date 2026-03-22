@@ -4,7 +4,7 @@ import VaultBrowser from "../components/vault/VaultBrowser";
 import ImportDialog from "../components/vault/ImportDialog";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import { useVaultStore } from "../stores/vault";
-import { readFile, writeFile } from "../lib/tauri";
+import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 
 export default function VaultPage() {
@@ -68,6 +68,15 @@ export default function VaultPage() {
       console.error("Save failed:", e);
     }
     setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedFile) return;
+    if (!confirm("Delete this file? This cannot be undone.")) return;
+    await deleteFile(selectedFile);
+    useVaultStore.getState().selectFile(null);
+    useVaultStore.getState().loadSubjects();
+    setFileContent(null);
   };
 
   return (
@@ -156,6 +165,12 @@ export default function VaultPage() {
                       className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
                     >
                       Edit
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-coral hover:border-coral transition-colors"
+                    >
+                      Delete
                     </button>
                   </>
                 )}

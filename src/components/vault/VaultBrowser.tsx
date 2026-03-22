@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useVaultStore } from "../../stores/vault";
-import { writeFile } from "../../lib/tauri";
+import { writeFile, deleteFile } from "../../lib/tauri";
 
 export default function VaultBrowser() {
   const {
@@ -61,6 +61,19 @@ export default function VaultBrowser() {
     selectFile(path);
   };
 
+  const handleDeleteFile = async (filePath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this file? This cannot be undone.")) return;
+    await deleteFile(filePath);
+    if (selectedFile === filePath) {
+      selectFile(null);
+    }
+    if (expandedSubject) {
+      loadFiles(expandedSubject);
+      loadSubjects();
+    }
+  };
+
   if (error) {
     return <p className="text-coral text-sm">{error}</p>;
   }
@@ -101,19 +114,30 @@ export default function VaultBrowser() {
                 <p className="text-xs text-text-muted py-1 px-2">No files</p>
               ) : (
                 files.map((file) => (
-                  <button
+                  <div
                     key={file.file_path}
-                    onClick={() => selectFile(file.file_path)}
-                    className={`w-full text-left px-2 py-1 text-xs rounded truncate ${
-                      selectedFile === file.file_path
-                        ? "bg-surface-2 text-purple"
-                        : "text-text-muted hover:text-text hover:bg-surface-2"
-                    }`}
-                    title={file.file_path}
+                    className="group flex items-center"
                   >
-                    {file.file_path.split("/").pop()?.replace(".md", "") ??
-                      file.file_path}
-                  </button>
+                    <button
+                      onClick={() => selectFile(file.file_path)}
+                      className={`flex-1 text-left px-2 py-1 text-xs rounded truncate ${
+                        selectedFile === file.file_path
+                          ? "bg-surface-2 text-purple"
+                          : "text-text-muted hover:text-text hover:bg-surface-2"
+                      }`}
+                      title={file.file_path}
+                    >
+                      {file.file_path.split("/").pop()?.replace(".md", "") ??
+                        file.file_path}
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteFile(file.file_path, e)}
+                      className="hidden group-hover:block px-1 text-xs text-text-muted hover:text-coral shrink-0"
+                      title="Delete file"
+                    >
+                      &times;
+                    </button>
+                  </div>
                 ))
               )}
 

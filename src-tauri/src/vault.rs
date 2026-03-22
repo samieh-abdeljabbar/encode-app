@@ -162,6 +162,16 @@ pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Resu
         .map_err(|e| format!("Failed to write {:?}: {}", full_path, e))
 }
 
+/// Delete a file from the vault.
+pub fn delete_file(vault_path: &Path, relative_path: &str) -> Result<(), String> {
+    let full_path = vault_path.join(relative_path);
+    if !full_path.exists() {
+        return Err(format!("File not found: {:?}", full_path));
+    }
+    fs::remove_file(&full_path)
+        .map_err(|e| format!("Failed to delete {:?}: {}", full_path, e))
+}
+
 /// List markdown files in a subject folder, optionally filtered by type subdirectory
 pub fn list_files(
     vault_path: &Path,
