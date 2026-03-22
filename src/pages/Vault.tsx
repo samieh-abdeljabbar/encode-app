@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import VaultBrowser from "../components/vault/VaultBrowser";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import { useVaultStore } from "../stores/vault";
@@ -6,6 +7,7 @@ import { readFile, writeFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 
 export default function VaultPage() {
+  const navigate = useNavigate();
   const { searchQuery, searchResults, search, clearSearch, selectedFile } =
     useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -131,12 +133,20 @@ export default function VaultPage() {
                     </button>
                   </>
                 ) : (
-                  <button
-                    onClick={handleEdit}
-                    className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                  >
-                    Edit
-                  </button>
+                  <>
+                    <button
+                      onClick={() => navigate("/reader")}
+                      className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90 transition-opacity"
+                    >
+                      Read
+                    </button>
+                    <button
+                      onClick={handleEdit}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                    >
+                      Edit
+                    </button>
+                  </>
                 )}
               </div>
             </div>
