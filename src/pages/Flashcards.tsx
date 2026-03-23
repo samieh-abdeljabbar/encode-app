@@ -111,6 +111,79 @@ function NewCardForm() {
   );
 }
 
+function SubjectDashboard({ onStartReview }: { onStartReview: (subject?: string) => void }) {
+  const { allCards, loading, loadAllCards } = useFlashcardStore();
+
+  useEffect(() => {
+    loadAllCards();
+  }, [loadAllCards]);
+
+  if (loading) {
+    return <p className="text-text-muted text-center py-8">Loading...</p>;
+  }
+
+  // Group by subject
+  const subjects = new Map<string, { total: number; due: number; nextReview: string }>();
+  const todayStr = new Date().toISOString().split("T")[0];
+  for (const c of allCards) {
+    const key = c.subject || "Unknown";
+    const existing = subjects.get(key) || { total: 0, due: 0, nextReview: "9999" };
+    existing.total++;
+    if (c.nextReview <= todayStr) existing.due++;
+    if (c.nextReview < existing.nextReview) existing.nextReview = c.nextReview;
+    subjects.set(key, existing);
+  }
+
+  const totalDue = allCards.filter((c) => c.nextReview <= todayStr).length;
+
+  if (subjects.size === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-text-muted mb-2">No flashcards yet.</p>
+        <p className="text-text-muted text-sm">Create cards from the Reader while studying.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 pb-6">
+      {Array.from(subjects.entries()).map(([name, data]) => (
+        <div key={name} className="bg-surface rounded-lg border border-border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-text">{name}</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                {data.total} cards
+                {data.due > 0 && <span className="text-coral ml-2">{data.due} due</span>}
+                {data.due === 0 && data.nextReview !== "9999" && (
+                  <span className="ml-2">Next: {data.nextReview}</span>
+                )}
+              </p>
+            </div>
+            {data.due > 0 && (
+              <button
+                onClick={() => onStartReview(name)}
+                className="px-3 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90"
+              >
+                Review ({data.due})
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {totalDue > 0 && (
+        <button
+          onClick={() => onStartReview()}
+          className="w-full py-3 bg-purple text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+        >
+          Review All Subjects ({totalDue} due)
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AllCardsView() {
   const { allCards, loading, loadAllCards } = useFlashcardStore();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -191,7 +264,7 @@ function AllCardsView() {
 
 export default function FlashcardsPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"review" | "browse">("review");
+  const [tab, setTab] = useState<"dashboard" | "review" | "browse">("dashboard");
   const {
     cards,
     currentIndex,
@@ -213,11 +286,28 @@ export default function FlashcardsPage() {
   }, [loadDueCards, loadDueCount, resetSession]);
 
   // Browse tab
+  // Dashboard tab — subject picker
+  if (tab === "dashboard") {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
+          <button className="text-sm text-purple font-medium border-b-2 border-purple pb-0.5">Dashboard</button>
+          <button onClick={() => { setTab("review"); loadDueCards(); }} className="text-sm text-text-muted hover:text-text">Review{dueCount > 0 ? ` (${dueCount})` : ""}</button>
+          <button onClick={() => setTab("browse")} className="text-sm text-text-muted hover:text-text">All Cards</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <SubjectDashboard onStartReview={() => { setTab("review"); loadDueCards(); }} />
+        </div>
+      </div>
+    );
+  }
+
   if (tab === "browse") {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
-          <button onClick={() => setTab("review")} className="text-sm text-text-muted hover:text-text">Review{dueCount > 0 ? ` (${dueCount})` : ""}</button>
+          <button onClick={() => setTab("dashboard")} className="text-sm text-text-muted hover:text-text">Dashboard</button>
+          <button onClick={() => { setTab("review"); loadDueCards(); }} className="text-sm text-text-muted hover:text-text">Review{dueCount > 0 ? ` (${dueCount})` : ""}</button>
           <button className="text-sm text-purple font-medium border-b-2 border-purple pb-0.5">All Cards</button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -239,6 +329,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
+          <button onClick={() => setTab("dashboard")} className="text-sm text-text-muted hover:text-text">Dashboard</button>
           <button className="text-sm text-purple font-medium border-b-2 border-purple pb-0.5">Review</button>
           <button onClick={() => setTab("browse")} className="text-sm text-text-muted hover:text-text">All Cards</button>
         </div>

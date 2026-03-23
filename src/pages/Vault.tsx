@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { useNavigate } from "react-router-dom";
 import VaultBrowser from "../components/vault/VaultBrowser";
@@ -16,23 +16,25 @@ export default function VaultPage() {
   const { searchQuery, searchResults, search, clearSearch, selectedFile } =
     useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<"preview" | "edit" | "source">("preview");
   const [editContent, setEditContent] = useState("");
-  const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [saved, setSaved] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const editing = mode === "edit" || mode === "source";
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
     if (!selectedFile) {
       setFileContent(null);
-      setEditing(false);
+      setMode("preview");
       return;
     }
     readFile(selectedFile)
       .then((content) => {
         setFileContent(content);
-        setEditing(false);
+        setMode("preview");
       })
       .catch(() => setFileContent(null));
   }, [selectedFile]);
@@ -50,42 +52,53 @@ export default function VaultPage() {
     useVaultStore.getState().selectFile(path);
   };
 
-  const handleEdit = () => {
-    if (fileContent) {
-      // Only edit the content portion — frontmatter managed separately
-      const { content } = parseFrontmatter(fileContent);
-      setEditContent(content);
-      setEditing(true);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditing(false);
-    setEditContent("");
-  };
-
   /** Reconstruct full file: original frontmatter + edited content */
-  const reconstructFile = (editedContent: string): string => {
+  const reconstructFile = useCallback((editedContent: string): string => {
     if (!fileContent) return editedContent;
     const match = fileContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n?)/);
-    if (match) {
-      return match[1] + editedContent;
-    }
+    if (match) return match[1] + editedContent;
     return editedContent;
+  }, [fileContent]);
+
+  const handleStartEdit = () => {
+    if (fileContent) {
+      const { content } = parseFrontmatter(fileContent);
+      setEditContent(content);
+      setMode("edit");
+    }
   };
 
-  const handleSave = async () => {
-    if (!selectedFile) return;
-    setSaving(true);
-    const fullContent = reconstructFile(editContent);
-    try {
-      await writeFile(selectedFile, fullContent);
-      setFileContent(fullContent);
-      setEditing(false);
-    } catch (e) {
-      console.error("Save failed:", e);
+  const handleStartSource = () => {
+    if (fileContent) {
+      setEditContent(fileContent);
+      setMode("source");
     }
-    setSaving(false);
+  };
+
+  const handleDone = () => {
+    setMode("preview");
+  };
+
+  /** Autosave: debounced write on every content change */
+  const autosave = useCallback((content: string) => {
+    if (!selectedFile) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      const fullContent = mode === "source" ? content : reconstructFile(content);
+      try {
+        await writeFile(selectedFile, fullContent);
+        setFileContent(fullContent);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1500);
+      } catch (e) {
+        console.error("Autosave failed:", e);
+      }
+    }, 1000);
+  }, [selectedFile, mode, reconstructFile]);
+
+  const handleEditChange = (value: string) => {
+    setEditContent(value);
+    autosave(value);
   };
 
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -170,21 +183,15 @@ export default function VaultPage() {
               <h3 className="text-lg font-semibold truncate">
                 {selectedFile.split("/").pop()?.replace(".md", "")}
               </h3>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 items-center">
+                {saved && <span className="text-xs text-teal">Saved</span>}
                 {editing ? (
                   <>
                     <button
-                      onClick={handleCancel}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-text-muted transition-colors"
+                      onClick={handleDone}
+                      className="px-3 py-1 text-xs bg-teal text-white rounded hover:opacity-90 transition-opacity"
                     >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="px-3 py-1 text-xs bg-teal text-white rounded hover:opacity-90 disabled:opacity-50 transition-opacity"
-                    >
-                      {saving ? "Saving..." : "Save"}
+                      Done
                     </button>
                   </>
                 ) : (
@@ -201,7 +208,7 @@ export default function VaultPage() {
                         const { content } = parseFrontmatter(fileContent);
                         const fm = parseFrontmatter(fileContent).frontmatter;
                         useQuizStore.getState().generateQuiz(
-                          fm.subject || "", fm.topic || "", content,
+                          fm.subject ?? "", fm.topic ?? "", content,
                         );
                         navigate("/quiz");
                       }}
@@ -214,7 +221,7 @@ export default function VaultPage() {
                         if (!fileContent) return;
                         const fm = parseFrontmatter(fileContent).frontmatter;
                         useTeachBackStore.getState().startTeachBack(
-                          fm.subject || "", fm.topic || "",
+                          fm.subject ?? "", fm.topic ?? "",
                         );
                         navigate("/teach-back");
                       }}
@@ -223,10 +230,16 @@ export default function VaultPage() {
                       Teach
                     </button>
                     <button
-                      onClick={handleEdit}
+                      onClick={handleStartEdit}
                       className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
                     >
                       Edit
+                    </button>
+                    <button
+                      onClick={handleStartSource}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                    >
+                      Source
                     </button>
                     <button
                       onClick={handleDelete}
@@ -269,13 +282,29 @@ export default function VaultPage() {
 
             {/* Content area */}
             <div className="flex-1 overflow-y-auto">
-              {editing ? (
+              {mode === "source" ? (
                 <>
                   <textarea
                     ref={editorRef}
                     autoFocus
                     value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
+                    onChange={(e) => handleEditChange(e.target.value)}
+                    className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    spellCheck={false}
+                  />
+                  <SlashMenu
+                    textarea={editorRef.current}
+                    value={editContent}
+                    onChange={handleEditChange}
+                  />
+                </>
+              ) : mode === "edit" ? (
+                <>
+                  <textarea
+                    ref={editorRef}
+                    autoFocus
+                    value={editContent}
+                    onChange={(e) => handleEditChange(e.target.value)}
                     className="w-full h-full p-8 bg-bg text-text text-base resize-none focus:outline-none"
                     style={{ fontFamily: "Georgia, Merriweather, serif", lineHeight: "1.75" }}
                     spellCheck={false}
@@ -283,13 +312,12 @@ export default function VaultPage() {
                   <SlashMenu
                     textarea={editorRef.current}
                     value={editContent}
-                    onChange={setEditContent}
+                    onChange={handleEditChange}
                   />
                 </>
               ) : (
                 <div
-                  onClick={handleEdit}
-                  className="p-8 cursor-text min-h-full"
+                  className="p-8 min-h-full"
                 >
                   <MarkdownRenderer
                     content={parseFrontmatter(fileContent).content}

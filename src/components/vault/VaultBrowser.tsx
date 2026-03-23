@@ -209,12 +209,21 @@ export default function VaultBrowser() {
                   className="w-full px-2 py-1 mt-1 text-xs bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
                 />
               ) : (
-                <button
-                  onClick={() => setCreatingFile(true)}
-                  className="w-full text-left px-2 py-1 mt-1 text-xs text-purple hover:text-text transition-colors"
-                >
-                  + New File
-                </button>
+                <div className="flex gap-1 mt-1">
+                  <button
+                    onClick={() => setCreatingFile(true)}
+                    className="text-[10px] text-purple hover:text-text transition-colors"
+                  >
+                    + Chapter
+                  </button>
+                  <span className="text-[10px] text-border">|</span>
+                  <button
+                    onClick={() => setCreatingFile(true)}
+                    className="text-[10px] text-teal hover:text-text transition-colors"
+                  >
+                    + Card
+                  </button>
+                </div>
               )}
             </div>
           )}
