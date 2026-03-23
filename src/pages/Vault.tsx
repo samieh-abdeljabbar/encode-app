@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import SlashMenu from "../components/shared/SlashMenu";
 import MarkdownEditor from "../components/shared/MarkdownEditor";
 import { useVaultStore } from "../stores/vault";
@@ -12,7 +11,7 @@ export default function VaultPage() {
   const navigate = useNavigate();
   const { selectedFile } = useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
-  const [mode, setMode] = useState<"preview" | "edit" | "source">("preview");
+  const [sourceMode, setSourceMode] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [saved, setSaved] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -22,13 +21,16 @@ export default function VaultPage() {
   useEffect(() => {
     if (!selectedFile) {
       setFileContent(null);
-      setMode("preview");
+      setSourceMode(false);
       return;
     }
     readFile(selectedFile)
       .then((content) => {
         setFileContent(content);
-        setMode("preview");
+        // Immediately load content into editor (always editable)
+        const { content: body } = parseFrontmatter(content);
+        setEditContent(body);
+        setSourceMode(false);
       })
       .catch(() => setFileContent(null));
   }, [selectedFile]);
@@ -41,23 +43,19 @@ export default function VaultPage() {
     return editedContent;
   }, [fileContent]);
 
-  const handleStartEdit = () => {
+  const handleToggleSource = () => {
     if (fileContent) {
-      const { content } = parseFrontmatter(fileContent);
-      setEditContent(content);
-      setMode("edit");
+      if (sourceMode) {
+        // Switching from source to editor — parse out frontmatter
+        const { content } = parseFrontmatter(fileContent);
+        setEditContent(content);
+        setSourceMode(false);
+      } else {
+        // Switching to source — show full raw content
+        setEditContent(fileContent);
+        setSourceMode(true);
+      }
     }
-  };
-
-  const handleStartSource = () => {
-    if (fileContent) {
-      setEditContent(fileContent);
-      setMode("source");
-    }
-  };
-
-  const handleDone = () => {
-    setMode("preview");
   };
 
   /** Autosave: debounced write on every content change */
@@ -65,7 +63,7 @@ export default function VaultPage() {
     if (!selectedFile) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
-      const fullContent = mode === "source" ? content : reconstructFile(content);
+      const fullContent = sourceMode ? content : reconstructFile(content);
       try {
         await writeFile(selectedFile, fullContent);
         setFileContent(fullContent);
@@ -75,7 +73,7 @@ export default function VaultPage() {
         console.error("Autosave failed:", e);
       }
     }, 1000);
-  }, [selectedFile, mode, reconstructFile]);
+  }, [selectedFile, sourceMode, reconstructFile]);
 
   const handleEditChange = (value: string) => {
     setEditContent(value);
@@ -156,26 +154,16 @@ export default function VaultPage() {
                 {/* Divider */}
                 <span className="w-px h-4 bg-border" />
 
-                {/* Edit + Source buttons */}
+                {/* Source toggle */}
                 <button
-                  onClick={mode === "edit" ? handleDone : handleStartEdit}
+                  onClick={handleToggleSource}
                   className={`px-2.5 py-1 text-xs rounded border transition-colors ${
-                    mode === "edit"
+                    sourceMode
                       ? "bg-surface-2 text-text border-purple"
                       : "text-text-muted border-border hover:text-text hover:border-purple"
                   }`}
                 >
-                  {mode === "edit" ? "Done" : "Edit"}
-                </button>
-                <button
-                  onClick={mode === "source" ? handleDone : handleStartSource}
-                  className={`px-2.5 py-1 text-xs rounded border transition-colors ${
-                    mode === "source"
-                      ? "bg-surface-2 text-text border-purple"
-                      : "text-text-muted border-border hover:text-text hover:border-purple"
-                  }`}
-                >
-                  Source
+                  {sourceMode ? "Editor" : "Source"}
                 </button>
 
                 <button
@@ -217,7 +205,7 @@ export default function VaultPage() {
 
             {/* Content area */}
             <div className="flex-1 overflow-y-auto">
-              {mode === "source" ? (
+              {sourceMode ? (
                 <>
                   <textarea
                     ref={editorRef}
@@ -233,17 +221,11 @@ export default function VaultPage() {
                     onChange={handleEditChange}
                   />
                 </>
-              ) : mode === "edit" ? (
+              ) : (
                 <MarkdownEditor
                   value={editContent}
                   onChange={handleEditChange}
                 />
-              ) : (
-                <div className="p-8 min-h-full">
-                  <MarkdownRenderer
-                    content={parseFrontmatter(fileContent).content}
-                  />
-                </div>
               )}
             </div>
 
@@ -258,7 +240,7 @@ export default function VaultPage() {
                     {fm.type && <span className="capitalize">{String(fm.type)}</span>}
                     {fm.status && <span className="capitalize">{String(fm.status)}</span>}
                     <span className="flex-1" />
-                    <span>{mode === "preview" ? "Preview" : mode === "edit" ? "Editing" : "Source"}</span>
+                    <span>{sourceMode ? "Source" : "Editor"}</span>
                   </>
                 );
               })()}
