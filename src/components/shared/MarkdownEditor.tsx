@@ -36,11 +36,22 @@ export default function MarkdownEditor({
 
   return (
     <div className="h-full overflow-auto" onBlur={onBlur}>
+      {/* Force bright text color — CM6 default dark theme makes text too dim */}
+      <style>{`
+        .cm-editor .cm-content { color: #e5e5e5 !important; }
+        .cm-editor .cm-line { color: #e5e5e5 !important; }
+        .cm-editor .cm-content .cm-line span[class=""] { color: #e5e5e5 !important; }
+        .cm-editor .ͼ5 { color: #e5e5e5 !important; }
+        .cm-editor .ͼ6 { color: #e5e5e5 !important; }
+        .cm-editor .ͼ7 { color: #e5e5e5 !important; }
+        .cm-editor .ͼ1 { color: #e5e5e5; }
+      `}</style>
       <CodeMirror
         value={value}
         onChange={handleChange}
         extensions={extensions}
         autoFocus={autoFocus}
+        theme="none"
         basicSetup={{
           lineNumbers: false,
           foldGutter: false,

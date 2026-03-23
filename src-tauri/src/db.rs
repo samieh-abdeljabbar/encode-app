@@ -91,6 +91,12 @@ impl Database {
             params![file_path],
         )
         .map_err(|e| e.to_string())?;
+        // Also clean up flashcard schedules for this file
+        conn.execute(
+            "DELETE FROM sr_schedule WHERE file_path = ?1",
+            params![file_path],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
