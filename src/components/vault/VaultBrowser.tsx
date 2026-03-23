@@ -95,6 +95,32 @@ export default function VaultBrowser() {
 
   return (
     <div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border mb-1">
+        <button
+          onClick={() => setCreatingFile(true)}
+          title="New note"
+          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+        >
+          +
+        </button>
+        <button
+          onClick={() => setCreatingSubject(true)}
+          title="New subject"
+          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+        >
+          +S
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={() => setExpandedSubject(null)}
+          title="Collapse all"
+          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+        >
+          &times;
+        </button>
+      </div>
+
       {subjects.length === 0 && !loading && !creatingSubject && (
         <p className="text-text-muted text-sm">
           No subjects yet. Create one below.

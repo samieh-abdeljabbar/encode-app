@@ -22,7 +22,6 @@ export default function VaultPage() {
   const [saved, setSaved] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const editing = mode === "edit" || mode === "source";
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
@@ -184,76 +183,75 @@ export default function VaultPage() {
                 {selectedFile.split("/").pop()?.replace(".md", "")}
               </h3>
               <div className="flex gap-2 shrink-0 items-center">
-                {saved && <span className="text-xs text-teal">Saved</span>}
-                {editing ? (
-                  <>
-                    <button
-                      onClick={handleDone}
-                      className="px-3 py-1 text-xs bg-teal text-white rounded hover:opacity-90 transition-opacity"
-                    >
-                      Done
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => navigate("/reader")}
-                      className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90 transition-opacity"
-                    >
-                      Read
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (!fileContent) return;
-                        const { content } = parseFrontmatter(fileContent);
-                        const fm = parseFrontmatter(fileContent).frontmatter;
-                        useQuizStore.getState().generateQuiz(
-                          fm.subject ?? "", fm.topic ?? "", content,
-                        );
-                        navigate("/quiz");
-                      }}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                    >
-                      Quiz
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (!fileContent) return;
-                        const fm = parseFrontmatter(fileContent).frontmatter;
-                        useTeachBackStore.getState().startTeachBack(
-                          fm.subject ?? "", fm.topic ?? "",
-                        );
-                        navigate("/teach-back");
-                      }}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                    >
-                      Teach
-                    </button>
-                    <button
-                      onClick={handleStartEdit}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={handleStartSource}
-                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                    >
-                      Source
-                    </button>
-                    <button
-                      onClick={handleDelete}
-                      onBlur={() => setConfirmDelete(false)}
-                      className={`px-3 py-1 text-xs rounded transition-colors ${
-                        confirmDelete
-                          ? "bg-coral text-white"
-                          : "text-text-muted border border-border hover:text-coral hover:border-coral"
-                      }`}
-                    >
-                      {confirmDelete ? "Confirm?" : "Delete"}
-                    </button>
-                  </>
-                )}
+                {saved && <span className="text-xs text-teal mr-1">Saved</span>}
+
+                {/* Action buttons */}
+                <button
+                  onClick={() => navigate("/reader")}
+                  className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90 transition-opacity"
+                >
+                  Read
+                </button>
+                <button
+                  onClick={() => {
+                    if (!fileContent) return;
+                    const { content } = parseFrontmatter(fileContent);
+                    const fm = parseFrontmatter(fileContent).frontmatter;
+                    useQuizStore.getState().generateQuiz(fm.subject ?? "", fm.topic ?? "", content);
+                    navigate("/quiz");
+                  }}
+                  className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                >
+                  Quiz
+                </button>
+                <button
+                  onClick={() => {
+                    if (!fileContent) return;
+                    const fm = parseFrontmatter(fileContent).frontmatter;
+                    useTeachBackStore.getState().startTeachBack(fm.subject ?? "", fm.topic ?? "");
+                    navigate("/teach-back");
+                  }}
+                  className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                >
+                  Teach
+                </button>
+
+                {/* Divider */}
+                <span className="w-px h-4 bg-border" />
+
+                {/* Edit toggle — Obsidian style */}
+                <div className="flex bg-surface rounded border border-border">
+                  <button
+                    onClick={handleDone}
+                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "preview" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
+                  >
+                    Preview
+                  </button>
+                  <button
+                    onClick={handleStartEdit}
+                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "edit" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={handleStartSource}
+                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "source" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
+                  >
+                    Source
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleDelete}
+                  onBlur={() => setConfirmDelete(false)}
+                  className={`px-3 py-1 text-xs rounded transition-colors ${
+                    confirmDelete
+                      ? "bg-coral text-white"
+                      : "text-text-muted border border-border hover:text-coral hover:border-coral"
+                  }`}
+                >
+                  {confirmDelete ? "Confirm?" : "Delete"}
+                </button>
               </div>
             </div>
 
@@ -324,6 +322,23 @@ export default function VaultPage() {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Status bar */}
+            <div className="px-8 py-1.5 border-t border-border bg-surface flex items-center gap-4 text-[10px] text-text-muted shrink-0">
+              {(() => {
+                const fm = parseFrontmatter(fileContent).frontmatter;
+                const words = parseFrontmatter(fileContent).content.trim().split(/\s+/).length;
+                return (
+                  <>
+                    <span>{words} words</span>
+                    {fm.type && <span className="capitalize">{String(fm.type)}</span>}
+                    {fm.status && <span className="capitalize">{String(fm.status)}</span>}
+                    <span className="flex-1" />
+                    <span>{mode === "preview" ? "Preview" : mode === "edit" ? "Editing" : "Source"}</span>
+                  </>
+                );
+              })()}
             </div>
           </>
         ) : (
