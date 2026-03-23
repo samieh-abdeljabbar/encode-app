@@ -83,74 +83,86 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   }
 
   return (
-    <div className="space-y-4 pb-8">
-      {subjects.map(({ subject, chapters, grade }) => (
-        <div key={subject.slug} className="bg-surface rounded-lg border border-border overflow-hidden">
-          {/* Subject header */}
-          <button
-            onClick={() => setExpanded(expanded === subject.slug ? null : subject.slug)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-2 transition-colors"
-          >
-            <div className="text-left">
-              <p className="text-sm font-medium text-text">{subject.name}</p>
-              <p className="text-xs text-text-muted mt-0.5">
-                {chapters.length} chapters
-                {grade && ` · ${Math.round(grade.avg_score)}% avg · ${grade.total_quizzes} quizzes`}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {grade && (
-                <span className={`text-lg font-bold ${
-                  grade.avg_score >= 80 ? "text-teal" : grade.avg_score >= 60 ? "text-amber" : "text-coral"
-                }`}>
-                  {Math.round(grade.avg_score)}%
-                </span>
-              )}
-              {expanded === subject.slug ? <ChevronDown size={16} className="text-text-muted" /> : <ChevronRight size={16} className="text-text-muted" />}
-            </div>
-          </button>
+    <div className="pb-8">
+      {/* Card grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {subjects.map(({ subject, chapters, grade }) => {
+          const score = grade ? Math.round(grade.avg_score) : null;
+          const scoreColor = score !== null
+            ? score >= 80 ? "#1D9E75" : score >= 60 ? "#BA7517" : "#D85A30"
+            : "#333";
+          const isExpanded = expanded === subject.slug;
 
-          {/* Expanded: chapter list + actions */}
-          {expanded === subject.slug && (
-            <div className="border-t border-border">
-              {chapters.length === 0 ? (
-                <p className="px-5 py-3 text-xs text-text-muted">No chapters in this subject.</p>
-              ) : (
-                <div>
+          return (
+            <div key={subject.slug} className="bg-surface rounded-xl border border-border overflow-hidden">
+              {/* Card header with grade ring */}
+              <div className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-text">{subject.name}</h3>
+                    <p className="text-xs text-text-muted mt-1">
+                      {chapters.length} chapter{chapters.length !== 1 ? "s" : ""}
+                      {grade ? ` · ${grade.total_quizzes} quiz${grade.total_quizzes !== 1 ? "zes" : ""}` : ""}
+                    </p>
+                  </div>
+                  {/* Grade circle */}
+                  <div className="relative w-14 h-14 shrink-0">
+                    <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="3" />
+                      <circle cx="18" cy="18" r="15" fill="none" stroke={scoreColor} strokeWidth="3"
+                        strokeDasharray={`${(score || 0) * 0.942} 94.2`} strokeLinecap="round" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-bold" style={{ color: scoreColor }}>
+                        {score !== null ? `${score}%` : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSubjectQuiz(subject.slug, subject.name)}
+                    className="flex-1 py-2 text-xs bg-purple text-white rounded-lg hover:opacity-90 font-medium flex items-center justify-center gap-1.5"
+                  >
+                    <Brain size={13} />
+                    Quiz All
+                  </button>
+                  <button
+                    onClick={() => setExpanded(isExpanded ? null : subject.slug)}
+                    className="px-3 py-2 text-xs text-text-muted border border-border rounded-lg hover:text-text hover:border-purple/50 transition-colors"
+                  >
+                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Expanded chapter list */}
+              {isExpanded && chapters.length > 0 && (
+                <div className="border-t border-border bg-[#0f0f0f]">
                   {chapters.map((ch) => {
                     const name = ch.file_path.split("/").pop()?.replace(".md", "") || "";
                     return (
-                      <div key={ch.file_path} className="flex items-center justify-between px-5 py-2.5 border-b border-border last:border-0 hover:bg-surface-2/50">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <BookOpen size={13} className="text-purple shrink-0" />
+                      <button
+                        key={ch.file_path}
+                        onClick={() => handleChapterQuiz(ch, subject.name)}
+                        className="w-full flex items-center justify-between px-5 py-2.5 border-b border-border/50 last:border-0 hover:bg-surface-2/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <BookOpen size={14} className="text-purple shrink-0" />
                           <span className="text-xs text-text truncate">{name}</span>
                         </div>
-                        <button
-                          onClick={() => handleChapterQuiz(ch, subject.name)}
-                          className="px-3 py-1 text-[10px] text-purple border border-purple/30 rounded hover:bg-purple/10 shrink-0"
-                        >
-                          Quiz
-                        </button>
-                      </div>
+                        <span className="text-[10px] text-purple shrink-0">Quiz →</span>
+                      </button>
                     );
                   })}
                 </div>
               )}
-
-              {chapters.length > 0 && (
-                <div className="px-5 py-3 bg-surface-2/30">
-                  <button
-                    onClick={() => handleSubjectQuiz(subject.slug, subject.name)}
-                    className="w-full py-2 text-xs bg-purple text-white rounded hover:opacity-90 font-medium"
-                  >
-                    Quiz Entire Subject ({chapters.length} chapters)
-                  </button>
-                </div>
-              )}
             </div>
-          )}
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -459,10 +471,75 @@ function ActiveQuiz() {
   );
 }
 
+// ─── Grades Tab ─────────────────────────────────────────
+function QuizGrades() {
+  const [grades, setGrades] = useState<SubjectGrade[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getSubjectGrades().then((g) => { setGrades(g); setLoading(false); });
+  }, []);
+
+  if (loading) return <p className="text-text-muted text-center py-12">Loading grades...</p>;
+
+  if (grades.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-text-muted">No grades yet. Take a quiz to see your performance.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto pb-8">
+      <div className="space-y-4">
+        {grades.map((g) => {
+          const score = Math.round(g.avg_score);
+          const color = score >= 80 ? "#1D9E75" : score >= 60 ? "#BA7517" : "#D85A30";
+          return (
+            <div key={g.subject} className="bg-surface rounded-xl border border-border p-5">
+              <div className="flex items-center gap-5">
+                {/* Grade ring */}
+                <div className="relative w-20 h-20 shrink-0">
+                  <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="2.5" />
+                    <circle cx="18" cy="18" r="15" fill="none" stroke={color} strokeWidth="2.5"
+                      strokeDasharray={`${score * 0.942} 94.2`} strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-lg font-bold" style={{ color }}>{score}%</span>
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div className="flex-1">
+                  <h3 className="text-base font-semibold text-text">{g.subject}</h3>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-2">
+                    <p className="text-xs text-text-muted">Quizzes taken</p>
+                    <p className="text-xs text-text">{g.total_quizzes}</p>
+                    <p className="text-xs text-text-muted">Average score</p>
+                    <p className="text-xs text-text">{score}%</p>
+                    <p className="text-xs text-text-muted">Last quiz</p>
+                    <p className="text-xs text-text">{g.last_quiz_date?.split("T")[0] || "—"}</p>
+                    <p className="text-xs text-text-muted">Grade</p>
+                    <p className="text-xs font-medium" style={{ color }}>
+                      {score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Quiz Page ─────────────────────────────────────
 export default function QuizPage() {
   const { questions, generating, resetQuiz } = useQuizStore();
-  const [tab, setTab] = useState<"dashboard" | "quiz" | "history">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "quiz" | "grades" | "history">("dashboard");
 
   // Auto-switch to quiz tab when questions are generated
   useEffect(() => {
@@ -490,6 +567,12 @@ export default function QuizPage() {
           </button>
         )}
         <button
+          onClick={() => setTab("grades")}
+          className={`text-sm transition-colors ${tab === "grades" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
+        >
+          Grades
+        </button>
+        <button
           onClick={() => setTab("history")}
           className={`text-sm transition-colors ${tab === "history" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
         >
@@ -503,6 +586,7 @@ export default function QuizPage() {
           <QuizDashboard onStartQuiz={() => setTab("quiz")} />
         )}
         {tab === "quiz" && <ActiveQuiz />}
+        {tab === "grades" && <QuizGrades />}
         {tab === "history" && <QuizHistory />}
       </div>
     </div>
