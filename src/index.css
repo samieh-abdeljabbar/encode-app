@@ -12,7 +12,7 @@
   --color-coral: #D85A30;
   --color-amber: #BA7517;
 
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-serif: Georgia, Merriweather, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }

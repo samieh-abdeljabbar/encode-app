@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
 import { writeFile, deleteFile } from "../../lib/tauri";
 
@@ -102,20 +103,14 @@ export default function VaultBrowser() {
           title="New note"
           className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1z"/>
-            <path d="M9 1v4h4"/>
-          </svg>
+          <FilePlus size={14} />
         </button>
         <button
           onClick={() => setCreatingSubject(true)}
           title="New subject folder"
           className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M2 3h4l2 2h6v8H2V3z"/>
-            <path d="M8 7v4M6 9h4"/>
-          </svg>
+          <FolderPlus size={14} />
         </button>
         <div className="flex-1" />
         <button
@@ -123,9 +118,7 @@ export default function VaultBrowser() {
           title="Collapse all folders"
           className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M4 6l4-3 4 3M4 10l4 3 4-3"/>
-          </svg>
+          <ChevronsDownUp size={14} />
         </button>
       </div>
 
@@ -139,19 +132,22 @@ export default function VaultBrowser() {
         <div key={subject.slug} className="mb-1">
           <button
             onClick={() => handleSubjectClick(subject.slug)}
-            className="w-full text-left px-3 py-2 text-sm hover:bg-surface-2 rounded flex items-center justify-between"
+            className="w-full text-left px-2 py-1.5 text-sm hover:bg-surface-2 rounded flex items-center gap-1.5"
           >
+            {expandedSubject === subject.slug ? (
+              <ChevronDown size={14} className="text-text-muted shrink-0" />
+            ) : (
+              <ChevronRight size={14} className="text-text-muted shrink-0" />
+            )}
             <span
-              className={
-                expandedSubject === subject.slug
-                  ? "text-text"
-                  : "text-text-muted"
-              }
+              className={`flex-1 truncate ${
+                expandedSubject === subject.slug ? "text-text" : "text-text-muted"
+              }`}
             >
               {subject.name}
             </span>
-            <span className="text-xs text-text-muted">
-              {subject.chapter_count}ch
+            <span className="text-[10px] text-text-muted shrink-0">
+              {subject.chapter_count}
             </span>
           </button>
 
@@ -168,15 +164,15 @@ export default function VaultBrowser() {
                   const typeFolder = pathParts.find((p) =>
                     ["chapters", "flashcards", "quizzes", "teach-backs", "maps"].includes(p)
                   ) || "";
-                  const typeIcon = typeFolder === "chapters" ? "B"
-                    : typeFolder === "flashcards" ? "F"
-                    : typeFolder === "quizzes" ? "Q"
-                    : typeFolder === "teach-backs" ? "T"
-                    : typeFolder === "maps" ? "M" : "";
-                  const typeColor = typeFolder === "chapters" ? "text-purple bg-purple/15"
-                    : typeFolder === "flashcards" ? "text-teal bg-teal/15"
-                    : typeFolder === "quizzes" ? "text-amber bg-amber/15"
-                    : "text-text-muted bg-surface-2";
+                  const TypeIcon = typeFolder === "chapters" ? BookOpen
+                    : typeFolder === "flashcards" ? Layers
+                    : typeFolder === "quizzes" ? Brain
+                    : typeFolder === "teach-backs" ? FileText
+                    : typeFolder === "maps" ? Map : FileText;
+                  const typeColor = typeFolder === "chapters" ? "text-purple"
+                    : typeFolder === "flashcards" ? "text-teal"
+                    : typeFolder === "quizzes" ? "text-amber"
+                    : "text-text-muted";
 
                   return (
                   <div
@@ -192,11 +188,7 @@ export default function VaultBrowser() {
                       }`}
                       title={file.file_path}
                     >
-                      {typeIcon && (
-                        <span className={`w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold shrink-0 ${typeColor}`}>
-                          {typeIcon}
-                        </span>
-                      )}
+                      <TypeIcon size={13} className={`shrink-0 ${typeColor}`} />
                       {file.file_path.split("/").pop()?.replace(".md", "") ??
                         file.file_path}
                     </button>

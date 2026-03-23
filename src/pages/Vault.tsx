@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import DOMPurify from "dompurify";
 import { useNavigate } from "react-router-dom";
-import VaultBrowser from "../components/vault/VaultBrowser";
-import ImportDialog from "../components/vault/ImportDialog";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import SlashMenu from "../components/shared/SlashMenu";
 import MarkdownEditor from "../components/shared/MarkdownEditor";
@@ -11,15 +8,12 @@ import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
 import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
-
 export default function VaultPage() {
   const navigate = useNavigate();
-  const { searchQuery, searchResults, search, clearSearch, selectedFile } =
-    useVaultStore();
+  const { selectedFile } = useVaultStore();
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [mode, setMode] = useState<"preview" | "edit" | "source">("preview");
   const [editContent, setEditContent] = useState("");
-  const [showImport, setShowImport] = useState(false);
   const [saved, setSaved] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -38,19 +32,6 @@ export default function VaultPage() {
       })
       .catch(() => setFileContent(null));
   }, [selectedFile]);
-
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    if (query) {
-      search(query);
-    } else {
-      clearSearch();
-    }
-  };
-
-  const handleFileSelect = (path: string) => {
-    useVaultStore.getState().selectFile(path);
-  };
 
   /** Reconstruct full file: original frontmatter + edited content */
   const reconstructFile = useCallback((editedContent: string): string => {
@@ -129,52 +110,7 @@ export default function VaultPage() {
 
   return (
     <div className="flex h-full">
-      {/* Left: browser + search */}
-      <div className="w-[280px] border-r border-border p-4 overflow-y-auto shrink-0">
-        <div className="flex gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="Search vault..."
-            value={searchQuery}
-            onChange={handleSearch}
-            className="flex-1 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
-          />
-          <button
-            onClick={() => setShowImport(true)}
-            title="Import from URL"
-            className="px-3 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 transition-opacity shrink-0"
-          >
-            +URL
-          </button>
-        </div>
-
-        {searchQuery && searchResults.length > 0 ? (
-          <div className="space-y-2">
-            <p className="text-xs text-text-muted mb-2">
-              {searchResults.length} results
-            </p>
-            {searchResults.map((r) => (
-              <button
-                key={r.file_path}
-                onClick={() => handleFileSelect(r.file_path)}
-                className="w-full text-left p-2 bg-surface rounded hover:bg-surface-2 text-xs"
-              >
-                <div className="text-text truncate">
-                  {r.topic || r.file_path}
-                </div>
-                <div
-                  className="text-text-muted mt-1"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(r.excerpt, { ALLOWED_TAGS: ["mark"] }) }}
-                />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <VaultBrowser />
-        )}
-      </div>
-
-      {/* Right: file preview / editor */}
+      {/* Content area — sidebar is handled by Shell/Sidebar */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedFile && fileContent !== null ? (
           <>
@@ -328,22 +264,7 @@ export default function VaultPage() {
         )}
       </div>
       {/* Import dialog */}
-      {showImport && (
-        <ImportDialog
-          onClose={() => setShowImport(false)}
-          onImported={(filePath) => {
-            setShowImport(false);
-            const store = useVaultStore.getState();
-            store.selectFile(filePath);
-            store.loadSubjects();
-            // Extract subject slug from path to refresh file list
-            const parts = filePath.split("/");
-            if (parts.length >= 2) {
-              store.loadFiles(parts[1]); // subjects/{slug}/...
-            }
-          }}
-        />
-      )}
+      {/* Import dialog moved to Sidebar */}
     </div>
   );
 }

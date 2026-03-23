@@ -1,55 +1,100 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import type { Route } from "../../lib/types";
-
-interface NavItem {
-  route: Route;
-  label: string;
-  path: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { route: "home", label: "Dashboard", path: "/" },
-  { route: "vault", label: "Vault", path: "/vault" },
-  { route: "flashcards", label: "Flashcards", path: "/flashcards" },
-  { route: "quiz", label: "Quiz", path: "/quiz" },
-  { route: "coach", label: "Teach Back", path: "/teach-back" },
-  { route: "settings", label: "Settings", path: "/settings" },
-];
+import { Search, Link } from "lucide-react";
+import { useState } from "react";
+import { useVaultStore } from "../../stores/vault";
+import VaultBrowser from "../vault/VaultBrowser";
+import ImportDialog from "../vault/ImportDialog";
 
 export default function Sidebar() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const { searchQuery, searchResults, search, clearSearch } = useVaultStore();
+  const store = useVaultStore();
+  const [showImport, setShowImport] = useState(false);
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    if (query) {
+      search(query);
+    } else {
+      clearSearch();
+    }
+  };
 
   return (
-    <nav className="w-[220px] h-screen bg-surface border-r border-border flex flex-col no-select shrink-0">
-      <div className="p-4 border-b border-border">
-        <h1 className="text-lg font-bold text-purple tracking-tight">
-          Encode
-        </h1>
+    <div className="w-[260px] h-screen bg-surface border-r border-border flex flex-col shrink-0 no-select">
+      {/* Search + Import */}
+      <div className="p-3 border-b border-border flex gap-2">
+        <div className="flex-1 relative">
+          <Search
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
+          />
+          <input
+            type="text"
+            placeholder="Search vault..."
+            value={searchQuery}
+            onChange={handleSearch}
+            data-search-input
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-2 border border-border rounded text-xs text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
+          />
+        </div>
+        <button
+          onClick={() => setShowImport(true)}
+          title="Import URL"
+          className="px-2 py-1.5 bg-purple text-white rounded text-xs hover:opacity-90 flex items-center gap-1"
+        >
+          <Link size={12} />
+          <span>URL</span>
+        </button>
       </div>
 
-      <div className="flex-1 py-2">
-        {NAV_ITEMS.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <button
-              key={item.route}
-              onClick={() => navigate(item.path)}
-              className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                isActive
-                  ? "bg-surface-2 text-text border-r-2 border-purple"
-                  : "text-text-muted hover:text-text hover:bg-surface-2"
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
+      {/* File browser or search results */}
+      <div className="flex-1 overflow-y-auto py-1">
+        {searchResults.length > 0 ? (
+          <div className="px-2">
+            <div className="flex items-center justify-between px-2 py-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wider">
+                Results
+              </span>
+              <button
+                onClick={clearSearch}
+                className="text-[10px] text-text-muted hover:text-text"
+              >
+                Clear
+              </button>
+            </div>
+            {searchResults.map((r) => (
+              <button
+                key={r.file_path}
+                onClick={() => {
+                  store.selectFile(r.file_path);
+                  clearSearch();
+                }}
+                className="w-full text-left px-2 py-2 text-xs rounded hover:bg-surface-2 transition-colors"
+              >
+                <p className="text-text truncate">{r.topic || r.file_path.split("/").pop()}</p>
+                <p className="text-text-muted text-[10px] truncate">{r.subject}</p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <VaultBrowser />
+        )}
       </div>
 
-      <div className="p-4 border-t border-border text-xs text-text-muted">
-        v0.1.0
-      </div>
-    </nav>
+      {/* Import dialog */}
+      {showImport && (
+        <ImportDialog
+          onClose={() => setShowImport(false)}
+          onImported={(filePath) => {
+            setShowImport(false);
+            store.selectFile(filePath);
+            store.loadSubjects();
+            const parts = filePath.split("/");
+            if (parts.length >= 2) {
+              store.loadFiles(parts[1]);
+            }
+          }}
+        />
+      )}
+    </div>
   );
 }
