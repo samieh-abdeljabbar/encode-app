@@ -257,6 +257,68 @@ export default function Settings() {
             })}
           </div>
         </div>
+
+        {/* Font Family */}
+        <div>
+          <label className="block text-xs text-text-muted mb-2">Font Family</label>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { id: "inter", label: "Inter", css: "'Inter', system-ui, sans-serif" },
+              { id: "georgia", label: "Georgia", css: "Georgia, Merriweather, serif" },
+              { id: "system", label: "System", css: "system-ui, -apple-system, sans-serif" },
+              { id: "mono", label: "Monospace", css: "'JetBrains Mono', monospace" },
+            ].map((font) => {
+              const current = localStorage.getItem("encode-font-family") || "georgia";
+              return (
+                <button
+                  key={font.id}
+                  onClick={() => {
+                    document.documentElement.style.setProperty("--editor-font-family", font.css);
+                    localStorage.setItem("encode-font-family", font.id);
+                  }}
+                  className={`px-3 py-2 text-xs rounded border transition-colors ${
+                    current === font.id
+                      ? "border-purple bg-purple/10 text-text"
+                      : "border-border bg-surface text-text-muted hover:border-purple/50"
+                  }`}
+                  style={{ fontFamily: font.css }}
+                >
+                  {font.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Content Width */}
+        <div>
+          <label className="block text-xs text-text-muted mb-2">Content Width</label>
+          <div className="flex gap-2">
+            {[
+              { id: "narrow", label: "Narrow", px: "640px" },
+              { id: "medium", label: "Medium", px: "800px" },
+              { id: "wide", label: "Wide", px: "100%" },
+            ].map((w) => {
+              const current = localStorage.getItem("encode-content-width") || "medium";
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => {
+                    document.documentElement.style.setProperty("--editor-max-width", w.px);
+                    localStorage.setItem("encode-content-width", w.id);
+                  }}
+                  className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
+                    current === w.id
+                      ? "border-purple bg-purple/10 text-text"
+                      : "border-border bg-surface text-text-muted hover:border-purple/50"
+                  }`}
+                >
+                  {w.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       {/* Save */}

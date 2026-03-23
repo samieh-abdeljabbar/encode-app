@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../stores/app";
-import { getDueCount, listSubjects } from "../lib/tauri";
+import { getDueCount, listSubjects, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -20,6 +20,7 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [dueCount, setDueCount] = useState(0);
   const [subjectCount, setSubjectCount] = useState(0);
+  const [grades, setGrades] = useState<SubjectGrade[]>([]);
 
   const today = new Date().toISOString().slice(0, 10);
   const dayOfWeek = new Date().toLocaleDateString("en-US", {
@@ -33,6 +34,7 @@ export default function Home() {
     listSubjects()
       .then((s) => setSubjectCount(s.length))
       .catch(() => setSubjectCount(0));
+    getSubjectGrades().then(setGrades);
   }, [loadToday, loadStreak]);
 
   useEffect(() => {
@@ -115,6 +117,31 @@ export default function Home() {
           >
             Start Review ({dueCount} cards)
           </button>
+        )}
+
+        {/* Subject Grades */}
+        {grades.length > 0 && (
+          <div className="mt-6">
+            <p className="text-xs text-text-muted uppercase tracking-wider mb-3">Quiz Grades</p>
+            <div className="space-y-2">
+              {grades.map((g) => (
+                <div key={g.subject} className="flex items-center justify-between bg-surface rounded border border-border px-4 py-2.5">
+                  <div>
+                    <p className="text-sm text-text">{g.subject}</p>
+                    <p className="text-[10px] text-text-muted">
+                      {g.total_quizzes} quizzes
+                      {g.last_quiz_date && ` · Last: ${g.last_quiz_date.split("T")[0]}`}
+                    </p>
+                  </div>
+                  <span className={`text-lg font-bold ${
+                    g.avg_score >= 80 ? "text-teal" : g.avg_score >= 60 ? "text-amber" : "text-coral"
+                  }`}>
+                    {Math.round(g.avg_score)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

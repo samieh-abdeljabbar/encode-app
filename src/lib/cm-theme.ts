@@ -7,14 +7,14 @@ export const encodeTheme = EditorView.theme(
   {
     "&": {
       backgroundColor: "#0f0f0f",
-      fontFamily: "Georgia, Merriweather, serif",
+      fontFamily: "var(--editor-font-family, Georgia, Merriweather, serif)",
       fontSize: "var(--editor-font-size, 16px)",
       lineHeight: "1.75",
     },
     ".cm-content": {
       caretColor: "#7F77DD",
       padding: "32px",
-      maxWidth: "720px",
+      maxWidth: "var(--editor-max-width, 800px)",
       color: "#e5e5e5",
     },
     ".cm-cursor, .cm-dropCursor": {

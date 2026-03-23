@@ -19,6 +19,8 @@
 
 :root {
   --editor-font-size: 16px;
+  --editor-font-family: Georgia, Merriweather, serif;
+  --editor-max-width: 800px;
 }
 
 body {

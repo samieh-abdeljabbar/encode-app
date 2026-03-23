@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { aiRequest, writeFile, recordQuizResult } from "../lib/tauri";
+import { aiRequest, writeFile, recordQuizResult, listFiles, readFile } from "../lib/tauri";
+import { parseFrontmatter } from "../lib/markdown";
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -32,6 +33,7 @@ interface QuizState {
   error: string | null;
 
   generateQuiz: (subject: string, topic: string, chapterContent: string) => Promise<void>;
+  generateSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
   submitAnswer: (answer: string) => Promise<void>;
   flagQuestion: (index: number) => void;
   nextQuestion: () => void;
@@ -111,6 +113,33 @@ Use levels 1-3 for initial quizzes. Make questions test genuine understanding.`,
       set({
         generating: false,
         error: `Failed to generate quiz: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
+  },
+
+  generateSubjectQuiz: async (subjectSlug, subjectName) => {
+    set({ generating: true, subject: subjectName, topic: "All Chapters", error: null });
+    try {
+      // Read all chapter files for this subject
+      const files = await listFiles(subjectSlug, "chapters");
+      let combinedContent = "";
+      for (const f of files) {
+        try {
+          const raw = await readFile(f.file_path);
+          const { content } = parseFrontmatter(raw);
+          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${content}`;
+        } catch { /* skip unreadable */ }
+      }
+      if (!combinedContent.trim()) {
+        set({ generating: false, error: "No chapter content found for this subject." });
+        return;
+      }
+      // Use the existing generateQuiz with combined content
+      await get().generateQuiz(subjectName, "All Chapters", combinedContent);
+    } catch (e) {
+      set({
+        generating: false,
+        error: `Failed to generate subject quiz: ${e instanceof Error ? e.message : String(e)}`,
       });
     }
   },

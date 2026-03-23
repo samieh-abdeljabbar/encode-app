@@ -187,6 +187,20 @@ pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Resu
         .map_err(|e| format!("Failed to write file: {}", e))
 }
 
+/// Rename a file in the vault.
+pub fn rename_file(vault_path: &Path, old_path: &str, new_path: &str) -> Result<(), String> {
+    if new_path.contains("..") {
+        return Err("Path must not contain '..' components".to_string());
+    }
+    let old_full = validate_vault_path(vault_path, old_path)?;
+    let new_full = vault_path.join(new_path);
+    if let Some(parent) = new_full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+    }
+    fs::rename(&old_full, &new_full)
+        .map_err(|e| format!("Failed to rename: {}", e))
+}
+
 /// Delete a file from the vault.
 pub fn delete_file(vault_path: &Path, relative_path: &str) -> Result<(), String> {
     let full_path = validate_vault_path(vault_path, relative_path)?;

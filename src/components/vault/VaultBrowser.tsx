@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
+import { useQuizStore } from "../../stores/quiz";
 import { writeFile, deleteFile } from "../../lib/tauri";
 
 export default function VaultBrowser() {
@@ -158,6 +159,22 @@ export default function VaultBrowser() {
               {subject.chapter_count}
             </span>
           </button>
+
+          {/* Subject actions */}
+          {expandedSubject === subject.slug && (
+            <div className="ml-6 mb-1 flex gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useQuizStore.getState().generateSubjectQuiz(subject.slug, subject.name);
+                  navigate("/quiz");
+                }}
+                className="text-[10px] text-amber hover:text-text transition-colors"
+              >
+                Quiz All
+              </button>
+            </div>
+          )}
 
           {expandedSubject === subject.slug && (
             <div className="ml-4 border-l border-border pl-2">

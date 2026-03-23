@@ -271,6 +271,18 @@ fn update_card_schedule(
 }
 
 #[tauri::command]
+fn rename_vault_file(
+    state: tauri::State<'_, AppState>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    vault::rename_file(&state.vault_path, &old_path, &new_path)?;
+    // Update index: remove old, let watcher re-index new
+    state.db.remove_file(&old_path)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn record_quiz_result(
     state: tauri::State<'_, AppState>,
     subject: String,
@@ -445,6 +457,7 @@ pub fn run() {
             get_due_cards,
             get_due_count,
             update_card_schedule,
+            rename_vault_file,
             record_quiz_result,
             get_subject_grades,
         ])
