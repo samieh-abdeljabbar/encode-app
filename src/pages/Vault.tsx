@@ -5,6 +5,7 @@ import VaultBrowser from "../components/vault/VaultBrowser";
 import ImportDialog from "../components/vault/ImportDialog";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import SlashMenu from "../components/shared/SlashMenu";
+import MarkdownEditor from "../components/shared/MarkdownEditor";
 import { useVaultStore } from "../stores/vault";
 import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
@@ -287,31 +288,10 @@ export default function VaultPage() {
                   />
                 </>
               ) : mode === "edit" ? (
-                <>
-                  <textarea
-                    ref={editorRef}
-                    autoFocus
-                    value={editContent}
-                    onChange={(e) => handleEditChange(e.target.value)}
-                    onBlur={() => {
-                      // Return to preview on blur (like Obsidian live preview)
-                      // Small delay to allow slash menu clicks to register
-                      setTimeout(() => {
-                        if (document.activeElement !== editorRef.current) {
-                          setMode("preview");
-                        }
-                      }, 150);
-                    }}
-                    className="w-full h-full p-8 bg-bg text-text text-base resize-none focus:outline-none"
-                    style={{ fontFamily: "Georgia, Merriweather, serif", lineHeight: "1.75" }}
-                    spellCheck={false}
-                  />
-                  <SlashMenu
-                    textarea={editorRef.current}
-                    value={editContent}
-                    onChange={handleEditChange}
-                  />
-                </>
+                <MarkdownEditor
+                  value={editContent}
+                  onChange={handleEditChange}
+                />
               ) : (
                 <div
                   onClick={handleStartEdit}
