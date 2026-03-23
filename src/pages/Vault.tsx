@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { useNavigate } from "react-router-dom";
 import VaultBrowser from "../components/vault/VaultBrowser";
 import ImportDialog from "../components/vault/ImportDialog";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
+import SlashMenu from "../components/shared/SlashMenu";
 import { useVaultStore } from "../stores/vault";
+import { useQuizStore } from "../stores/quiz";
+import { useTeachBackStore } from "../stores/teachback";
 import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 
@@ -17,6 +20,7 @@ export default function VaultPage() {
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
@@ -179,6 +183,33 @@ export default function VaultPage() {
                       Read
                     </button>
                     <button
+                      onClick={() => {
+                        if (!fileContent) return;
+                        const { content } = parseFrontmatter(fileContent);
+                        const fm = parseFrontmatter(fileContent).frontmatter;
+                        useQuizStore.getState().generateQuiz(
+                          fm.subject || "", fm.topic || "", content,
+                        );
+                        navigate("/quiz");
+                      }}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                    >
+                      Quiz
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!fileContent) return;
+                        const fm = parseFrontmatter(fileContent).frontmatter;
+                        useTeachBackStore.getState().startTeachBack(
+                          fm.subject || "", fm.topic || "",
+                        );
+                        navigate("/teach-back");
+                      }}
+                      className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                    >
+                      Teach
+                    </button>
+                    <button
                       onClick={handleEdit}
                       className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
                     >
@@ -200,16 +231,47 @@ export default function VaultPage() {
               </div>
             </div>
 
-            {/* Content area — click to edit */}
+            {/* Properties panel */}
+            {!editing && (() => {
+              const fm = parseFrontmatter(fileContent).frontmatter;
+              const props = [
+                fm.subject && { label: "Subject", value: fm.subject, color: "purple" },
+                fm.topic && { label: "Topic", value: fm.topic, color: "purple" },
+                fm.type && { label: "Type", value: fm.type, color: fm.type === "chapter" ? "purple" : fm.type === "flashcard" ? "teal" : "amber" },
+                fm.status && { label: "Status", value: fm.status, color: fm.status === "digested" ? "teal" : "text-muted" },
+                fm.created_at && { label: "Created", value: String(fm.created_at).split("T")[0], color: "text-muted" },
+              ].filter(Boolean) as { label: string; value: unknown; color: string }[];
+              if (props.length === 0) return null;
+              return (
+                <div className="px-8 py-2 border-b border-border bg-surface flex flex-wrap gap-3 shrink-0">
+                  {props.map((p) => (
+                    <span key={p.label} className="text-xs">
+                      <span className="text-text-muted">{p.label}: </span>
+                      <span className={`text-${p.color}`}>{String(p.value)}</span>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Content area */}
             <div className="flex-1 overflow-y-auto">
               {editing ? (
-                <textarea
-                  autoFocus
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
-                  spellCheck={false}
-                />
+                <>
+                  <textarea
+                    ref={editorRef}
+                    autoFocus
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    spellCheck={false}
+                  />
+                  <SlashMenu
+                    textarea={editorRef.current}
+                    value={editContent}
+                    onChange={setEditContent}
+                  />
+                </>
               ) : (
                 <div
                   onClick={handleEdit}

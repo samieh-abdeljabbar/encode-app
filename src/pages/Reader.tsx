@@ -284,9 +284,32 @@ export default function ReaderPage() {
           >
             &larr; Back
           </button>
-          <span className="text-sm font-medium truncate max-w-md">
-            {filePath?.split("/").pop()?.replace(".md", "")}
-          </span>
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-1 text-sm truncate max-w-md">
+            {rawContent && (() => {
+              const fm = parseFrontmatter(rawContent).frontmatter;
+              const subject = fm.subject ? String(fm.subject) : "";
+              const fileName = filePath?.split("/").pop()?.replace(".md", "") || "";
+              const sectionName = sections[currentSectionIndex]?.heading;
+              return (
+                <>
+                  {subject && (
+                    <>
+                      <button onClick={handleBack} className="text-text-muted hover:text-purple transition-colors truncate max-w-[160px]">{subject}</button>
+                      <span className="text-text-muted">/</span>
+                    </>
+                  )}
+                  <span className="font-medium truncate">{fileName}</span>
+                  {sectionName && (
+                    <>
+                      <span className="text-text-muted">/</span>
+                      <span className="text-text-muted truncate max-w-[180px]">{sectionName}</span>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+          </div>
         </div>
         <span className="text-xs text-text-muted">
           Section {currentSectionIndex + 1} of {sections.length}

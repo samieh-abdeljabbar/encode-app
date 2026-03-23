@@ -128,20 +128,41 @@ export default function VaultBrowser() {
               ) : files.length === 0 ? (
                 <p className="text-xs text-text-muted py-1 px-2">No files</p>
               ) : (
-                files.map((file) => (
+                files.map((file) => {
+                  // Determine file type from path
+                  const pathParts = file.file_path.split("/");
+                  const typeFolder = pathParts.find((p) =>
+                    ["chapters", "flashcards", "quizzes", "teach-backs", "maps"].includes(p)
+                  ) || "";
+                  const typeIcon = typeFolder === "chapters" ? "B"
+                    : typeFolder === "flashcards" ? "F"
+                    : typeFolder === "quizzes" ? "Q"
+                    : typeFolder === "teach-backs" ? "T"
+                    : typeFolder === "maps" ? "M" : "";
+                  const typeColor = typeFolder === "chapters" ? "text-purple bg-purple/15"
+                    : typeFolder === "flashcards" ? "text-teal bg-teal/15"
+                    : typeFolder === "quizzes" ? "text-amber bg-amber/15"
+                    : "text-text-muted bg-surface-2";
+
+                  return (
                   <div
                     key={file.file_path}
                     className="group flex items-center"
                   >
                     <button
                       onClick={() => selectFile(file.file_path)}
-                      className={`flex-1 text-left px-2 py-1 text-xs rounded truncate ${
+                      className={`flex-1 text-left px-2 py-1 text-xs rounded truncate flex items-center gap-1.5 ${
                         selectedFile === file.file_path
                           ? "bg-surface-2 text-purple"
                           : "text-text-muted hover:text-text hover:bg-surface-2"
                       }`}
                       title={file.file_path}
                     >
+                      {typeIcon && (
+                        <span className={`w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold shrink-0 ${typeColor}`}>
+                          {typeIcon}
+                        </span>
+                      )}
                       {file.file_path.split("/").pop()?.replace(".md", "") ??
                         file.file_path}
                     </button>
@@ -162,7 +183,8 @@ export default function VaultBrowser() {
                       {confirmDeleteFile === file.file_path ? "?" : "\u00d7"}
                     </button>
                   </div>
-                ))
+                  );
+                })
               )}
 
               {/* Create file */}
