@@ -24,6 +24,9 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
+  const [fontSize, setFontSize] = useState(() => localStorage.getItem("encode-font-size") || "16");
+  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem("encode-font-family") || "georgia");
+  const [contentWidth, setContentWidth] = useState(() => localStorage.getItem("encode-content-width") || "medium");
 
   useEffect(() => {
     loadConfig();
@@ -235,15 +238,15 @@ export default function Settings() {
           <label className="block text-xs text-text-muted mb-2">Font Size</label>
           <div className="flex gap-2">
             {(["small", "medium", "large"] as const).map((size) => {
-              const px = size === "small" ? 14 : size === "medium" ? 16 : 18;
-              const current = document.documentElement.style.getPropertyValue("--editor-font-size") || "16px";
-              const isActive = current === `${px}px`;
+              const px = size === "small" ? "14" : size === "medium" ? "16" : "18";
+              const isActive = fontSize === px;
               return (
                 <button
                   key={size}
                   onClick={() => {
                     document.documentElement.style.setProperty("--editor-font-size", `${px}px`);
-                    localStorage.setItem("encode-font-size", `${px}`);
+                    localStorage.setItem("encode-font-size", px);
+                    setFontSize(px);
                   }}
                   className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
                     isActive
@@ -268,16 +271,17 @@ export default function Settings() {
               { id: "system", label: "System", css: "system-ui, -apple-system, sans-serif" },
               { id: "mono", label: "Monospace", css: "'JetBrains Mono', monospace" },
             ].map((font) => {
-              const current = localStorage.getItem("encode-font-family") || "georgia";
+              const isActive = fontFamily === font.id;
               return (
                 <button
                   key={font.id}
                   onClick={() => {
                     document.documentElement.style.setProperty("--editor-font-family", font.css);
                     localStorage.setItem("encode-font-family", font.id);
+                    setFontFamily(font.id);
                   }}
                   className={`px-3 py-2 text-xs rounded border transition-colors ${
-                    current === font.id
+                    isActive
                       ? "border-purple bg-purple/10 text-text"
                       : "border-border bg-surface text-text-muted hover:border-purple/50"
                   }`}
@@ -299,16 +303,17 @@ export default function Settings() {
               { id: "medium", label: "Medium", px: "800px" },
               { id: "wide", label: "Wide", px: "100%" },
             ].map((w) => {
-              const current = localStorage.getItem("encode-content-width") || "medium";
+              const isActive = contentWidth === w.id;
               return (
                 <button
                   key={w.id}
                   onClick={() => {
                     document.documentElement.style.setProperty("--editor-max-width", w.px);
                     localStorage.setItem("encode-content-width", w.id);
+                    setContentWidth(w.id);
                   }}
                   className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
-                    current === w.id
+                    isActive
                       ? "border-purple bg-purple/10 text-text"
                       : "border-border bg-surface text-text-muted hover:border-purple/50"
                   }`}

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map } from "lucide-react";
+import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map, Pencil, Trash2 } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
 import { useQuizStore } from "../../stores/quiz";
-import { writeFile, deleteFile } from "../../lib/tauri";
+import { writeFile, deleteFile, renameFile } from "../../lib/tauri";
+import ContextMenu from "../shared/ContextMenu";
 
 export default function VaultBrowser() {
   const navigate = useNavigate();
@@ -30,6 +31,31 @@ export default function VaultBrowser() {
   const [creatingFile, setCreatingFile] = useState(false);
   const [newFileName, setNewFileName] = useState("");
   const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; type: "file" | "subject" } | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const handleContextMenu = (e: React.MouseEvent, path: string, type: "file" | "subject") => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, path, type });
+  };
+
+  const handleRename = async () => {
+    if (!renamingPath || !renameValue.trim()) { setRenamingPath(null); return; }
+    const parts = renamingPath.split("/");
+    parts[parts.length - 1] = renameValue.trim() + (renamingPath.endsWith(".md") && !renameValue.endsWith(".md") ? ".md" : "");
+    const newPath = parts.join("/");
+    try {
+      await renameFile(renamingPath, newPath);
+      loadSubjects();
+      if (expandedSubject) loadFiles(expandedSubject);
+    } catch (e) {
+      console.error("Rename failed:", e);
+    }
+    setRenamingPath(null);
+    setRenameValue("");
+  };
 
   useEffect(() => {
     loadSubjects();
@@ -141,6 +167,7 @@ export default function VaultBrowser() {
         <div key={subject.slug} className="mb-1">
           <button
             onClick={() => handleSubjectClick(subject.slug)}
+            onContextMenu={(e) => handleContextMenu(e, `subjects/${subject.slug}`, "subject")}
             className="w-full text-left px-2 py-1.5 text-sm hover:bg-surface-2 rounded flex items-center gap-1.5"
           >
             {expandedSubject === subject.slug ? (
@@ -206,6 +233,7 @@ export default function VaultBrowser() {
                   >
                     <button
                       onClick={() => handleFileClick(file.file_path)}
+                      onContextMenu={(e) => handleContextMenu(e, file.file_path, "file")}
                       className={`flex-1 text-left px-2 py-1 text-xs rounded truncate flex items-center gap-1.5 ${
                         selectedFile === file.file_path
                           ? "bg-surface-2 text-purple"
@@ -309,6 +337,67 @@ export default function VaultBrowser() {
         >
           + New Subject
         </button>
+      )}
+      {/* Context menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              label: "Rename",
+              icon: <Pencil size={12} />,
+              onClick: () => {
+                const name = contextMenu.path.split("/").pop()?.replace(".md", "") || "";
+                setRenamingPath(contextMenu.path);
+                setRenameValue(name);
+              },
+            },
+            ...(contextMenu.type === "file" ? [{
+              label: "Open in Reader",
+              icon: <BookOpen size={12} />,
+              onClick: () => {
+                selectFile(contextMenu.path);
+                navigate("/reader");
+              },
+            }] : []),
+            { label: "", onClick: () => {}, divider: true },
+            {
+              label: "Delete",
+              icon: <Trash2 size={12} />,
+              danger: true,
+              onClick: async () => {
+                if (contextMenu.type === "file") {
+                  await deleteFile(contextMenu.path);
+                  loadSubjects();
+                  if (expandedSubject) loadFiles(expandedSubject);
+                }
+              },
+            },
+          ]}
+        />
+      )}
+
+      {/* Rename dialog */}
+      {renamingPath && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRenamingPath(null)}>
+          <div className="bg-surface border border-border rounded-lg p-4 w-80 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-xs text-text-muted mb-2">Rename</p>
+            <input
+              autoFocus
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenamingPath(null); }}
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+            />
+            <div className="flex justify-end gap-2 mt-3">
+              <button onClick={() => setRenamingPath(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
+              <button onClick={handleRename} className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90">Rename</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
