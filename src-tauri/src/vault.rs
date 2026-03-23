@@ -165,8 +165,12 @@ pub fn read_file(vault_path: &Path, relative_path: &str) -> Result<String, Strin
 
 /// Write content to a file in the vault. Creates parent directories if needed.
 pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Result<(), String> {
+    // Reject paths with ".." components before touching the filesystem
+    if relative_path.contains("..") {
+        return Err("Path must not contain '..' components".to_string());
+    }
     let full_path = vault_path.join(relative_path);
-    // Create parent directories first (they must exist for canonicalize)
+    // Create parent directories
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create directories: {}", e))?;

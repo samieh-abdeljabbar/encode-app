@@ -108,6 +108,11 @@ export interface Flashcard {
   interval: number;
   nextReview: string;
   lastReviewed: string | null;
+  // FSRS fields (optional for backward compat with SM-2 cards)
+  stability?: number;
+  difficulty?: number;
+  reps?: number;
+  lapses?: number;
 }
 
 /** Review rating for a flashcard */

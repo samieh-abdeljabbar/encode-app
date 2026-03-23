@@ -9,6 +9,12 @@ import {
 } from "../lib/gates";
 import { readFile, writeFile, aiRequest } from "../lib/tauri";
 
+export interface SuggestedCard {
+  question: string;
+  answer: string;
+  bloom: number;
+}
+
 interface ReaderState {
   filePath: string | null;
   rawContent: string | null;
@@ -16,6 +22,7 @@ interface ReaderState {
   currentSectionIndex: number;
   gateOpen: boolean;
   gateResponses: GateResponse[];
+  suggestedCards: SuggestedCard[];
   loading: boolean;
   error: string | null;
 
@@ -24,6 +31,7 @@ interface ReaderState {
   goToSection: (index: number) => void;
   submitGateResponse: (response: string) => Promise<void>;
   clearError: () => void;
+  dismissSuggestions: () => void;
   closeReader: () => void;
 }
 
@@ -34,6 +42,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   currentSectionIndex: 0,
   gateOpen: false,
   gateResponses: [],
+  suggestedCards: [],
   loading: false,
   error: null,
 
@@ -152,7 +161,24 @@ Be specific to their response. Never say "Good job!" — always push deeper. Kee
         gateOpen: false,
         gateResponses: updatedResponses,
         rawContent: updatedContent,
+        suggestedCards: [],
       });
+
+      // Auto-suggest flashcards from the section (fire-and-forget)
+      const sectionContent = sections[currentSectionIndex]?.content || "";
+      if (sectionContent.trim().split(/\s+/).length >= 20) {
+        aiRequest(
+          `Generate 1-2 flashcard Q/A pairs from this study content. Output ONLY JSON: [{"q":"...","a":"...","bloom":1-3}]`,
+          sectionContent.slice(0, 1500),
+          300,
+        ).then(({ text: cardText }) => {
+          const match = cardText.match(/\[[\s\S]*\]/);
+          if (match) {
+            const parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
+            set({ suggestedCards: parsed.map((p) => ({ question: p.q, answer: p.a, bloom: p.bloom || 2 })) });
+          }
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error("Failed to save digestion:", e);
       set({ error: "Failed to save gate response. Please try again." });
@@ -160,6 +186,8 @@ Be specific to their response. Never say "Good job!" — always push deeper. Kee
   },
 
   clearError: () => set({ error: null }),
+
+  dismissSuggestions: () => set({ suggestedCards: [] }),
 
   closeReader: () => {
     set({
@@ -169,6 +197,7 @@ Be specific to their response. Never say "Good job!" — always push deeper. Kee
       currentSectionIndex: 0,
       gateOpen: false,
       gateResponses: [],
+      suggestedCards: [],
     });
   },
 }));

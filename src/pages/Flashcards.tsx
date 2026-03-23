@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFlashcardStore } from "../stores/flashcard";
-import type { ReviewRating } from "../lib/types";
-import { sm2, qualityFromRating, addDays } from "../lib/sr";
+import type { ReviewRating, Subject } from "../lib/types";
+import { fsrs, fsrsRatingFromButton, type FSRSCard } from "../lib/sr";
+import { listSubjects } from "../lib/tauri";
 
 const RATING_BUTTONS: { label: string; rating: ReviewRating; color: string }[] =
   [
@@ -11,6 +12,104 @@ const RATING_BUTTONS: { label: string; rating: ReviewRating; color: string }[] =
     { label: "Good", rating: "good", color: "bg-[#1D9E75]" },
     { label: "Easy", rating: "easy", color: "bg-[#1D9E75]/80" },
   ];
+
+function NewCardForm() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subject, setSubject] = useState("");
+  const [topic, setTopic] = useState("");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [bloom, setBloom] = useState(2);
+  const [saved, setSaved] = useState(false);
+  const [open, setOpen] = useState(false);
+  const { createCard } = useFlashcardStore();
+
+  useEffect(() => {
+    listSubjects().then(setSubjects).catch(() => {});
+  }, []);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full py-2 text-sm text-text-muted border border-border border-dashed rounded hover:text-purple hover:border-purple transition-colors"
+      >
+        + New Card
+      </button>
+    );
+  }
+
+  const handleSave = async () => {
+    if (!subject || !question.trim() || !answer.trim()) return;
+    await createCard(subject, topic || "General", question.trim(), answer.trim(), bloom);
+    setQuestion("");
+    setAnswer("");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="p-4 bg-surface border border-purple/40 rounded-lg">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-purple font-medium">New Flashcard</p>
+        <button onClick={() => setOpen(false)} className="text-xs text-text-muted hover:text-text">Close</button>
+      </div>
+      <select
+        value={subject}
+        onChange={(e) => setSubject(e.target.value)}
+        className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+      >
+        <option value="">Select subject...</option>
+        {subjects.map((s) => (
+          <option key={s.slug} value={s.name}>{s.name}</option>
+        ))}
+      </select>
+      <input
+        type="text"
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        placeholder="Topic (e.g. Normalization)..."
+        className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+      />
+      <textarea
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        placeholder="Question..."
+        rows={2}
+        className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+      />
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="Answer..."
+        rows={3}
+        className="w-full mb-3 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+      />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1">
+          <span className="text-xs text-text-muted mr-1">Bloom:</span>
+          {[1, 2, 3, 4, 5, 6].map((b) => (
+            <button
+              key={b}
+              onClick={() => setBloom(b)}
+              className={`w-6 h-6 text-xs rounded ${bloom === b ? "bg-purple text-white" : "bg-surface-2 text-text-muted border border-border hover:border-purple"}`}
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={!subject || !question.trim() || !answer.trim()}
+          className="px-4 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90 disabled:opacity-30"
+        >
+          Save Card
+        </button>
+      </div>
+      {saved && <p className="text-xs text-teal mt-2">Card saved!</p>}
+    </div>
+  );
+}
 
 export default function FlashcardsPage() {
   const navigate = useNavigate();
@@ -42,23 +141,26 @@ export default function FlashcardsPage() {
   if (sessionComplete) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-teal text-lg font-medium mb-2">
-            {cards.length > 0
-              ? `Review complete! ${cards.length} cards reviewed.`
-              : "No cards due for review."}
-          </p>
-          <p className="text-text-muted text-sm mb-6">
-            {cards.length > 0
-              ? "Great work — your memory traces are stronger now."
-              : "Check back later or import new material."}
-          </p>
-          <button
-            onClick={() => navigate("/")}
-            className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
-          >
-            Back to Home
-          </button>
+        <div className="max-w-md w-full px-8">
+          <div className="text-center mb-8">
+            <p className="text-teal text-lg font-medium mb-2">
+              {cards.length > 0
+                ? `Review complete! ${cards.length} cards reviewed.`
+                : "No cards due for review."}
+            </p>
+            <p className="text-text-muted text-sm mb-4">
+              {cards.length > 0
+                ? "Great work — your memory traces are stronger now."
+                : "Create cards from the reader or add one below."}
+            </p>
+            <button
+              onClick={() => navigate("/")}
+              className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
+            >
+              Back to Home
+            </button>
+          </div>
+          <NewCardForm />
         </div>
       </div>
     );
@@ -67,13 +169,20 @@ export default function FlashcardsPage() {
   const card = cards[currentIndex];
   if (!card) return null;
 
-  // Preview next intervals for each rating
+  // Preview next intervals using FSRS (matching actual review logic)
+  const cardFSRS: FSRSCard = {
+    stability: card.stability ?? Math.max(0.1, card.interval || 1),
+    difficulty: card.difficulty ?? Math.min(10, Math.max(1, 10 - card.ease * 2)),
+    reps: card.reps ?? (card.interval > 0 ? 1 : 0),
+    lapses: card.lapses ?? 0,
+  };
+  const elapsed = card.lastReviewed
+    ? Math.max(0, Math.round((Date.now() - new Date(card.lastReviewed).getTime()) / 86400000))
+    : card.interval || 0;
   const intervals = RATING_BUTTONS.map((b) => {
-    const q = qualityFromRating(b.rating);
-    const { interval } = sm2(card.ease, card.interval, q);
-    return addDays(interval) === addDays(1)
-      ? `${interval}d`
-      : `${interval}d`;
+    const r = fsrsRatingFromButton(b.rating);
+    const { interval } = fsrs(cardFSRS, r, elapsed);
+    return `${interval}d`;
   });
 
   return (

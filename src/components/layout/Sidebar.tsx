@@ -12,6 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { route: "vault", label: "Vault", path: "/vault" },
   { route: "flashcards", label: "Flashcards", path: "/flashcards" },
   { route: "quiz", label: "Quiz", path: "/quiz" },
+  { route: "coach", label: "Teach Back", path: "/teach-back" },
   { route: "settings", label: "Settings", path: "/settings" },
 ];
 

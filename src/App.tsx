@@ -5,6 +5,7 @@ import VaultPage from "./pages/Vault";
 import ReaderPage from "./pages/Reader";
 import FlashcardsPage from "./pages/Flashcards";
 import QuizPage from "./pages/Quiz";
+import TeachBackPage from "./pages/TeachBack";
 import Settings from "./pages/Settings";
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
           <Route path="/vault" element={<VaultPage />} />
           <Route path="/flashcards" element={<FlashcardsPage />} />
           <Route path="/quiz" element={<QuizPage />} />
+          <Route path="/teach-back" element={<TeachBackPage />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         {/* Reader is outside Shell — no sidebar, full-screen reading */}

@@ -7,7 +7,14 @@ import {
   writeFile,
   updateCardSchedule,
 } from "../lib/tauri";
-import { sm2, qualityFromRating, addDays, today } from "../lib/sr";
+import {
+  fsrs,
+  fsrsRatingFromButton,
+  migrateToFSRS,
+  addDays,
+  today,
+  type FSRSCard,
+} from "../lib/sr";
 
 interface FlashcardState {
   cards: Flashcard[];
@@ -21,6 +28,13 @@ interface FlashcardState {
   loadDueCount: () => Promise<void>;
   revealAnswer: () => void;
   rateCard: (rating: ReviewRating) => Promise<void>;
+  createCard: (
+    subject: string,
+    topic: string,
+    question: string,
+    answer: string,
+    bloom: number,
+  ) => Promise<void>;
   resetSession: () => void;
 }
 
@@ -47,12 +61,17 @@ function parseFlashcards(
       let interval = 0;
       let nextReview = today();
       let lastReviewed: string | null = null;
+      let stability: number | undefined;
+      let difficulty: number | undefined;
+      let reps: number | undefined;
+      let lapses: number | undefined;
 
       i++;
       while (i < lines.length && lines[i].startsWith(">")) {
         const l = lines[i].replace(/^>\s*/, "");
         if (l.startsWith("**Q:**")) question = l.replace("**Q:**", "").trim();
-        else if (l.startsWith("**A:**")) answer = l.replace("**A:**", "").trim();
+        else if (l.startsWith("**A:**"))
+          answer = l.replace("**A:**", "").trim();
         else if (l.startsWith("**Bloom:**"))
           bloom = parseInt(l.replace("**Bloom:**", "").trim()) || 1;
         else if (l.startsWith("**Ease:**"))
@@ -63,6 +82,14 @@ function parseFlashcards(
           nextReview = l.replace("**Next:**", "").trim();
         else if (l.startsWith("**Last:**"))
           lastReviewed = l.replace("**Last:**", "").trim() || null;
+        else if (l.startsWith("**Stability:**"))
+          stability = parseFloat(l.replace("**Stability:**", "").trim());
+        else if (l.startsWith("**Difficulty:**"))
+          difficulty = parseFloat(l.replace("**Difficulty:**", "").trim());
+        else if (l.startsWith("**Reps:**"))
+          reps = parseInt(l.replace("**Reps:**", "").trim());
+        else if (l.startsWith("**Lapses:**"))
+          lapses = parseInt(l.replace("**Lapses:**", "").trim());
         i++;
       }
 
@@ -79,6 +106,10 @@ function parseFlashcards(
           interval,
           nextReview,
           lastReviewed,
+          stability,
+          difficulty,
+          reps,
+          lapses,
         });
       }
     } else {
@@ -88,8 +119,33 @@ function parseFlashcards(
   return cards;
 }
 
-/** Update a card's metadata in its markdown file */
-async function updateCardInFile(card: Flashcard, newEase: number, newInterval: number): Promise<void> {
+/** Build a card's FSRS state, migrating from SM-2 if needed */
+function getCardFSRS(card: Flashcard): FSRSCard {
+  if (card.stability !== undefined && card.difficulty !== undefined) {
+    return {
+      stability: card.stability,
+      difficulty: card.difficulty,
+      reps: card.reps ?? 0,
+      lapses: card.lapses ?? 0,
+    };
+  }
+  return migrateToFSRS(card.ease, card.interval);
+}
+
+/** Calculate elapsed days since last review */
+function elapsedDays(lastReviewed: string | null): number {
+  if (!lastReviewed) return 0;
+  const last = new Date(lastReviewed);
+  const now = new Date();
+  return Math.max(0, Math.round((now.getTime() - last.getTime()) / 86400000));
+}
+
+/** Update a card's metadata in its markdown file (FSRS fields) */
+async function updateCardInFile(
+  card: Flashcard,
+  newInterval: number,
+  fsrsCard: FSRSCard,
+): Promise<void> {
   const content = await readFile(card.filePath);
   const lines = content.split("\n");
   const result: string[] = [];
@@ -100,21 +156,53 @@ async function updateCardInFile(card: Flashcard, newEase: number, newInterval: n
     if (cardMatch && cardMatch[1].trim() === card.id) {
       result.push(lines[i]);
       i++;
+      const existingFields = new Set<string>();
+      const cardLines: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) {
         const l = lines[i];
         if (l.includes("**Ease:**")) {
-          result.push(`> **Ease:** ${newEase.toFixed(2)}`);
+          cardLines.push(l); // Preserve original SM-2 ease unchanged
+          existingFields.add("Ease");
         } else if (l.includes("**Interval:**")) {
-          result.push(`> **Interval:** ${newInterval}`);
+          cardLines.push(`> **Interval:** ${newInterval}`);
+          existingFields.add("Interval");
         } else if (l.includes("**Next:**")) {
-          result.push(`> **Next:** ${addDays(newInterval)}`);
+          cardLines.push(`> **Next:** ${addDays(newInterval)}`);
+          existingFields.add("Next");
         } else if (l.includes("**Last:**")) {
-          result.push(`> **Last:** ${today()}`);
+          cardLines.push(`> **Last:** ${today()}`);
+          existingFields.add("Last");
+        } else if (l.includes("**Stability:**")) {
+          cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
+          existingFields.add("Stability");
+        } else if (l.includes("**Difficulty:**")) {
+          cardLines.push(
+            `> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`,
+          );
+          existingFields.add("Difficulty");
+        } else if (l.includes("**Reps:**")) {
+          cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
+          existingFields.add("Reps");
+        } else if (l.includes("**Lapses:**")) {
+          cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`);
+          existingFields.add("Lapses");
         } else {
-          result.push(l);
+          cardLines.push(l);
         }
         i++;
       }
+      // Add FSRS fields if they didn't exist before
+      if (!existingFields.has("Stability"))
+        cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
+      if (!existingFields.has("Difficulty"))
+        cardLines.push(
+          `> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`,
+        );
+      if (!existingFields.has("Reps"))
+        cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
+      if (!existingFields.has("Lapses"))
+        cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`);
+      result.push(...cardLines);
     } else {
       result.push(lines[i]);
       i++;
@@ -122,6 +210,38 @@ async function updateCardInFile(card: Flashcard, newEase: number, newInterval: n
   }
 
   await writeFile(card.filePath, result.join("\n"));
+}
+
+/** Format a card callout block */
+function formatCardBlock(
+  id: string,
+  question: string,
+  answer: string,
+  bloom: number,
+): string {
+  const d = today();
+  return [
+    `> [!card] id: ${id}`,
+    `> **Q:** ${question}`,
+    `> **A:** ${answer}`,
+    `> **Bloom:** ${bloom}`,
+    `> **Ease:** 2.50`,
+    `> **Interval:** 0`,
+    `> **Next:** ${d}`,
+    `> **Last:**`,
+    `> **Stability:** 0`,
+    `> **Difficulty:** 0`,
+    `> **Reps:** 0`,
+    `> **Lapses:** 0`,
+  ].join("\n");
+}
+
+/** Slugify a string for file paths */
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
@@ -146,7 +266,6 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         return;
       }
 
-      // Group by file path and load each file
       const fileMap = new Map<string, typeof dueCards>();
       for (const dc of dueCards) {
         const list = fileMap.get(dc.file_path) || [];
@@ -158,7 +277,6 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       for (const [filePath, duelist] of fileMap) {
         try {
           const content = await readFile(filePath);
-          // Extract subject/topic from frontmatter
           const subjectMatch = content.match(/^subject:\s*(.+)$/m);
           const topicMatch = content.match(/^topic:\s*(.+)$/m);
           const subject = subjectMatch?.[1]?.trim() || "";
@@ -191,11 +309,14 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     const card = cards[currentIndex];
     if (!card) return;
 
-    const quality = qualityFromRating(rating);
-    const { interval: newInterval, ease: newEase } = sm2(
-      card.ease,
-      card.interval,
-      quality,
+    // Use FSRS (with auto-migration from SM-2)
+    const fsrsCard = getCardFSRS(card);
+    const fsrsRating = fsrsRatingFromButton(rating);
+    const elapsed = elapsedDays(card.lastReviewed);
+    const { interval: newInterval, card: newFSRS } = fsrs(
+      fsrsCard,
+      fsrsRating,
+      elapsed,
     );
     const nextReview = addDays(newInterval);
     const reviewDate = today();
@@ -206,12 +327,12 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       card.filePath,
       nextReview,
       newInterval,
-      newEase,
+      newFSRS.stability,
       reviewDate,
     );
 
-    // Update the markdown file
-    await updateCardInFile(card, newEase, newInterval);
+    // Update the markdown file with FSRS fields
+    await updateCardInFile(card, newInterval, newFSRS);
 
     // Advance to next card
     const nextIndex = currentIndex + 1;
@@ -220,6 +341,43 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     } else {
       set({ currentIndex: nextIndex, showAnswer: false });
     }
+  },
+
+  createCard: async (subject, topic, question, answer, bloom) => {
+    const subjectSlug = slugify(subject);
+    const topicSlug = slugify(topic || "general");
+    const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
+    const cardId = `fc-${Date.now()}`;
+
+    let content: string;
+    try {
+      content = await readFile(filePath);
+      // Append new card to existing file
+      content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom) + "\n";
+    } catch {
+      // File doesn't exist — create with frontmatter
+      const now = new Date().toISOString().split(".")[0];
+      content = [
+        "---",
+        `subject: ${subject}`,
+        `topic: ${topic || "General"}`,
+        "type: flashcard",
+        `created_at: ${now}`,
+        "---",
+        "",
+        formatCardBlock(cardId, question, answer, bloom),
+        "",
+      ].join("\n");
+    }
+
+    await writeFile(filePath, content);
+
+    // Schedule in DB — due today for immediate first review
+    await updateCardSchedule(cardId, filePath, today(), 0, 2.5, "");
+
+    // Refresh due count
+    const count = await getDueCount();
+    set({ dueCount: count });
   },
 
   resetSession: () =>

@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { aiRequest } from "../lib/tauri";
+import { aiRequest, writeFile } from "../lib/tauri";
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
 
 export interface QuizQuestion {
   id: string;
@@ -132,10 +136,47 @@ Target levels 1-3 for initial quizzes. Use free-recall questions — no multiple
   },
 
   nextQuestion: () => {
-    const { currentIndex, questions } = get();
+    const { currentIndex, questions, subject, topic } = get();
     const nextIndex = currentIndex + 1;
     if (nextIndex >= questions.length) {
       set({ sessionComplete: true, showFeedback: false });
+      // Save quiz results to vault
+      if (subject && topic) {
+        const d = new Date().toISOString().split("T")[0];
+        const now = new Date().toISOString().split(".")[0];
+        const subjectSlug = slugify(subject);
+        const topicSlug = slugify(topic);
+        const filePath = `subjects/${subjectSlug}/quizzes/${topicSlug}-${d}.md`;
+        const correctCount = questions.filter((q) => q.correct === true).length;
+        const pct = Math.round((correctCount / questions.length) * 100);
+
+        const lines = [
+          "---",
+          `subject: ${subject}`,
+          `topic: ${topic}`,
+          "type: quiz",
+          `created_at: ${now}`,
+          `score: ${pct}`,
+          "---",
+          "",
+          `# Quiz: ${topic} (${d})`,
+          "",
+          `Score: **${correctCount}/${questions.length}** (${pct}%)`,
+          "",
+        ];
+
+        for (const q of questions) {
+          lines.push(`## Q: ${q.question}`);
+          lines.push(`Bloom Level: ${q.bloomLevel}`);
+          lines.push("");
+          lines.push(`**Answer:** ${q.userAnswer || "(no answer)"}`);
+          lines.push(`**Result:** ${q.correct === true ? "Correct" : q.correct === false ? "Incorrect" : "Unevaluated"}`);
+          if (q.feedback) lines.push(`**Feedback:** ${q.feedback}`);
+          lines.push("");
+        }
+
+        writeFile(filePath, lines.join("\n")).catch(() => {});
+      }
     } else {
       set({ currentIndex: nextIndex, showFeedback: false });
     }

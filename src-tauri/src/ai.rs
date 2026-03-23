@@ -155,7 +155,7 @@ async fn gemini_request(
     let text = resp.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!("Gemini returned {}: {}", status, text));
+        return Err(format!("Gemini returned {}", status));
     }
 
     let parsed: serde_json::Value =
