@@ -4,9 +4,63 @@ import {
   EditorView,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
 import { type EditorState, type Range, RangeSetBuilder } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
+
+/** Widget that renders a markdown table as an HTML table */
+class TableWidget extends WidgetType {
+  constructor(private rawText: string) { super(); }
+
+  toDOM() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-table-widget";
+
+    const lines = this.rawText.split("\n").filter((l) => l.trim());
+    if (lines.length < 2) { wrapper.textContent = this.rawText; return wrapper; }
+
+    const parseRow = (line: string) =>
+      line.split("|").slice(1, -1).map((c) => c.trim());
+
+    const headers = parseRow(lines[0]);
+    // lines[1] is the separator (|---|---|)
+    const rows = lines.slice(2).map(parseRow);
+
+    const table = document.createElement("table");
+    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;";
+
+    // Header
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const h of headers) {
+      const th = document.createElement("th");
+      th.textContent = h;
+      th.style.cssText = "text-align:left;padding:8px 12px;font-weight:600;color:#e5e5e5;background:#1a1a1a;border-bottom:2px solid #333;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;";
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Body
+    const tbody = document.createElement("tbody");
+    rows.forEach((cells, i) => {
+      const tr = document.createElement("tr");
+      for (const cell of cells) {
+        const td = document.createElement("td");
+        td.textContent = cell;
+        td.style.cssText = `padding:6px 12px;border-bottom:1px solid #252525;color:#ccc;${i % 2 === 1 ? "background:rgba(255,255,255,0.02);" : ""}`;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    return wrapper;
+  }
+
+  eq(other: TableWidget) { return this.rawText === other.rawText; }
+}
 
 /** Check if the cursor's line overlaps with a position */
 function cursorOnLine(state: EditorState, pos: number): boolean {
@@ -119,6 +173,20 @@ function buildDecorations(state: EditorState): DecorationSet {
         // Blockquote > markers — dim
         case "QuoteMark": {
           decos.push(Decoration.mark({ class: "cm-quote-mark" }).range(from, to));
+          break;
+        }
+
+        // Table — render as HTML table widget when cursor is not inside
+        case "Table": {
+          if (!cursorInRange(state, from, to)) {
+            const rawText = state.doc.sliceString(from, to);
+            decos.push(
+              Decoration.replace({
+                widget: new TableWidget(rawText),
+                inclusive: false,
+              }).range(from, to),
+            );
+          }
           break;
         }
 
