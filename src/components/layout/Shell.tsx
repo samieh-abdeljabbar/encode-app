@@ -9,8 +9,8 @@ export default function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
 
-  // Show sidebar only on vault page
-  const showSidebar = location.pathname === "/vault";
+  // Show sidebar on vault page by default, toggleable on others
+  const showSidebar = location.pathname === "/vault" || sidebarOpen;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "o") {
@@ -36,7 +36,7 @@ export default function Shell() {
 
   return (
     <div className="flex h-screen bg-bg overflow-hidden">
-      <Ribbon />
+      <Ribbon sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
       {showSidebar && sidebarOpen && <Sidebar />}
       <main className="flex-1 overflow-y-auto">
         <Outlet />

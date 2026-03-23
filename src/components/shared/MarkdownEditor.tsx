@@ -52,6 +52,7 @@ export default function MarkdownEditor({
         extensions={extensions}
         autoFocus={autoFocus}
         theme="none"
+        editable={true}
         basicSetup={{
           lineNumbers: false,
           foldGutter: false,

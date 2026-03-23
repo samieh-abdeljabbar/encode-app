@@ -156,7 +156,17 @@ export default function VaultPage() {
                 {/* Divider */}
                 <span className="w-px h-4 bg-border" />
 
-                {/* Source toggle */}
+                {/* Edit + Source buttons */}
+                <button
+                  onClick={mode === "edit" ? handleDone : handleStartEdit}
+                  className={`px-2.5 py-1 text-xs rounded border transition-colors ${
+                    mode === "edit"
+                      ? "bg-surface-2 text-text border-purple"
+                      : "text-text-muted border-border hover:text-text hover:border-purple"
+                  }`}
+                >
+                  {mode === "edit" ? "Done" : "Edit"}
+                </button>
                 <button
                   onClick={mode === "source" ? handleDone : handleStartSource}
                   className={`px-2.5 py-1 text-xs rounded border transition-colors ${
@@ -229,10 +239,7 @@ export default function VaultPage() {
                   onChange={handleEditChange}
                 />
               ) : (
-                <div
-                  onClick={handleStartEdit}
-                  className="p-8 min-h-full cursor-text"
-                >
+                <div className="p-8 min-h-full">
                   <MarkdownRenderer
                     content={parseFrontmatter(fileContent).content}
                   />
