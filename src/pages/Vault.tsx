@@ -219,27 +219,17 @@ export default function VaultPage() {
                 {/* Divider */}
                 <span className="w-px h-4 bg-border" />
 
-                {/* Edit toggle — Obsidian style */}
-                <div className="flex bg-surface rounded border border-border">
-                  <button
-                    onClick={handleDone}
-                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "preview" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
-                  >
-                    Preview
-                  </button>
-                  <button
-                    onClick={handleStartEdit}
-                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "edit" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={handleStartSource}
-                    className={`px-2.5 py-1 text-xs transition-colors ${mode === "source" ? "bg-surface-2 text-text" : "text-text-muted hover:text-text"}`}
-                  >
-                    Source
-                  </button>
-                </div>
+                {/* Source toggle */}
+                <button
+                  onClick={mode === "source" ? handleDone : handleStartSource}
+                  className={`px-2.5 py-1 text-xs rounded border transition-colors ${
+                    mode === "source"
+                      ? "bg-surface-2 text-text border-purple"
+                      : "text-text-muted border-border hover:text-text hover:border-purple"
+                  }`}
+                >
+                  Source
+                </button>
 
                 <button
                   onClick={handleDelete}
@@ -303,6 +293,15 @@ export default function VaultPage() {
                     autoFocus
                     value={editContent}
                     onChange={(e) => handleEditChange(e.target.value)}
+                    onBlur={() => {
+                      // Return to preview on blur (like Obsidian live preview)
+                      // Small delay to allow slash menu clicks to register
+                      setTimeout(() => {
+                        if (document.activeElement !== editorRef.current) {
+                          setMode("preview");
+                        }
+                      }, 150);
+                    }}
                     className="w-full h-full p-8 bg-bg text-text text-base resize-none focus:outline-none"
                     style={{ fontFamily: "Georgia, Merriweather, serif", lineHeight: "1.75" }}
                     spellCheck={false}
@@ -315,7 +314,8 @@ export default function VaultPage() {
                 </>
               ) : (
                 <div
-                  className="p-8 min-h-full"
+                  onClick={handleStartEdit}
+                  className="p-8 min-h-full cursor-text"
                 >
                   <MarkdownRenderer
                     content={parseFrontmatter(fileContent).content}

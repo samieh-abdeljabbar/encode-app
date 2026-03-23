@@ -96,28 +96,36 @@ export default function VaultBrowser() {
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border mb-1">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border mb-1">
         <button
           onClick={() => setCreatingFile(true)}
           title="New note"
-          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
         >
-          +
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M9 1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9 1z"/>
+            <path d="M9 1v4h4"/>
+          </svg>
         </button>
         <button
           onClick={() => setCreatingSubject(true)}
-          title="New subject"
-          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+          title="New subject folder"
+          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
         >
-          +S
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 3h4l2 2h6v8H2V3z"/>
+            <path d="M8 7v4M6 9h4"/>
+          </svg>
         </button>
         <div className="flex-1" />
         <button
           onClick={() => setExpandedSubject(null)}
-          title="Collapse all"
-          className="p-1.5 text-xs text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+          title="Collapse all folders"
+          className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
         >
-          &times;
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M4 6l4-3 4 3M4 10l4 3 4-3"/>
+          </svg>
         </button>
       </div>
 
