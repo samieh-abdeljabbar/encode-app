@@ -91,3 +91,6 @@ export const aiRequest = (systemPrompt: string, userPrompt: string, maxTokens: n
 
 export const checkOllama = (url: string) =>
   invoke<boolean>("check_ollama", { url });
+
+export const listOllamaModels = (url: string) =>
+  invoke<string[]>("list_ollama_models", { url }).catch(() => []);

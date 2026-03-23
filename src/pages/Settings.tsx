@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
-import { rebuildIndex, getVaultPath, checkOllama } from "../lib/tauri";
+import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels } from "../lib/tauri";
 
 const POPULAR_MODELS = [
   { id: "llama3.1:8b", name: "Llama 3.1 8B", size: "4.7 GB", desc: "Best general-purpose local model" },
@@ -23,6 +23,7 @@ export default function Settings() {
   const [indexCount, setIndexCount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [installedModels, setInstalledModels] = useState<string[]>([]);
 
   useEffect(() => {
     loadConfig();
@@ -42,6 +43,11 @@ export default function Settings() {
     setOllamaStatus("checking");
     checkOllama(ollamaUrl).then((available) => {
       setOllamaStatus(available ? "available" : "unavailable");
+      if (available) {
+        listOllamaModels(ollamaUrl).then(setInstalledModels);
+      } else {
+        setInstalledModels([]);
+      }
     });
   }, [ollamaUrl]);
 
@@ -106,16 +112,32 @@ export default function Settings() {
           <div className="space-y-4 p-4 bg-surface rounded-lg border border-border">
             <div>
               <label className="block text-xs text-text-muted mb-2">Model</label>
+              {installedModels.length === 0 && ollamaStatus === "available" ? (
+                <div className="p-3 bg-amber/10 border border-amber/30 rounded text-xs text-amber mb-2">
+                  No models installed. Open Terminal and run: <code className="bg-surface-2 px-1 rounded">ollama pull llama3.1:8b</code>
+                </div>
+              ) : null}
               <select
                 value={ollamaModel}
                 onChange={(e) => setOllamaModel(e.target.value)}
                 className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
               >
-                {POPULAR_MODELS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name} ({m.size})
-                  </option>
-                ))}
+                {installedModels.length > 0 && (
+                  <optgroup label="Installed">
+                    {installedModels.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Popular Models">
+                  {POPULAR_MODELS
+                    .filter((m) => !installedModels.includes(m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.size})
+                      </option>
+                    ))}
+                </optgroup>
               </select>
               {POPULAR_MODELS.find((m) => m.id === ollamaModel) && (
                 <p className="text-xs text-text-muted mt-1">

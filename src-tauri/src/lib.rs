@@ -222,6 +222,28 @@ async fn check_ollama(url: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn list_ollama_models(url: String) -> Result<Vec<String>, String> {
+    let client = reqwest::Client::new();
+    match client.get(&format!("{}/api/tags", url))
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await {
+        Ok(resp) => {
+            let text = resp.text().await.map_err(|e| e.to_string())?;
+            let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+            let models = parsed["models"]
+                .as_array()
+                .map(|arr| arr.iter()
+                    .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>())
+                .unwrap_or_default();
+            Ok(models)
+        }
+        Err(_) => Ok(vec![]),
+    }
+}
+
+#[tauri::command]
 fn get_due_cards(state: tauri::State<'_, AppState>) -> Result<Vec<DueCard>, String> {
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     state.db.get_due_cards(&today)
@@ -402,6 +424,7 @@ pub fn run() {
             import_url,
             rebuild_index,
             check_ollama,
+            list_ollama_models,
             ai_request_cmd,
             get_due_cards,
             get_due_count,
