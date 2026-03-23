@@ -1,13 +1,24 @@
 import { Search, Link } from "lucide-react";
 import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useVaultStore } from "../../stores/vault";
 import VaultBrowser from "../vault/VaultBrowser";
 import ImportDialog from "../vault/ImportDialog";
 
 export default function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { searchQuery, searchResults, search, clearSearch } = useVaultStore();
   const store = useVaultStore();
   const [showImport, setShowImport] = useState(false);
+
+  /** Select a file and navigate to vault if not already there */
+  const handleSelectFile = (path: string) => {
+    store.selectFile(path);
+    if (location.pathname !== "/vault") {
+      navigate("/vault");
+    }
+  };
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
@@ -65,7 +76,7 @@ export default function Sidebar() {
               <button
                 key={r.file_path}
                 onClick={() => {
-                  store.selectFile(r.file_path);
+                  handleSelectFile(r.file_path);
                   clearSearch();
                 }}
                 className="w-full text-left px-2 py-2 text-xs rounded hover:bg-surface-2 transition-colors"

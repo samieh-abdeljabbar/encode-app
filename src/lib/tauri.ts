@@ -80,6 +80,20 @@ export const updateCardSchedule = (
     lastReviewed,
   });
 
+// Quiz grades
+export interface SubjectGrade {
+  subject: string;
+  total_quizzes: number;
+  avg_score: number;
+  last_quiz_date: string | null;
+}
+
+export const recordQuizResult = (subject: string, topic: string, bloomLevel: number, correct: boolean) =>
+  invoke<void>("record_quiz_result", { subject, topic, bloomLevel, correct });
+
+export const getSubjectGrades = () =>
+  invoke<SubjectGrade[]>("get_subject_grades").catch(() => []);
+
 // AI
 export interface AiResponse {
   text: string;

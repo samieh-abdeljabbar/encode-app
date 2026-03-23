@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
 import { writeFile, deleteFile } from "../../lib/tauri";
 
 export default function VaultBrowser() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const {
     subjects,
     files,
@@ -16,6 +19,11 @@ export default function VaultBrowser() {
     createSubject,
   } = useVaultStore();
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+
+  const handleFileClick = (path: string) => {
+    selectFile(path);
+    if (location.pathname !== "/vault") navigate("/vault");
+  };
   const [creatingSubject, setCreatingSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [creatingFile, setCreatingFile] = useState(false);
@@ -180,7 +188,7 @@ export default function VaultBrowser() {
                     className="group flex items-center"
                   >
                     <button
-                      onClick={() => selectFile(file.file_path)}
+                      onClick={() => handleFileClick(file.file_path)}
                       className={`flex-1 text-left px-2 py-1 text-xs rounded truncate flex items-center gap-1.5 ${
                         selectedFile === file.file_path
                           ? "bg-surface-2 text-purple"

@@ -266,6 +266,53 @@ pub struct DueCard {
     pub last_reviewed: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SubjectGrade {
+    pub subject: String,
+    pub total_quizzes: u32,
+    pub avg_score: f64,
+    pub last_quiz_date: Option<String>,
+}
+
+impl Database {
+    pub fn record_quiz_result(
+        &self, subject: &str, topic: &str, bloom_level: u32, correct: bool,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO quiz_history (subject, topic, bloom_level, correct) VALUES (?1, ?2, ?3, ?4)",
+            params![subject, topic, bloom_level, if correct { 1 } else { 0 }],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_subject_grades(&self) -> Result<Vec<SubjectGrade>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT subject,
+                    COUNT(DISTINCT attempted_at) as total_quizzes,
+                    ROUND(100.0 * SUM(CASE WHEN correct THEN 1 ELSE 0 END) / COUNT(*), 1) as avg_score,
+                    MAX(attempted_at) as last_quiz_date
+             FROM quiz_history
+             GROUP BY subject
+             ORDER BY subject"
+        ).map_err(|e| e.to_string())?;
+
+        let grades = stmt.query_map([], |row| {
+            Ok(SubjectGrade {
+                subject: row.get(0)?,
+                total_quizzes: row.get(1)?,
+                avg_score: row.get(2)?,
+                last_quiz_date: row.get(3)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+        Ok(grades)
+    }
+}
+
 fn calculate_current_streak(dates: &[String], today: &str) -> u32 {
     if dates.is_empty() {
         return 0;

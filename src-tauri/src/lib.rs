@@ -4,7 +4,7 @@ mod importer;
 mod indexer;
 mod vault;
 
-use db::{Database, DueCard, SearchResult, StreakInfo};
+use db::{Database, DueCard, SearchResult, StreakInfo, SubjectGrade};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -271,6 +271,22 @@ fn update_card_schedule(
 }
 
 #[tauri::command]
+fn record_quiz_result(
+    state: tauri::State<'_, AppState>,
+    subject: String,
+    topic: String,
+    bloom_level: u32,
+    correct: bool,
+) -> Result<(), String> {
+    state.db.record_quiz_result(&subject, &topic, bloom_level, correct)
+}
+
+#[tauri::command]
+fn get_subject_grades(state: tauri::State<'_, AppState>) -> Result<Vec<SubjectGrade>, String> {
+    state.db.get_subject_grades()
+}
+
+#[tauri::command]
 async fn ai_request_cmd(
     state: tauri::State<'_, AppState>,
     system_prompt: String,
@@ -429,6 +445,8 @@ pub fn run() {
             get_due_cards,
             get_due_count,
             update_card_schedule,
+            record_quiz_result,
+            get_subject_grades,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
