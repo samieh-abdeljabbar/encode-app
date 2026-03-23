@@ -52,7 +52,9 @@ export default function VaultPage() {
 
   const handleEdit = () => {
     if (fileContent) {
-      setEditContent(fileContent);
+      // Only edit the content portion — frontmatter managed separately
+      const { content } = parseFrontmatter(fileContent);
+      setEditContent(content);
       setEditing(true);
     }
   };
@@ -62,12 +64,23 @@ export default function VaultPage() {
     setEditContent("");
   };
 
+  /** Reconstruct full file: original frontmatter + edited content */
+  const reconstructFile = (editedContent: string): string => {
+    if (!fileContent) return editedContent;
+    const match = fileContent.match(/^(---\r?\n[\s\S]*?\r?\n---\r?\n?)/);
+    if (match) {
+      return match[1] + editedContent;
+    }
+    return editedContent;
+  };
+
   const handleSave = async () => {
     if (!selectedFile) return;
     setSaving(true);
+    const fullContent = reconstructFile(editContent);
     try {
-      await writeFile(selectedFile, editContent);
-      setFileContent(editContent);
+      await writeFile(selectedFile, fullContent);
+      setFileContent(fullContent);
       setEditing(false);
     } catch (e) {
       console.error("Save failed:", e);
@@ -232,7 +245,7 @@ export default function VaultPage() {
             </div>
 
             {/* Properties panel */}
-            {!editing && (() => {
+            {(() => {
               const fm = parseFrontmatter(fileContent).frontmatter;
               const props = [
                 fm.subject && { label: "Subject", value: fm.subject, color: "purple" },
@@ -263,7 +276,8 @@ export default function VaultPage() {
                     autoFocus
                     value={editContent}
                     onChange={(e) => setEditContent(e.target.value)}
-                    className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    className="w-full h-full p-8 bg-bg text-text text-base resize-none focus:outline-none"
+                    style={{ fontFamily: "Georgia, Merriweather, serif", lineHeight: "1.75" }}
                     spellCheck={false}
                   />
                   <SlashMenu
