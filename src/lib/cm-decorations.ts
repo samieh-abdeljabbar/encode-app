@@ -4,63 +4,11 @@ import {
   EditorView,
   ViewPlugin,
   type ViewUpdate,
-  WidgetType,
 } from "@codemirror/view";
 import { type EditorState, type Range, RangeSetBuilder } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 
-/** Widget that renders a markdown table as an HTML table */
-class TableWidget extends WidgetType {
-  constructor(private rawText: string) { super(); }
-
-  toDOM() {
-    const wrapper = document.createElement("div");
-    wrapper.className = "cm-table-widget";
-
-    const lines = this.rawText.split("\n").filter((l) => l.trim());
-    if (lines.length < 2) { wrapper.textContent = this.rawText; return wrapper; }
-
-    const parseRow = (line: string) =>
-      line.split("|").slice(1, -1).map((c) => c.trim());
-
-    const headers = parseRow(lines[0]);
-    // lines[1] is the separator (|---|---|)
-    const rows = lines.slice(2).map(parseRow);
-
-    const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;";
-
-    // Header
-    const thead = document.createElement("thead");
-    const headerRow = document.createElement("tr");
-    for (const h of headers) {
-      const th = document.createElement("th");
-      th.textContent = h;
-      th.style.cssText = "text-align:left;padding:8px 12px;font-weight:600;color:#e5e5e5;background:#1a1a1a;border-bottom:2px solid #333;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;";
-      headerRow.appendChild(th);
-    }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    // Body
-    const tbody = document.createElement("tbody");
-    rows.forEach((cells, i) => {
-      const tr = document.createElement("tr");
-      for (const cell of cells) {
-        const td = document.createElement("td");
-        td.textContent = cell;
-        td.style.cssText = `padding:6px 12px;border-bottom:1px solid #252525;color:#ccc;${i % 2 === 1 ? "background:rgba(255,255,255,0.02);" : ""}`;
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    wrapper.appendChild(table);
-    return wrapper;
-  }
-
-  eq(other: TableWidget) { return this.rawText === other.rawText; }
-}
+// Table styling uses line-level decorations (no widget replacement needed)
 
 /** Check if the cursor's line overlaps with a position */
 function cursorOnLine(state: EditorState, pos: number): boolean {
@@ -176,17 +124,23 @@ function buildDecorations(state: EditorState): DecorationSet {
           break;
         }
 
-        // Table — render as HTML table widget when cursor is not inside
+        // Table styling — add background to rows, dim pipes, bold headers
         case "Table": {
-          if (!cursorInRange(state, from, to)) {
-            const rawText = state.doc.sliceString(from, to);
-            decos.push(
-              Decoration.replace({
-                widget: new TableWidget(rawText),
-                inclusive: false,
-              }).range(from, to),
-            );
+          // Style each line of the table
+          const startLine = state.doc.lineAt(from);
+          const endLine = state.doc.lineAt(Math.min(to, state.doc.length));
+          for (let i = startLine.number; i <= endLine.number; i++) {
+            const line = state.doc.line(i);
+            const lineClass = i === startLine.number ? "cm-table-header-line"
+              : i === startLine.number + 1 ? "cm-table-separator-line"
+              : "cm-table-row-line";
+            decos.push(Decoration.line({ class: lineClass }).range(line.from));
           }
+          break;
+        }
+
+        case "TableDelimiter": {
+          decos.push(Decoration.mark({ class: "cm-table-delim" }).range(from, to));
           break;
         }
 
@@ -256,5 +210,22 @@ export const livePreviewStyles = EditorView.baseTheme({
   ".cm-hr": {
     color: "#333",
     textDecoration: "line-through",
+  },
+  ".cm-table-delim": {
+    color: "#555",
+  },
+  ".cm-table-header-line": {
+    backgroundColor: "#1a1a1a",
+    borderBottom: "2px solid #333",
+    fontWeight: "600",
+  },
+  ".cm-table-separator-line": {
+    color: "#333 !important",
+    fontSize: "0.7em",
+    lineHeight: "1.2",
+  },
+  ".cm-table-row-line": {
+    backgroundColor: "rgba(255,255,255,0.015)",
+    borderBottom: "1px solid #1f1f1f",
   },
 });
