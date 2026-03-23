@@ -111,15 +111,96 @@ function NewCardForm() {
   );
 }
 
+function AllCardsView() {
+  const { allCards, loading, loadAllCards } = useFlashcardStore();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAllCards();
+  }, [loadAllCards]);
+
+  if (loading) {
+    return <p className="text-text-muted text-center py-8">Loading cards...</p>;
+  }
+
+  if (allCards.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-text-muted mb-4">No flashcards yet.</p>
+        <p className="text-text-muted text-sm">Create cards from the Reader while studying, or use the form below.</p>
+        <div className="mt-6">
+          <NewCardForm />
+        </div>
+      </div>
+    );
+  }
+
+  // Group by subject + topic
+  const grouped = new Map<string, typeof allCards>();
+  for (const c of allCards) {
+    const key = `${c.subject} — ${c.topic}`;
+    const list = grouped.get(key) || [];
+    list.push(c);
+    grouped.set(key, list);
+  }
+
+  return (
+    <div className="space-y-4 pb-8">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-muted">{allCards.length} cards total</p>
+      </div>
+      {Array.from(grouped.entries()).map(([group, groupCards]) => (
+        <div key={group} className="bg-surface rounded border border-border">
+          <button
+            onClick={() => setExpanded(expanded === group ? null : group)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-surface-2 transition-colors"
+          >
+            <span className="text-sm font-medium text-text">{group}</span>
+            <span className="text-xs text-text-muted">{groupCards.length} cards</span>
+          </button>
+          {expanded === group && (
+            <div className="border-t border-border">
+              {groupCards.map((c) => (
+                <div key={c.id} className="px-4 py-3 border-b border-border last:border-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-text font-medium">{c.question}</p>
+                      <p className="text-xs text-text-muted mt-1">{c.answer}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-xs px-1.5 py-0.5 bg-purple/20 text-purple rounded">B{c.bloom}</span>
+                      <p className="text-xs text-text-muted mt-1">
+                        {c.nextReview <= new Date().toISOString().split("T")[0] ? (
+                          <span className="text-coral">Due</span>
+                        ) : (
+                          `Next: ${c.nextReview}`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <NewCardForm />
+    </div>
+  );
+}
+
 export default function FlashcardsPage() {
   const navigate = useNavigate();
+  const [tab, setTab] = useState<"review" | "browse">("review");
   const {
     cards,
     currentIndex,
     showAnswer,
     loading,
     sessionComplete,
+    dueCount,
     loadDueCards,
+    loadDueCount,
     revealAnswer,
     rateCard,
     resetSession,
@@ -127,10 +208,26 @@ export default function FlashcardsPage() {
 
   useEffect(() => {
     loadDueCards();
+    loadDueCount();
     return () => resetSession();
-  }, [loadDueCards, resetSession]);
+  }, [loadDueCards, loadDueCount, resetSession]);
 
-  if (loading) {
+  // Browse tab
+  if (tab === "browse") {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
+          <button onClick={() => setTab("review")} className="text-sm text-text-muted hover:text-text">Review{dueCount > 0 ? ` (${dueCount})` : ""}</button>
+          <button className="text-sm text-purple font-medium border-b-2 border-purple pb-0.5">All Cards</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <AllCardsView />
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && tab === "review") {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-text-muted">Loading flashcards...</p>
@@ -140,27 +237,40 @@ export default function FlashcardsPage() {
 
   if (sessionComplete) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="max-w-md w-full px-8">
-          <div className="text-center mb-8">
-            <p className="text-teal text-lg font-medium mb-2">
-              {cards.length > 0
-                ? `Review complete! ${cards.length} cards reviewed.`
-                : "No cards due for review."}
-            </p>
-            <p className="text-text-muted text-sm mb-4">
-              {cards.length > 0
-                ? "Great work — your memory traces are stronger now."
-                : "Create cards from the reader or add one below."}
-            </p>
-            <button
-              onClick={() => navigate("/")}
-              className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
-            >
-              Back to Home
-            </button>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
+          <button className="text-sm text-purple font-medium border-b-2 border-purple pb-0.5">Review</button>
+          <button onClick={() => setTab("browse")} className="text-sm text-text-muted hover:text-text">All Cards</button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-md w-full px-8">
+            <div className="text-center mb-8">
+              <p className="text-teal text-lg font-medium mb-2">
+                {cards.length > 0
+                  ? `Review complete! ${cards.length} cards reviewed.`
+                  : "No cards due for review."}
+              </p>
+              <p className="text-text-muted text-sm mb-4">
+                {cards.length > 0
+                  ? "Great work — your memory traces are stronger now."
+                  : "Browse your cards or create new ones in the All Cards tab."}
+              </p>
+              <div className="flex gap-2 justify-center">
+                <button
+                  onClick={() => setTab("browse")}
+                  className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
+                >
+                  Browse All Cards
+                </button>
+                <button
+                  onClick={() => navigate("/")}
+                  className="px-4 py-2 text-sm text-text-muted border border-border rounded hover:text-text"
+                >
+                  Back to Home
+                </button>
+              </div>
+            </div>
           </div>
-          <NewCardForm />
         </div>
       </div>
     );

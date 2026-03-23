@@ -6,6 +6,8 @@ import {
   readFile,
   writeFile,
   updateCardSchedule,
+  listSubjects,
+  listFiles,
 } from "../lib/tauri";
 import {
   fsrs,
@@ -18,6 +20,7 @@ import {
 
 interface FlashcardState {
   cards: Flashcard[];
+  allCards: Flashcard[];
   currentIndex: number;
   showAnswer: boolean;
   dueCount: number;
@@ -26,6 +29,7 @@ interface FlashcardState {
 
   loadDueCards: () => Promise<void>;
   loadDueCount: () => Promise<void>;
+  loadAllCards: () => Promise<void>;
   revealAnswer: () => void;
   rateCard: (rating: ReviewRating) => Promise<void>;
   createCard: (
@@ -246,11 +250,41 @@ function slugify(s: string): string {
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   cards: [],
+  allCards: [],
   currentIndex: 0,
   showAnswer: false,
   dueCount: 0,
   loading: false,
   sessionComplete: false,
+
+  loadAllCards: async () => {
+    set({ loading: true });
+    try {
+      const subjects = await listSubjects();
+      const all: Flashcard[] = [];
+      for (const subj of subjects) {
+        try {
+          const files = await listFiles(subj.slug, "flashcards");
+          for (const f of files) {
+            try {
+              const content = await readFile(f.file_path);
+              const subjectMatch = content.match(/^subject:\s*(.+)$/m);
+              const topicMatch = content.match(/^topic:\s*(.+)$/m);
+              const cards = parseFlashcards(
+                content, f.file_path,
+                subjectMatch?.[1]?.trim() || subj.name,
+                topicMatch?.[1]?.trim() || "",
+              );
+              all.push(...cards);
+            } catch { /* skip unreadable files */ }
+          }
+        } catch { /* skip subjects with no flashcards */ }
+      }
+      set({ allCards: all, loading: false });
+    } catch {
+      set({ loading: false });
+    }
+  },
 
   loadDueCount: async () => {
     const count = await getDueCount();
