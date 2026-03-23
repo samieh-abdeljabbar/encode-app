@@ -8,8 +8,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { route: "home", label: "One Thing", path: "/" },
+  { route: "home", label: "Dashboard", path: "/" },
   { route: "vault", label: "Vault", path: "/vault" },
+  { route: "flashcards", label: "Flashcards", path: "/flashcards" },
+  { route: "quiz", label: "Quiz", path: "/quiz" },
   { route: "settings", label: "Settings", path: "/settings" },
 ];
 

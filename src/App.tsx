@@ -3,6 +3,8 @@ import Shell from "./components/layout/Shell";
 import Home from "./pages/Home";
 import VaultPage from "./pages/Vault";
 import ReaderPage from "./pages/Reader";
+import FlashcardsPage from "./pages/Flashcards";
+import QuizPage from "./pages/Quiz";
 import Settings from "./pages/Settings";
 
 function App() {
@@ -12,6 +14,8 @@ function App() {
         <Route element={<Shell />}>
           <Route path="/" element={<Home />} />
           <Route path="/vault" element={<VaultPage />} />
+          <Route path="/flashcards" element={<FlashcardsPage />} />
+          <Route path="/quiz" element={<QuizPage />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         {/* Reader is outside Shell — no sidebar, full-screen reading */}

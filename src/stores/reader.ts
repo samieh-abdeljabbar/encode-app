@@ -7,7 +7,7 @@ import {
   shouldGateSection,
   formatDigestionMarkdown,
 } from "../lib/gates";
-import { readFile, writeFile } from "../lib/tauri";
+import { readFile, writeFile, aiRequest } from "../lib/tauri";
 
 interface ReaderState {
   filePath: string | null;
@@ -104,12 +104,31 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       minute: "2-digit",
     });
 
+    // Try to get AI feedback on the gate response
+    let feedback: string | null = null;
+    try {
+      const sectionHeading = sections[currentSectionIndex]?.heading || "Introduction";
+      const result = await aiRequest(
+        `You are a learning coach evaluating a student's digestion response. Evaluate with this structure:
+1. What they got right (1 sentence)
+2. What was missing or could be deeper (1 sentence)
+3. One follow-up question to deepen understanding
+
+Be specific to their response. Never say "Good job!" — always push deeper. Keep total response under 100 words.`,
+        `Section: ${sectionHeading}\nGate type: ${prompt.type}\nPrompt: ${prompt.prompt}\nStudent's response: ${response}`,
+        200,
+      );
+      feedback = result.text;
+    } catch {
+      // AI unavailable — continue without feedback
+    }
+
     const newResponse: GateResponse = {
       sectionIndex: nextIndex,
       promptType: prompt.type,
       prompt: prompt.prompt,
       response,
-      feedback: null, // No AI for now
+      feedback,
       timestamp: now,
     };
 

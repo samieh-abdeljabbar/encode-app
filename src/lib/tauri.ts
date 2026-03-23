@@ -56,6 +56,38 @@ export const saveConfig = (config: AppConfig) =>
 // Indexer
 export const rebuildIndex = () => invoke<number>("rebuild_index");
 
-// AI availability
+// Flashcards
+import type { DueCard } from "./types";
+
+export const getDueCards = () => invoke<DueCard[]>("get_due_cards");
+
+export const getDueCount = () => invoke<number>("get_due_count").catch(() => 0);
+
+export const updateCardSchedule = (
+  cardId: string,
+  filePath: string,
+  nextReview: string,
+  intervalDays: number,
+  easeFactor: number,
+  lastReviewed: string,
+) =>
+  invoke<void>("update_card_schedule", {
+    cardId,
+    filePath,
+    nextReview,
+    intervalDays,
+    easeFactor,
+    lastReviewed,
+  });
+
+// AI
+export interface AiResponse {
+  text: string;
+  provider: string;
+}
+
+export const aiRequest = (systemPrompt: string, userPrompt: string, maxTokens: number) =>
+  invoke<AiResponse>("ai_request_cmd", { systemPrompt, userPrompt, maxTokens });
+
 export const checkOllama = (url: string) =>
   invoke<boolean>("check_ollama", { url });

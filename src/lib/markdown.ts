@@ -51,10 +51,12 @@ export function parseFrontmatter(raw: string): ParsedMarkdown {
 
 /**
  * Split markdown content into sections based on headings.
+ * Post-processes to merge empty/title-only sections into the next
+ * content-bearing section, and filters out the Digestion section.
  */
 export function splitSections(content: string): Section[] {
   const lines = content.split("\n");
-  const sections: Section[] = [];
+  const raw: Section[] = [];
   let currentHeading: string | null = null;
   let currentLevel = 0;
   let currentLines: string[] = [];
@@ -63,7 +65,7 @@ export function splitSections(content: string): Section[] {
     const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       if (currentLines.length > 0 || currentHeading !== null) {
-        sections.push({
+        raw.push({
           heading: currentHeading,
           level: currentLevel,
           content: currentLines.join("\n").trim(),
@@ -79,16 +81,47 @@ export function splitSections(content: string): Section[] {
 
   // Save final section
   if (currentLines.length > 0 || currentHeading !== null) {
-    sections.push({
+    raw.push({
       heading: currentHeading,
       level: currentLevel,
       content: currentLines.join("\n").trim(),
     });
   }
 
-  if (sections.length === 0 && content.trim()) {
+  if (raw.length === 0 && content.trim()) {
     return [{ heading: null, level: 0, content: content.trim() }];
   }
 
-  return sections;
+  return postProcessSections(raw);
+}
+
+/**
+ * Merge empty/title-only sections into the next content section,
+ * and filter out Digestion meta-sections.
+ */
+function postProcessSections(sections: Section[]): Section[] {
+  const result: Section[] = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+
+    // Skip Digestion section (gate responses stored in file)
+    if (section.heading === "Digestion") continue;
+
+    // Skip empty leading sections (no heading, no content)
+    if (!section.heading && !section.content.trim() && result.length === 0) {
+      continue;
+    }
+
+    // If section has heading but no body content, merge into the next section
+    if (section.heading && !section.content.trim() && i + 1 < sections.length) {
+      const headingMd = "#".repeat(section.level) + " " + section.heading;
+      sections[i + 1].content = headingMd + "\n\n" + sections[i + 1].content;
+      continue;
+    }
+
+    result.push(section);
+  }
+
+  return result;
 }

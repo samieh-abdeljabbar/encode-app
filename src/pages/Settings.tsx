@@ -8,6 +8,7 @@ export default function Settings() {
   const [provider, setProvider] = useState("none");
   const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
+  const [apiKey, setApiKey] = useState("");
   const [ollamaStatus, setOllamaStatus] = useState<
     "checking" | "available" | "unavailable"
   >("checking");
@@ -26,6 +27,7 @@ export default function Settings() {
       setProvider(config.ai_provider);
       setOllamaModel(config.ollama_model);
       setOllamaUrl(config.ollama_url);
+      setApiKey(config.api_key || "");
     }
   }, [config]);
 
@@ -44,6 +46,7 @@ export default function Settings() {
       ai_provider: provider as "ollama" | "claude" | "gemini" | "none",
       ollama_model: ollamaModel,
       ollama_url: ollamaUrl,
+      api_key: apiKey,
     });
     setSaving(false);
   };
@@ -122,6 +125,22 @@ export default function Settings() {
                 className="w-full px-3 py-2 bg-surface border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
               />
             </div>
+          </div>
+        )}
+
+        {/* API Key — for Claude or Gemini */}
+        {(provider === "claude" || provider === "gemini") && (
+          <div>
+            <label className="block text-xs text-text-muted mb-1">
+              {provider === "claude" ? "Claude" : "Gemini"} API Key
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter API key..."
+              className="w-full px-3 py-2 bg-surface border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+            />
           </div>
         )}
       </section>

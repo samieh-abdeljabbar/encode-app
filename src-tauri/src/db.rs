@@ -187,6 +187,77 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute_batch(sql).map_err(|e| e.to_string())
     }
+
+    /// Get count of cards due for review
+    pub fn get_due_count(&self, today: &str) -> Result<u32, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sr_schedule WHERE next_review <= ?1",
+                params![today],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(count)
+    }
+
+    /// Get all cards due for review
+    pub fn get_due_cards(&self, today: &str) -> Result<Vec<DueCard>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT card_id, file_path, interval_days, ease_factor, next_review, last_reviewed
+                 FROM sr_schedule WHERE next_review <= ?1 ORDER BY next_review ASC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let cards = stmt
+            .query_map(params![today], |row| {
+                Ok(DueCard {
+                    card_id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    interval_days: row.get(2)?,
+                    ease_factor: row.get(3)?,
+                    next_review: row.get(4)?,
+                    last_reviewed: row.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+
+        Ok(cards)
+    }
+
+    /// Upsert a card's review schedule
+    pub fn upsert_card_schedule(
+        &self,
+        card_id: &str,
+        file_path: &str,
+        next_review: &str,
+        interval_days: f64,
+        ease_factor: f64,
+        last_reviewed: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO sr_schedule (card_id, file_path, next_review, interval_days, ease_factor, last_reviewed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![card_id, file_path, next_review, interval_days, ease_factor, last_reviewed],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct DueCard {
+    pub card_id: String,
+    pub file_path: String,
+    pub interval_days: f64,
+    pub ease_factor: f64,
+    pub next_review: String,
+    pub last_reviewed: Option<String>,
 }
 
 fn calculate_current_streak(dates: &[String], today: &str) -> u32 {

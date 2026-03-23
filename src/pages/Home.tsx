@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../stores/app";
+import { getDueCount, listSubjects } from "../lib/tauri";
 
 export default function Home() {
+  const navigate = useNavigate();
   const {
     dailyCommitment,
     streak,
@@ -15,6 +18,8 @@ export default function Home() {
   const [action, setAction] = useState("");
   const [reflection, setReflection] = useState("");
   const [saving, setSaving] = useState(false);
+  const [dueCount, setDueCount] = useState(0);
+  const [subjectCount, setSubjectCount] = useState(0);
 
   const today = new Date().toISOString().slice(0, 10);
   const dayOfWeek = new Date().toLocaleDateString("en-US", {
@@ -24,6 +29,10 @@ export default function Home() {
   useEffect(() => {
     loadToday();
     loadStreak();
+    getDueCount().then(setDueCount);
+    listSubjects()
+      .then((s) => setSubjectCount(s.length))
+      .catch(() => setSubjectCount(0));
   }, [loadToday, loadStreak]);
 
   useEffect(() => {
@@ -75,9 +84,42 @@ export default function Home() {
   }
 
   return (
-    <div className="max-w-xl mx-auto py-16 px-8">
-      {/* Header */}
-      <div className="mb-12 text-center">
+    <div className="max-w-xl mx-auto py-12 px-8">
+      {/* Study Dashboard */}
+      <div className="mb-12">
+        <p className="text-xs text-text-muted uppercase tracking-wider mb-4">
+          Today&apos;s Study
+        </p>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-surface rounded border border-border p-4 text-center">
+            <p className={`text-3xl font-bold ${dueCount > 0 ? "text-coral" : "text-text-muted"}`}>
+              {dueCount}
+            </p>
+            <p className="text-xs text-text-muted mt-1">Cards Due</p>
+          </div>
+          <div className="bg-surface rounded border border-border p-4 text-center">
+            <p className="text-3xl font-bold text-purple">{subjectCount}</p>
+            <p className="text-xs text-text-muted mt-1">Subjects</p>
+          </div>
+          <div className="bg-surface rounded border border-border p-4 text-center">
+            <p className="text-3xl font-bold text-teal">
+              {streak?.current || 0}
+            </p>
+            <p className="text-xs text-text-muted mt-1">Day Streak</p>
+          </div>
+        </div>
+        {dueCount > 0 && (
+          <button
+            onClick={() => navigate("/flashcards")}
+            className="w-full py-3 bg-purple text-white rounded font-medium hover:opacity-90 transition-opacity"
+          >
+            Start Review ({dueCount} cards)
+          </button>
+        )}
+      </div>
+
+      {/* One Thing */}
+      <div className="mb-8 text-center">
         <p className="text-text-muted text-sm mb-1">{dayOfWeek}</p>
         <h2 className="text-2xl font-bold mb-2">One Thing</h2>
         {streak && streak.current > 0 && (

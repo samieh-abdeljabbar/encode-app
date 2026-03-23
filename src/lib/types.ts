@@ -79,6 +79,7 @@ export interface AppConfig {
   ai_provider: "ollama" | "claude" | "gemini" | "none";
   ollama_model: string;
   ollama_url: string;
+  api_key: string;
 }
 
 /** Digestion gate prompt types — rotate after each section */
@@ -92,6 +93,34 @@ export interface GateResponse {
   response: string;
   feedback: string | null;
   timestamp: string;
+}
+
+/** A single flashcard parsed from a markdown file */
+export interface Flashcard {
+  id: string;
+  filePath: string;
+  subject: string;
+  topic: string;
+  question: string;
+  answer: string;
+  bloom: number;
+  ease: number;
+  interval: number;
+  nextReview: string;
+  lastReviewed: string | null;
+}
+
+/** Review rating for a flashcard */
+export type ReviewRating = "again" | "hard" | "good" | "easy";
+
+/** Due card from the SR schedule table */
+export interface DueCard {
+  card_id: string;
+  file_path: string;
+  interval_days: number;
+  ease_factor: number;
+  next_review: string;
+  last_reviewed: string | null;
 }
 
 /** Navigation routes */

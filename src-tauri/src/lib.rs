@@ -1,9 +1,10 @@
+mod ai;
 mod db;
 mod importer;
 mod indexer;
 mod vault;
 
-use db::{Database, SearchResult, StreakInfo};
+use db::{Database, DueCard, SearchResult, StreakInfo};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ pub struct AppConfig {
     pub ai_provider: String,
     pub ollama_model: String,
     pub ollama_url: String,
+    pub api_key: String,
 }
 
 // === Tauri Commands ===
@@ -140,6 +142,7 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
         ai_provider: "none".to_string(),
         ollama_model: "llama3.1:8b".to_string(),
         ollama_url: "http://localhost:11434".to_string(),
+        api_key: String::new(),
     };
 
     for line in content.lines() {
@@ -150,6 +153,8 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
             config.ollama_model = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("ollama_url =") {
             config.ollama_url = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("api_key =") {
+            config.api_key = val.trim().trim_matches('"').to_string();
         }
     }
 
@@ -167,10 +172,12 @@ fn save_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(
 provider = "{}"
 ollama_model = "{}"
 ollama_url = "{}"
+api_key = "{}"
 "#,
         escape_toml_string(&config.ai_provider),
         escape_toml_string(&config.ollama_model),
         escape_toml_string(&config.ollama_url),
+        escape_toml_string(&config.api_key),
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
@@ -212,6 +219,66 @@ async fn check_ollama(url: String) -> Result<bool, String> {
         Ok(resp) => Ok(resp.status().is_success()),
         Err(_) => Ok(false),
     }
+}
+
+#[tauri::command]
+fn get_due_cards(state: tauri::State<'_, AppState>) -> Result<Vec<DueCard>, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    state.db.get_due_cards(&today)
+}
+
+#[tauri::command]
+fn get_due_count(state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    state.db.get_due_count(&today)
+}
+
+#[tauri::command]
+fn update_card_schedule(
+    state: tauri::State<'_, AppState>,
+    card_id: String,
+    file_path: String,
+    next_review: String,
+    interval_days: f64,
+    ease_factor: f64,
+    last_reviewed: String,
+) -> Result<(), String> {
+    state.db.upsert_card_schedule(
+        &card_id, &file_path, &next_review, interval_days, ease_factor, &last_reviewed,
+    )
+}
+
+#[tauri::command]
+async fn ai_request_cmd(
+    state: tauri::State<'_, AppState>,
+    system_prompt: String,
+    user_prompt: String,
+    max_tokens: u32,
+) -> Result<ai::AiResponse, String> {
+    let config_path = state.vault_path.join(".encode").join("config.toml");
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+
+    let mut provider = "none".to_string();
+    let mut model = "llama3.1:8b".to_string();
+    let mut url = "http://localhost:11434".to_string();
+    let mut api_key = String::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("provider =") {
+            provider = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("ollama_model =") {
+            model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("ollama_url =") {
+            url = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("api_key =") {
+            api_key = val.trim().trim_matches('"').to_string();
+        }
+    }
+
+    let key = if api_key.is_empty() { None } else { Some(api_key.as_str()) };
+
+    ai::ai_request(&provider, &model, &url, key, &system_prompt, &user_prompt, max_tokens).await
 }
 
 // === Helpers ===
@@ -335,6 +402,10 @@ pub fn run() {
             import_url,
             rebuild_index,
             check_ollama,
+            ai_request_cmd,
+            get_due_cards,
+            get_due_count,
+            update_card_schedule,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

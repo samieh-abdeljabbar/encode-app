@@ -131,22 +131,49 @@ export default function ReaderPage() {
               <button onClick={clearError} className="ml-4 text-[#D85A30] hover:text-white">&times;</button>
             </div>
           )}
-          {/* Render all revealed sections */}
+          {/* Render all revealed sections with gate responses */}
           {sections.slice(0, currentSectionIndex + 1).map((section, i) => (
-            <div
-              key={i}
-              className={`mb-8 ${
-                i < currentSectionIndex ? "opacity-60" : ""
-              }`}
-            >
-              {section.heading && (
-                <MarkdownRenderer
-                  content={`${"#".repeat(section.level)} ${section.heading}`}
-                />
-              )}
-              {section.content && (
-                <MarkdownRenderer content={section.content} />
-              )}
+            <div key={i}>
+              <div
+                className={`mb-4 ${
+                  i < currentSectionIndex ? "opacity-60" : ""
+                }`}
+              >
+                {section.heading && (
+                  <MarkdownRenderer
+                    content={`${"#".repeat(section.level)} ${section.heading}`}
+                  />
+                )}
+                {section.content && (
+                  <MarkdownRenderer content={section.content} />
+                )}
+              </div>
+              {/* Show gate response for this section (if completed) */}
+              {gateResponses
+                .filter((r) => r.sectionIndex === i + 1)
+                .map((r, j) => (
+                  <div
+                    key={`gate-${j}`}
+                    className={`mb-8 p-4 bg-surface-2 rounded border border-border ${
+                      i < currentSectionIndex ? "opacity-60" : ""
+                    }`}
+                  >
+                    <p className="text-xs text-purple font-medium mb-1">
+                      {r.promptType.charAt(0).toUpperCase() + r.promptType.slice(1)} gate
+                    </p>
+                    <p className="text-sm text-text-muted italic mb-2">
+                      &ldquo;{r.response}&rdquo;
+                    </p>
+                    {r.feedback && (
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <p className="text-xs text-teal font-medium mb-1">
+                          AI Feedback
+                        </p>
+                        <p className="text-sm text-text">{r.feedback}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
             </div>
           ))}
 
