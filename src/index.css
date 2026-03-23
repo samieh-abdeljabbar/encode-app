@@ -17,6 +17,10 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
+:root {
+  --editor-font-size: 16px;
+}
+
 body {
   margin: 0;
   background-color: var(--color-bg);

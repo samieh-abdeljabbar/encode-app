@@ -92,7 +92,7 @@ function preprocessCallouts(md: string): string {
 const PROSE_STYLES = `
   .prose {
     color: #e5e5e5;
-    font-size: 16px;
+    font-size: var(--editor-font-size, 16px);
     line-height: 1.75;
     max-width: none;
   }

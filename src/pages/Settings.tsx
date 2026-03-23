@@ -228,6 +228,37 @@ export default function Settings() {
         )}
       </section>
 
+      {/* Appearance */}
+      <section className="space-y-4">
+        <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted">Appearance</h3>
+        <div>
+          <label className="block text-xs text-text-muted mb-2">Font Size</label>
+          <div className="flex gap-2">
+            {(["small", "medium", "large"] as const).map((size) => {
+              const px = size === "small" ? 14 : size === "medium" ? 16 : 18;
+              const current = document.documentElement.style.getPropertyValue("--editor-font-size") || "16px";
+              const isActive = current === `${px}px`;
+              return (
+                <button
+                  key={size}
+                  onClick={() => {
+                    document.documentElement.style.setProperty("--editor-font-size", `${px}px`);
+                    localStorage.setItem("encode-font-size", `${px}`);
+                  }}
+                  className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
+                    isActive
+                      ? "border-purple bg-purple/10 text-text"
+                      : "border-border bg-surface text-text-muted hover:border-purple/50"
+                  }`}
+                >
+                  {size} ({px}px)
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Save */}
       <button
         onClick={handleSave}

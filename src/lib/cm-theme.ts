@@ -8,7 +8,7 @@ export const encodeTheme = EditorView.theme(
     "&": {
       backgroundColor: "#0f0f0f",
       fontFamily: "Georgia, Merriweather, serif",
-      fontSize: "16px",
+      fontSize: "var(--editor-font-size, 16px)",
       lineHeight: "1.75",
     },
     ".cm-content": {
