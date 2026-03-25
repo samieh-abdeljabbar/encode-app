@@ -27,6 +27,8 @@
     "react": "^18",
     "react-dom": "^18",
     "react-router-dom": "^7",
+    "turndown": "^7.2.2",
+    "turndown-plugin-gfm": "^1.0.2",
     "zustand": "^5"
   },
   "devDependencies": {
@@ -37,6 +39,7 @@
     "@types/dompurify": "^3.0.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4",
     "jsdom": "^25",
     "tailwindcss": "^4",

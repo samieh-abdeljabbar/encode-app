@@ -212,10 +212,25 @@ fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<Str
 
 #[tauri::command]
 fn delete_subject(state: tauri::State<'_, AppState>, slug: String) -> Result<(), String> {
+    // Read subject name before deleting files (needed for quiz_history cleanup)
+    let subject_md_path = state.vault_path.join("subjects").join(&slug).join("_subject.md");
+    let subject_name = std::fs::read_to_string(&subject_md_path)
+        .ok()
+        .and_then(|content| {
+            content.lines()
+                .find(|l| l.starts_with("subject:"))
+                .map(|l| l.trim_start_matches("subject:").trim().to_string())
+        });
+
     vault::delete_subject(&state.vault_path, &slug)?;
     // Clean up DB entries for this subject's files
     let prefix = format!("subjects/{}/", slug);
     state.db.remove_files_by_prefix(&prefix)?;
+
+    // Clean up quiz history by subject name
+    if let Some(name) = subject_name {
+        state.db.delete_quiz_history_by_subject(&name)?;
+    }
     Ok(())
 }
 

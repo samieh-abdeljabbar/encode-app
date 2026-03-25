@@ -5,6 +5,7 @@ import { Table } from "@lezer/markdown";
 import { EditorView } from "@codemirror/view";
 import { encodeTheme, encodeHighlighting } from "../../lib/cm-theme";
 import { livePreviewPlugin, livePreviewStyles, tableDecoField, linkClickHandler } from "../../lib/cm-decorations";
+import { pasteHandler } from "../../lib/cm-paste-handler";
 import { slashMenuExtension } from "../../lib/cm-slash-menu";
 
 interface MarkdownEditorProps {
@@ -23,6 +24,7 @@ const extensions = [
   livePreviewStyles,
   tableDecoField,
   linkClickHandler,
+  pasteHandler,
   EditorView.lineWrapping,
   ...slashMenuExtension,
 ];

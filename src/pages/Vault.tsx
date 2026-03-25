@@ -9,6 +9,7 @@ import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
 import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
+import { convertHtmlToMarkdown } from "../lib/cm-paste-handler";
 export default function VaultPage() {
   const navigate = useNavigate();
   const { selectedFile } = useVaultStore();
@@ -254,6 +255,16 @@ export default function VaultPage() {
                     autoFocus
                     value={editContent}
                     onChange={(e) => handleEditChange(e.target.value)}
+                    onPaste={(e) => {
+                      const html = e.clipboardData.getData("text/html");
+                      if (!html) return;
+                      e.preventDefault();
+                      const md = convertHtmlToMarkdown(html);
+                      const ta = e.currentTarget;
+                      const before = editContent.slice(0, ta.selectionStart);
+                      const after = editContent.slice(ta.selectionEnd);
+                      handleEditChange(before + md + after);
+                    }}
                     className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
                     spellCheck={false}
                   />

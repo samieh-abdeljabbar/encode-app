@@ -299,6 +299,16 @@ impl Database {
         Ok(())
     }
 
+    pub fn delete_quiz_history_by_subject(&self, subject: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM quiz_history WHERE subject = ?1",
+            params![subject],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn get_subject_grades(&self) -> Result<Vec<SubjectGrade>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn.prepare(
