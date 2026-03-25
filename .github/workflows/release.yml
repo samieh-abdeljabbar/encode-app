@@ -54,10 +54,20 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Encode ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below.'
+          releaseBody: |
+            Download the installer for your platform below.
+
+            **Installation notes:**
+            - **Mac**: Right-click the .dmg → Open → Open (first time only, bypasses Gatekeeper)
+            - **Windows**: Click "More info" → "Run anyway" (first time only, bypasses SmartScreen)
+            - **Linux**: `chmod +x` the AppImage, or install the .deb
+
+            Updates are automatic — the app will notify you when a new version is available.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

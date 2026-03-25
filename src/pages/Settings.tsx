@@ -420,8 +420,28 @@ export default function Settings() {
       {/* Vault */}
       <section className="border-t border-border pt-6">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted mb-3">Vault</h3>
-        <p className="text-sm text-text-muted bg-surface rounded px-3 py-2 border border-border font-mono text-xs">
-          {vaultPath}
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-sm text-text-muted bg-surface rounded px-3 py-2 border border-border font-mono text-xs">
+            {vaultPath}
+          </p>
+          <button
+            onClick={() => {
+              import("@tauri-apps/plugin-opener").then(({ revealItemInDir }) => {
+                revealItemInDir(vaultPath);
+              }).catch(() => {
+                // Fallback: try openPath
+                import("@tauri-apps/plugin-opener").then(({ openPath }) => {
+                  openPath(vaultPath);
+                }).catch(() => {});
+              });
+            }}
+            className="px-3 py-2 text-xs text-text-muted border border-border rounded hover:text-purple hover:border-purple transition-colors shrink-0"
+          >
+            Open Folder
+          </button>
+        </div>
+        <p className="text-[10px] text-text-muted mt-1.5">
+          All your notes, flashcards, and quizzes are stored here as markdown files. Not hardcoded — each user gets their own vault.
         </p>
       </section>
 
