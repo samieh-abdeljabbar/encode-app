@@ -97,6 +97,11 @@ export default function VaultPage() {
         setTimeout(() => setSaved(false), 1500);
       } catch (e) {
         console.error("Autosave failed:", e);
+        // Re-sync fileContent from disk to prevent stale reconstructFile on next save
+        try {
+          const current = await readFile(selectedFile);
+          setFileContent(current);
+        } catch { /* file may have been deleted */ }
       }
     }, 1000);
   }, [selectedFile, sourceMode, reconstructFile]);

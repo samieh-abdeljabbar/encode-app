@@ -175,7 +175,11 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
 }
 
 fn escape_toml_string(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
 }
 
 #[tauri::command]
@@ -452,12 +456,21 @@ pub fn run() {
     // Open database
     let db = Arc::new(Database::open(&vault_path).expect("Failed to open database"));
 
-    // Initial index scan in background
+    // Initial index scan + orphan cleanup in background
     let db_clone = Arc::clone(&db);
     let vault_clone = vault_path.clone();
-    std::thread::spawn(move || match indexer::scan_vault(&vault_clone, &db_clone) {
-        Ok(count) => println!("Indexed {} files", count),
-        Err(e) => eprintln!("Initial scan failed: {}", e),
+    std::thread::spawn(move || {
+        match indexer::scan_vault(&vault_clone, &db_clone) {
+            Ok(count) => println!("Indexed {} files", count),
+            Err(e) => eprintln!("Initial scan failed: {}", e),
+        }
+        // Clean up quiz_history for deleted subjects
+        if let Ok(subjects) = vault::list_subjects(&vault_clone) {
+            let names: Vec<String> = subjects.into_iter().map(|s| s.name).collect();
+            if let Err(e) = db_clone.cleanup_orphaned_quiz_history(&names) {
+                eprintln!("Quiz history cleanup failed: {}", e);
+            }
+        }
     });
 
     // Start file watcher

@@ -217,7 +217,13 @@ async fn openai_request(
         .await
         .map_err(|e| format!("OpenAI request failed: {}", e))?;
 
+    let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
+
+    if !status.is_success() {
+        return Err(format!("OpenAI returned {}: {}", status, text));
+    }
+
     let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
     let response_text = parsed["choices"]
@@ -263,7 +269,13 @@ async fn deepseek_request(
         .await
         .map_err(|e| format!("DeepSeek request failed: {}", e))?;
 
+    let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
+
+    if !status.is_success() {
+        return Err(format!("DeepSeek returned {}: {}", status, text));
+    }
+
     let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
 
     let response_text = parsed["choices"]

@@ -103,13 +103,34 @@ impl Database {
     /// Remove all DB entries for files matching a path prefix (e.g. "subjects/my-subject/")
     pub fn remove_files_by_prefix(&self, prefix: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let pattern = format!("{}%", prefix);
-        conn.execute("DELETE FROM vault_fts WHERE file_path LIKE ?1", params![pattern])
+        // Escape LIKE wildcards for defense-in-depth
+        let escaped = prefix.replace('%', "\\%").replace('_', "\\_");
+        let pattern = format!("{}%", escaped);
+        conn.execute("DELETE FROM vault_fts WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
             .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM file_index WHERE file_path LIKE ?1", params![pattern])
+        conn.execute("DELETE FROM file_index WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
             .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM sr_schedule WHERE file_path LIKE ?1", params![pattern])
+        conn.execute("DELETE FROM sr_schedule WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Remove quiz_history entries for subjects that no longer exist
+    pub fn cleanup_orphaned_quiz_history(&self, valid_subjects: &[String]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        if valid_subjects.is_empty() {
+            conn.execute("DELETE FROM quiz_history", [])
+                .map_err(|e| e.to_string())?;
+        } else {
+            let placeholders: Vec<String> = (1..=valid_subjects.len()).map(|i| format!("?{}", i)).collect();
+            let sql = format!(
+                "DELETE FROM quiz_history WHERE subject NOT IN ({})",
+                placeholders.join(", ")
+            );
+            let params: Vec<&dyn rusqlite::types::ToSql> = valid_subjects.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            conn.execute(&sql, params.as_slice())
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
 

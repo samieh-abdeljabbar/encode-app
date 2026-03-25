@@ -74,9 +74,9 @@ function preprocessCallouts(md: string): string {
       const label = title || colors.label;
       const body = contentLines.join("\n").trim();
       result.push(
-        `<div class="callout" style="border-left:3px solid ${colors.border};background:${colors.bg};border-radius:6px;padding:12px 16px;margin:12px 0;">` +
-          `<div style="font-size:12px;font-weight:600;color:${colors.border};margin-bottom:${body ? "8px" : "0"};text-transform:uppercase;letter-spacing:0.5px;">${label}</div>` +
-          (body ? `<div style="font-size:14px;color:#e5e5e5;line-height:1.6;">${marked.parse(body) as string}</div>` : "") +
+        `<div class="callout callout-${type}">` +
+          `<div class="callout-title callout-title-${type}">${label}</div>` +
+          (body ? `<div class="callout-body">${marked.parse(body) as string}</div>` : "") +
         `</div>`,
       );
       continue;
@@ -270,6 +270,40 @@ const PROSE_STYLES = `
   }
   .fc-q .fc-label { background: #7F77DD; color: white; }
   .fc-a .fc-label { background: #1D9E75; color: white; }
+
+  .callout {
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-left: 3px solid #7F77DD;
+    background: rgba(127,119,221,0.08);
+  }
+  .callout-note, .callout-info, .callout-example, .callout-abstract, .callout-todo { border-left-color: #7F77DD; background: rgba(127,119,221,0.08); }
+  .callout-tip, .callout-hint, .callout-important, .callout-success { border-left-color: #1D9E75; background: rgba(29,158,117,0.08); }
+  .callout-warning, .callout-caution, .callout-question { border-left-color: #BA7517; background: rgba(186,117,23,0.08); }
+  .callout-danger, .callout-error, .callout-bug { border-left-color: #D85A30; background: rgba(216,90,48,0.08); }
+  .callout-quote { border-left-color: #888880; background: rgba(136,136,128,0.06); }
+
+  .callout-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    color: #7F77DD;
+  }
+  .callout-title:last-child { margin-bottom: 0; }
+  .callout-title-note, .callout-title-info, .callout-title-example, .callout-title-abstract, .callout-title-todo { color: #7F77DD; }
+  .callout-title-tip, .callout-title-hint, .callout-title-important, .callout-title-success { color: #1D9E75; }
+  .callout-title-warning, .callout-title-caution, .callout-title-question { color: #BA7517; }
+  .callout-title-danger, .callout-title-error, .callout-title-bug { color: #D85A30; }
+  .callout-title-quote { color: #888880; }
+
+  .callout-body {
+    font-size: 14px;
+    color: #e5e5e5;
+    line-height: 1.6;
+  }
 `;
 
 export default function MarkdownRenderer({
@@ -280,7 +314,7 @@ export default function MarkdownRenderer({
     const processed = preprocessCallouts(content);
     return DOMPurify.sanitize(marked.parse(processed) as string, {
       ADD_TAGS: ["div", "span"],
-      ADD_ATTR: ["class", "style"],
+      ADD_ATTR: ["class"],
     });
   }, [content]);
 

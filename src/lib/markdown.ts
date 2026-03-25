@@ -116,7 +116,7 @@ function postProcessSections(sections: Section[]): Section[] {
     // If section has heading but no body content, merge into the next section
     if (section.heading && !section.content.trim() && i + 1 < sections.length) {
       const headingMd = "#".repeat(section.level) + " " + section.heading;
-      sections[i + 1].content = headingMd + "\n\n" + sections[i + 1].content;
+      sections[i + 1] = { ...sections[i + 1], content: headingMd + "\n\n" + sections[i + 1].content };
       continue;
     }
 

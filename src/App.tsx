@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import Shell from "./components/layout/Shell";
 import { applyTheme, getCurrentTheme } from "./lib/themes";
@@ -10,19 +10,25 @@ import QuizPage from "./pages/Quiz";
 import TeachBackPage from "./pages/TeachBack";
 import Settings from "./pages/Settings";
 
+interface UpdateHandle {
+  downloadAndInstall: () => Promise<void>;
+  version: string;
+}
+
 function UpdateBanner() {
   const [status, setStatus] = useState<"idle" | "available" | "downloading" | "ready" | "error">("idle");
   const [version, setVersion] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const updateRef = useRef<UpdateHandle | null>(null);
 
   useEffect(() => {
-    // Check for updates on launch (skip in dev)
     if (import.meta.env.DEV) return;
 
     import("@tauri-apps/plugin-updater").then(async ({ check }) => {
       try {
         const update = await check();
         if (update) {
+          updateRef.current = update;
           setVersion(update.version);
           setStatus("available");
         }
@@ -33,17 +39,19 @@ function UpdateBanner() {
   }, []);
 
   const handleUpdate = async () => {
+    const update = updateRef.current;
+    if (!update) {
+      setErrorMsg("Update no longer available. Restart the app to retry.");
+      setStatus("error");
+      return;
+    }
+
     setStatus("downloading");
     try {
-      const { check } = await import("@tauri-apps/plugin-updater");
-      const update = await check();
-      if (update) {
-        await update.downloadAndInstall();
-        setStatus("ready");
-        // Relaunch after a brief delay
-        const { relaunch } = await import("@tauri-apps/plugin-process");
-        await relaunch();
-      }
+      await update.downloadAndInstall();
+      setStatus("ready");
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
     } catch (err) {
       console.error("Update failed:", err);
       setErrorMsg(err instanceof Error ? err.message : String(err));

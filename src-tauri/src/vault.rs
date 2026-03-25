@@ -145,7 +145,18 @@ pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
             .to_string_lossy()
             .to_string();
 
-        let name = slug.replace('-', " ");
+        // Read actual subject name from _subject.md frontmatter (preserves original casing)
+        let name = {
+            let meta_path = path.join("_subject.md");
+            fs::read_to_string(&meta_path)
+                .ok()
+                .and_then(|content| {
+                    content.lines()
+                        .find(|l| l.starts_with("subject:"))
+                        .map(|l| l.trim_start_matches("subject:").trim().to_string())
+                })
+                .unwrap_or_else(|| slug.replace('-', " "))
+        };
 
         let count_md_files = |subdir: &str| -> usize {
             let dir = path.join(subdir);
@@ -186,7 +197,7 @@ pub fn read_file(vault_path: &Path, relative_path: &str) -> Result<String, Strin
 /// Write content to a file in the vault. Creates parent directories if needed.
 pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Result<(), String> {
     // Reject paths with ".." components before touching the filesystem
-    if relative_path.contains("..") {
+    if relative_path.split('/').any(|c| c == "..") {
         return Err("Path must not contain '..' components".to_string());
     }
     let full_path = vault_path.join(relative_path);

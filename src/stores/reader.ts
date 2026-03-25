@@ -244,12 +244,12 @@ mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
 
     // Mastery OK — advance
     set({ gateQuestion: null });
-    await saveAndAdvance(newResponse);
+    await saveAndAdvance(newResponse, filePath, rawContent, sections, currentSectionIndex, get().gateResponses);
   },
 
   submitFollowUp: async (followUpAnswer) => {
-    const { pendingResponse } = get();
-    if (!pendingResponse) return;
+    const { pendingResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses } = get();
+    if (!pendingResponse || !filePath || !rawContent) return;
 
     const updatedResponse: GateResponse = {
       ...pendingResponse,
@@ -257,7 +257,7 @@ mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
     };
 
     set({ followUpMode: false, pendingResponse: null, gateQuestion: null });
-    await saveAndAdvance(updatedResponse);
+    await saveAndAdvance(updatedResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses);
   },
 
   clearError: () => set({ error: null }),
@@ -282,11 +282,14 @@ mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
 }));
 
 /** Helper: save gate response to file and advance section */
-async function saveAndAdvance(newResponse: GateResponse) {
-  const state = useReaderStore.getState();
-  const { gateResponses, filePath, rawContent, sections, currentSectionIndex } = state;
-
-  if (!filePath || !rawContent) return;
+async function saveAndAdvance(
+  newResponse: GateResponse,
+  filePath: string,
+  rawContent: string,
+  sections: Section[],
+  currentSectionIndex: number,
+  gateResponses: GateResponse[],
+) {
 
   const updatedResponses = [...gateResponses, newResponse];
 

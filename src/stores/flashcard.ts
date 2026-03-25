@@ -180,6 +180,8 @@ async function updateCardInFile(
         else { cardLines.push(l); }
         i++;
       }
+      if (!existingFields.has("Next")) cardLines.push(`> **Next:** ${addDays(newInterval)}`);
+      if (!existingFields.has("Last")) cardLines.push(`> **Last:** ${today()}`);
       if (!existingFields.has("Stability")) cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
       if (!existingFields.has("Difficulty")) cardLines.push(`> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`);
       if (!existingFields.has("Reps")) cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
@@ -383,7 +385,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     const subjectSlug = slugify(subject);
     const topicSlug = slugify(topic || "general");
     const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
-    const cardId = `fc-${Date.now()}`;
+    const cardId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
     let content: string;
     try {
@@ -403,7 +405,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
 
     // For reversed cards, also create the flipped version
     if (cardType === "reversed") {
-      const reverseId = `fc-${Date.now()}-rev`;
+      const reverseId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-rev`;
       content = await readFile(filePath);
       content = content.trimEnd() + "\n\n" + formatCardBlock(reverseId, answer, question, bloom, "reversed") + "\n";
       await writeFile(filePath, content);
