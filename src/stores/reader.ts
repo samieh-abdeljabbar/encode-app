@@ -71,23 +71,12 @@ async function generateGateQuestion(
       : "";
 
     const { text } = await aiRequest(
-      `You are generating a study prompt for a student who just read a section of their textbook.${profileLine}
+      `Generate ONE study question about the section below. Technique: "${gateType}".${profileLine}
 
-Generate ONE specific, targeted question based on the ACTUAL content of the section. Use this learning technique: "${gateType}".
+${gateType}=summarize: name a specific concept and ask to explain it. ${gateType}=connect: relate a concept to their life/work. ${gateType}=predict: what comes next and why. ${gateType}=apply: give a scenario, ask to solve it.
 
-Techniques:
-- summarize: Ask them to explain a SPECIFIC concept, term, or process from this section in their own words. Name the exact concept.
-- connect: Ask how a SPECIFIC concept from this section relates to their work managing gas stations/convenience stores, or to something they already know.
-- predict: Based on what was just covered, ask what they think the next logical concept or implication would be, and why.
-- apply: Create a brief, concrete scenario (2-3 sentences) and ask them to apply what they just learned to solve or analyze it.
-
-Rules:
-- Reference ACTUAL terms, definitions, and examples from the section content
-- Don't repeat topics already covered in previous gate responses
-- Be specific — never ask generic questions like "what did you learn?"
-- Keep the question to 1-2 sentences max
-- Output ONLY the question text, nothing else`,
-      `Section heading: ${sectionHeading}\n\nSection content:\n${sectionContent.slice(0, 2000)}\n\nPrevious responses from this chapter:\n${prevContext}`,
+Be specific to the content. Reference actual terms. 1-2 sentences only. Output ONLY the question.`,
+      `Section: ${sectionHeading}\n${sectionContent.slice(0, 1500)}\n\nPrior responses:\n${prevContext}`,
       150,
     );
     return text.trim();
@@ -207,22 +196,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       const sectionHeading = sections[currentSectionIndex]?.heading || "Introduction";
       const sectionContent = sections[currentSectionIndex]?.content || "";
       const result = await aiRequest(
-        `You are a learning coach evaluating a student's digestion response. Respond with ONLY JSON:
-{
-  "right": "What they got right (1 sentence)",
-  "gap": "What was missing or could be deeper (1 sentence)",
-  "followUp": "One specific follow-up question to deepen understanding",
-  "mastery": 1
-}
-
-mastery scale:
-- 1 = weak understanding (vague, surface-level, key concepts missing)
-- 2 = partial understanding (got the gist but missed important details)
-- 3 = solid understanding (accurate, specific, shows genuine comprehension)
-
-Be specific to their response and the actual content. Base mastery on how well they demonstrated understanding of the section content, not just effort.`,
-        `Section: ${sectionHeading}\nSection content: ${sectionContent.slice(0, 1000)}\nGate type: ${prompt.type}\nPrompt: ${displayedPrompt}\nStudent's response: ${response}`,
-        300,
+        `Evaluate the student's response. Reply ONLY JSON: {"right":"1 sentence","gap":"1 sentence","followUp":"a question","mastery":1}
+mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
+        `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 800)}\nPrompt: ${displayedPrompt}\nResponse: ${response}`,
+        250,
       );
 
       const cleanedResult = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();

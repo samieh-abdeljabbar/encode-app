@@ -155,23 +155,13 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       const typeList = buildTypePrompt(cfg.types);
       const typeNames = cfg.types.map((t) => `"${t}"`).join(", ");
 
+      const contentLimit = cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000;
       const { text } = await aiRequest(
-        `You are a quiz generator for a study app. Generate exactly ${cfg.questionCount} quiz questions about the given content.
-Use ONLY these question types: ${typeNames}. Mix them for variety.
-
-Output ONLY a JSON array with this format:
-[
-  {"question": "...", "bloomLevel": 2, "type": "free-recall"},
-  {"question": "...", "bloomLevel": 1, "type": "multiple-choice", "options": ["A", "B", "C", "D"], "correctAnswer": "B"}
-]
-
-Question types:
-${typeList}
-
-Bloom levels: 1=Remember, 2=Understand, 3=Apply, 4=Analyze, 5=Evaluate, 6=Create.
-Use levels ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Make questions test genuine understanding.${cfg.types.includes("code") ? "\n\nFor code questions, format the question with clear context. Include table schemas for SQL, function signatures for Python. The question text should contain all needed context." : ""}`,
-        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, 4000)}`,
-        cfg.questionCount > 5 ? 6000 : 4000,
+        `Generate exactly ${cfg.questionCount} quiz questions. Types: ${typeNames}. Bloom ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Output ONLY a JSON array:
+[{"question":"...","bloomLevel":2,"type":"free-recall"},{"question":"...","bloomLevel":1,"type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"B"}]
+${typeList}${cfg.types.includes("code") ? "\nCode questions: include table schemas for SQL, function signatures for Python." : ""}`,
+        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, contentLimit)}`,
+        cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000,
       );
 
       // Strip <think>...</think> tags from reasoning models like DeepSeek R1

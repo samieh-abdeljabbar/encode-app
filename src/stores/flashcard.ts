@@ -403,7 +403,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
 
     // For reversed cards, also create the flipped version
     if (cardType === "reversed") {
-      const reverseId = `fc-${Date.now() + 1}`;
+      const reverseId = `fc-${Date.now()}-rev`;
       content = await readFile(filePath);
       content = content.trimEnd() + "\n\n" + formatCardBlock(reverseId, answer, question, bloom, "reversed") + "\n";
       await writeFile(filePath, content);

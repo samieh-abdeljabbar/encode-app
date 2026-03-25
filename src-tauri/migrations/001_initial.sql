@@ -48,3 +48,7 @@ CREATE TABLE IF NOT EXISTS quiz_history (
   correct INTEGER NOT NULL,
   attempted_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_sr_next_review ON sr_schedule(next_review);
+CREATE INDEX IF NOT EXISTS idx_quiz_subject ON quiz_history(subject, attempted_at);
