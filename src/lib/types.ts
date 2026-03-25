@@ -76,7 +76,7 @@ export interface StreakInfo {
 /** App-wide settings stored in config.toml */
 export interface AppConfig {
   vault_path: string;
-  ai_provider: "ollama" | "claude" | "gemini" | "none";
+  ai_provider: "ollama" | "claude" | "gemini" | "openai" | "deepseek" | "none";
   ollama_model: string;
   ollama_url: string;
   api_key: string;

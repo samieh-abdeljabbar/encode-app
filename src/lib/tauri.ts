@@ -104,6 +104,7 @@ export const getSubjectGrades = () =>
 export interface AiResponse {
   text: string;
   provider: string;
+  model: string;
 }
 
 export const aiRequest = (systemPrompt: string, userPrompt: string, maxTokens: number) =>

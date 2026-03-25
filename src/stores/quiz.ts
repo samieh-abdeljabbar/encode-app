@@ -171,11 +171,13 @@ ${typeList}
 Bloom levels: 1=Remember, 2=Understand, 3=Apply, 4=Analyze, 5=Evaluate, 6=Create.
 Use levels ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Make questions test genuine understanding.${cfg.types.includes("code") ? "\n\nFor code questions, format the question with clear context. Include table schemas for SQL, function signatures for Python. The question text should contain all needed context." : ""}`,
         `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, 4000)}`,
-        cfg.questionCount > 5 ? 3000 : 1500,
+        cfg.questionCount > 5 ? 6000 : 4000,
       );
 
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error("No JSON array in AI response");
+      // Strip <think>...</think> tags from reasoning models like DeepSeek R1
+      const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error("No JSON array in AI response. Raw (first 300 chars): " + cleaned.slice(0, 300));
 
       const parsed = JSON.parse(jsonMatch[0]) as {
         question: string;
@@ -274,14 +276,22 @@ Use levels ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Make questions test genuin
           : "";
         const { text } = await aiRequest(
           `You are evaluating a student's quiz answer. Respond with ONLY JSON:
-{"correct": true, "feedback": "1-2 sentences explaining what was right/wrong and pushing deeper"}${codeContext}`,
+{"correct": true, "feedback": "1-2 sentences explaining what was right/wrong", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+Always include "correctAnswer" with the real, complete answer to the question.`,
           `Question (Bloom Level ${question.bloomLevel}): ${question.question}\nStudent's answer: ${answer}${question.correctAnswer ? `\nExpected answer: ${question.correctAnswer}` : ""}`,
-          300,
+          500,
         );
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const cleanedEval = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+        const jsonMatch = cleanedEval.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]) as { correct?: boolean; feedback?: string };
+          const parsed = JSON.parse(jsonMatch[0]) as { correct?: boolean; feedback?: string; correctAnswer?: string };
           feedback = parsed.feedback || feedback;
+          // Set correctAnswer from AI if not already set
+          if (!question.correctAnswer && parsed.correctAnswer) {
+            const updatedQ = [...get().questions];
+            updatedQ[currentIndex] = { ...updatedQ[currentIndex], correctAnswer: parsed.correctAnswer };
+            set({ questions: updatedQ });
+          }
           if (correct === null) correct = parsed.correct ?? null;
         }
       } catch {

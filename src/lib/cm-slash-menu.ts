@@ -74,11 +74,11 @@ function slashCommandSource(
 
 const slashMenuTheme = EditorView.baseTheme({
   ".cm-tooltip-autocomplete": {
-    backgroundColor: "#1a1a1a !important",
-    border: "1px solid #333 !important",
+    backgroundColor: "var(--color-surface) !important",
+    border: "1px solid var(--color-border) !important",
     borderRadius: "8px !important",
     overflow: "hidden",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.5) !important",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.3) !important",
   },
   ".cm-tooltip-autocomplete ul": {
     fontFamily: "Inter, system-ui, sans-serif !important",
@@ -86,14 +86,14 @@ const slashMenuTheme = EditorView.baseTheme({
   },
   ".cm-tooltip-autocomplete ul li": {
     padding: "6px 12px !important",
-    color: "#888880 !important",
+    color: "var(--color-text-muted) !important",
   },
   ".cm-tooltip-autocomplete ul li[aria-selected]": {
-    backgroundColor: "#252525 !important",
-    color: "#e5e5e5 !important",
+    backgroundColor: "var(--color-surface-2) !important",
+    color: "var(--color-text) !important",
   },
   ".cm-tooltip-autocomplete .cm-completionLabel": {
-    color: "#7F77DD !important",
+    color: "var(--color-purple) !important",
     fontFamily: "monospace !important",
     fontSize: "12px !important",
   },

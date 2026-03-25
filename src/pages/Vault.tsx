@@ -152,18 +152,30 @@ export default function VaultPage() {
                 >
                   Read
                 </button>
-                <button
-                  onClick={() => {
-                    if (!fileContent) return;
-                    const { content } = parseFrontmatter(fileContent);
-                    const fm = parseFrontmatter(fileContent).frontmatter;
-                    useQuizStore.getState().generateQuiz(fm.subject ?? "", fm.topic ?? "", content);
-                    navigate("/quiz");
-                  }}
-                  className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                >
-                  Quiz
-                </button>
+                {selectedFile.includes("/quizzes/") ? (
+                  <button
+                    onClick={() => {
+                      useQuizStore.getState().retakeQuiz(selectedFile);
+                      navigate("/quiz");
+                    }}
+                    className="px-3 py-1 text-xs text-amber border border-amber/50 rounded hover:bg-amber/10 transition-colors"
+                  >
+                    Retake Quiz
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (!fileContent) return;
+                      const { content } = parseFrontmatter(fileContent);
+                      const fm = parseFrontmatter(fileContent).frontmatter;
+                      useQuizStore.getState().generateQuiz(fm.subject ?? "", fm.topic ?? "", content);
+                      navigate("/quiz");
+                    }}
+                    className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
+                  >
+                    Quiz
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     if (!fileContent) return;

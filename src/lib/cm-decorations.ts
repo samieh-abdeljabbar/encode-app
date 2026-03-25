@@ -186,13 +186,13 @@ function buildDecorations(state: EditorState): DecorationSet {
           break;
         }
 
-        // Blockquote — left border + background on each line, dim > marker
+        // Blockquote — left border + background, only on lines starting with >
         case "Blockquote": {
           const bqStart = state.doc.lineAt(from);
           const bqEnd = state.doc.lineAt(Math.min(to, state.doc.length));
           for (let i = bqStart.number; i <= bqEnd.number; i++) {
             const line = state.doc.line(i);
-            if (line.text.trim()) {
+            if (line.text.trimStart().startsWith(">")) {
               decos.push(Decoration.line({ class: "cm-blockquote-line" }).range(line.from));
             }
           }
@@ -345,66 +345,65 @@ export const linkClickHandler = EditorView.domEventHandlers({
 
 export const livePreviewStyles = EditorView.baseTheme({
   ".cm-heading-mark": {
-    color: "#555",
+    color: "var(--color-text-muted)",
     fontSize: "0.75em",
   },
   ".cm-emphasis-mark": {
-    color: "#555",
+    color: "var(--color-text-muted)",
   },
   ".cm-link-text": {
-    color: "#7F77DD",
+    color: "var(--color-purple)",
     textDecoration: "underline",
     textDecorationColor: "rgba(127, 119, 221, 0.3)",
     cursor: "pointer",
   },
   ".cm-code-mark": {
-    color: "#444",
+    color: "var(--color-text-muted)",
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: "0.8em",
   },
   ".cm-codeblock-line": {
-    backgroundColor: "#1a1a1a",
-    borderLeft: "2px solid #333",
+    backgroundColor: "var(--color-surface)",
+    borderLeft: "2px solid var(--color-border)",
     paddingLeft: "12px !important",
   },
   ".cm-quote-mark": {
-    color: "#555",
+    color: "var(--color-text-muted)",
     fontSize: "0.8em",
   },
   ".cm-blockquote-line": {
-    borderLeft: "3px solid #7F77DD",
+    borderLeft: "3px solid var(--color-purple)",
     paddingLeft: "14px !important",
     backgroundColor: "rgba(127, 119, 221, 0.04)",
   },
   ".cm-list-mark": {
-    color: "#7F77DD",
+    color: "var(--color-purple)",
     fontWeight: "700",
   },
   ".cm-list-mark-active": {
-    color: "#888880",
+    color: "var(--color-text-muted)",
   },
   ".cm-hr": {
-    color: "#333",
+    color: "var(--color-border)",
     textDecoration: "line-through",
   },
   ".cm-table-delim": {
-    color: "#555",
+    color: "var(--color-text-muted)",
   },
   ".cm-table-header-line": {
-    backgroundColor: "#1a1a1a",
-    borderBottom: "2px solid #333",
+    backgroundColor: "var(--color-surface)",
+    borderBottom: "2px solid var(--color-border)",
     fontWeight: "600",
   },
   ".cm-table-separator-line": {
-    color: "#333 !important",
+    color: "var(--color-border) !important",
     fontSize: "0.7em",
     lineHeight: "1.2",
   },
   ".cm-table-row-line": {
-    backgroundColor: "rgba(255,255,255,0.015)",
-    borderBottom: "1px solid #1f1f1f",
+    backgroundColor: "var(--color-surface)",
+    borderBottom: "1px solid var(--color-border)",
   },
-  // Rendered table widget
   ".cm-table-widget": {
     padding: "8px 0",
   },
@@ -416,17 +415,17 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "14px",
   },
   ".cm-table-widget th": {
-    backgroundColor: "#1a1a1a",
-    color: "#e5e5e5",
+    backgroundColor: "var(--color-surface)",
+    color: "var(--color-text)",
     fontWeight: "600",
     padding: "8px 16px",
-    borderBottom: "2px solid #333",
+    borderBottom: "2px solid var(--color-border)",
     textAlign: "left",
   },
   ".cm-table-widget td": {
     padding: "7px 16px",
-    borderBottom: "1px solid #1f1f1f",
-    color: "#ccc",
+    borderBottom: "1px solid var(--color-border)",
+    color: "var(--color-text)",
   },
   ".cm-table-widget tbody tr:hover": {
     backgroundColor: "rgba(127, 119, 221, 0.05)",

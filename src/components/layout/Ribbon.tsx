@@ -45,19 +45,20 @@ export default function Ribbon({ sidebarOpen, onToggleSidebar }: RibbonProps) {
         key={item.path}
         onClick={() => navigate(item.path)}
         title={item.label}
-        className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+        className={`w-full flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-lg transition-colors ${
           isActive
             ? "bg-purple/15 text-purple"
             : "text-text-muted hover:text-text hover:bg-surface-2"
         }`}
       >
         {item.icon}
+        <span className="text-[8px] leading-none">{item.label.length > 6 ? item.label.slice(0, 6) : item.label}</span>
       </button>
     );
   };
 
   return (
-    <div className="w-[48px] h-screen bg-[#0a0a0a] border-r border-border flex flex-col items-center py-3 shrink-0 no-select">
+    <div className="w-[56px] h-screen bg-bg border-r border-border flex flex-col items-center py-3 shrink-0 no-select">
       {/* Logo */}
       <div className="w-8 h-8 flex items-center justify-center mb-2">
         <BookOpen size={20} className="text-purple" />

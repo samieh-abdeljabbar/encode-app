@@ -247,7 +247,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
               </div>
 
               {isExpanded && chapters.length > 0 && (
-                <div className="border-t border-border bg-[#0f0f0f]">
+                <div className="border-t border-border bg-bg">
                   {chapters.map((ch) => {
                     const name = ch.file_path.split("/").pop()?.replace(".md", "") || "";
                     return (
@@ -411,13 +411,28 @@ function ActiveQuiz() {
   } = useQuizStore();
 
   const [answer, setAnswer] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!generating) { setElapsed(0); return; }
+    const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(timer);
+  }, [generating]);
 
   if (generating) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <div className="animate-pulse text-purple text-lg mb-2">Generating quiz...</div>
-          <p className="text-text-muted text-sm">Creating questions for {topic || subject}</p>
+        <div className="max-w-sm w-full px-8 text-center">
+          <div className="text-purple text-lg font-medium mb-2">Generating quiz...</div>
+          <p className="text-text-muted text-sm mb-4">Creating questions for {topic || subject}</p>
+          {/* Progress bar */}
+          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden mb-3">
+            <div className="h-full bg-purple rounded-full animate-pulse" style={{ width: `${Math.min(90, elapsed * 2)}%`, transition: "width 1s ease" }} />
+          </div>
+          <p className="text-xs text-text-muted">
+            {elapsed}s elapsed
+            {elapsed > 10 && " — reasoning models take longer to think"}
+          </p>
         </div>
       </div>
     );
@@ -496,8 +511,10 @@ function ActiveQuiz() {
                       Your answer: {q.type === "code" ? <code className="bg-surface-2 px-1 rounded">{q.userAnswer}</code> : q.userAnswer}
                     </p>
                   )}
-                  {q.correctAnswer && q.correct === false && (
-                    <p className="text-xs text-teal mt-1">Correct answer: {q.correctAnswer}</p>
+                  {q.correctAnswer && (
+                    <p className={`text-xs mt-1 ${q.correct === true ? "text-teal/60" : "text-teal"}`}>
+                      Correct answer: {q.correctAnswer}
+                    </p>
                   )}
                   {q.feedback && <p className="text-xs text-text-muted mt-1 italic">{q.feedback}</p>}
                 </div>
@@ -559,7 +576,7 @@ function ActiveQuiz() {
           <div className="p-3 bg-surface rounded border border-border mb-4">
             <p className="text-xs text-text-muted mb-1">Your answer:</p>
             {question.type === "code" ? (
-              <pre className="text-sm text-text font-mono bg-[#0f0f0f] p-2 rounded overflow-x-auto">{question.userAnswer}</pre>
+              <pre className="text-sm text-text font-mono bg-bg p-2 rounded overflow-x-auto">{question.userAnswer}</pre>
             ) : (
               <p className="text-sm text-text">{question.userAnswer}</p>
             )}
@@ -619,7 +636,7 @@ function ActiveQuiz() {
               <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
                 placeholder={`Write your ${question.language || "code"} solution here...`}
                 rows={8}
-                className="w-full p-3 bg-[#0f0f0f] border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
+                className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
                 spellCheck={false}
                 onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
               <div className="flex items-center justify-between mt-3">

@@ -225,7 +225,8 @@ Be specific to their response and the actual content. Base mastery on how well t
         300,
       );
 
-      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      const cleanedResult = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      const jsonMatch = cleanedResult.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]) as {
           right?: string;
@@ -339,7 +340,8 @@ async function saveAndAdvance(newResponse: GateResponse) {
         sectionContent.slice(0, 1500),
         300,
       ).then(({ text: cardText }) => {
-        const match = cardText.match(/\[[\s\S]*\]/);
+        const cleanedCards = cardText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+        const match = cleanedCards.match(/\[[\s\S]*\]/);
         if (match) {
           const parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
           useReaderStore.setState({

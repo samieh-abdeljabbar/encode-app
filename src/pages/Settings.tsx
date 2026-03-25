@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
 import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels } from "../lib/tauri";
+import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
 
 const POPULAR_MODELS = [
   { id: "llama3.1:8b", name: "Llama 3.1 8B", size: "4.7 GB", desc: "Best general-purpose local model" },
@@ -125,12 +126,49 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Theme */}
+      <div>
+        <h3 className="text-sm font-medium text-text mb-3">Theme</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {themes.map((t) => {
+            const isActive = getCurrentTheme() === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => { applyTheme(t.id); /* force re-render */ setFontSize(fontSize); }}
+                className={`flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
+                  isActive
+                    ? "border-purple bg-purple/10"
+                    : "border-border bg-surface hover:border-purple/30"
+                }`}
+              >
+                <div
+                  className="w-8 h-8 rounded-full border-2 shrink-0"
+                  style={{
+                    backgroundColor: t.preview,
+                    borderColor: isActive ? "var(--color-purple)" : t.colors.border,
+                  }}
+                />
+                <div>
+                  <p className={`text-sm font-medium ${isActive ? "text-purple" : "text-text"}`}>{t.name}</p>
+                  <div className="flex gap-1 mt-1">
+                    {[t.colors.purple, t.colors.teal, t.colors.coral, t.colors.amber].map((c, i) => (
+                      <div key={i} className="w-3 h-3 rounded-full" style={{ backgroundColor: c }} />
+                    ))}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* AI Provider */}
       <section className="space-y-4">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted">AI Provider</h3>
 
         <div className="grid grid-cols-2 gap-2">
-          {(["none", "ollama", "claude", "gemini"] as const).map((p) => (
+          {(["none", "ollama", "claude", "gemini", "openai", "deepseek"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
@@ -140,14 +178,16 @@ export default function Settings() {
                   : "border-border bg-surface text-text-muted hover:border-purple/50"
               }`}
             >
-              <span className="text-sm font-medium capitalize block">
-                {p === "none" ? "No AI" : p}
+              <span className="text-sm font-medium block">
+                {p === "none" ? "No AI" : p === "ollama" ? "Ollama" : p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : p === "openai" ? "OpenAI" : "DeepSeek"}
               </span>
               <span className="text-xs text-text-muted">
                 {p === "none" && "Study without AI feedback"}
                 {p === "ollama" && "Local models (free, private)"}
                 {p === "claude" && "Anthropic API (best quality)"}
                 {p === "gemini" && "Google API (fast, free tier)"}
+                {p === "openai" && "GPT-4o, GPT-4o-mini"}
+                {p === "deepseek" && "DeepSeek API (affordable)"}
               </span>
               {p === "ollama" && (
                 <span className={`text-[10px] mt-1 block ${
@@ -292,23 +332,53 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Claude / Gemini API Key */}
-        {(provider === "claude" || provider === "gemini") && (
-          <div className="p-4 bg-surface rounded-lg border border-border">
-            <label className="block text-xs text-text-muted mb-2">
-              {provider === "claude" ? "Claude (Anthropic)" : "Gemini (Google)"} API Key
-            </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter API key..."
-              className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
-            />
-            <p className="text-xs text-text-muted mt-2">
-              {provider === "claude" && "Get your key at console.anthropic.com"}
-              {provider === "gemini" && "Get your key at aistudio.google.com"}
-            </p>
+        {/* API Key for cloud providers */}
+        {(provider === "claude" || provider === "gemini" || provider === "openai" || provider === "deepseek") && (
+          <div className="p-4 bg-surface rounded-lg border border-border space-y-3">
+            <div>
+              <label className="block text-xs text-text-muted mb-2">
+                {provider === "claude" ? "Claude (Anthropic)" : provider === "gemini" ? "Gemini (Google)" : provider === "openai" ? "OpenAI" : "DeepSeek"} API Key
+              </label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Enter API key..."
+                className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+              />
+              <p className="text-xs text-text-muted mt-2">
+                {provider === "claude" && "Get your key at console.anthropic.com"}
+                {provider === "gemini" && "Get your key at aistudio.google.com"}
+                {provider === "openai" && "Get your key at platform.openai.com/api-keys"}
+                {provider === "deepseek" && "Get your key at platform.deepseek.com"}
+              </p>
+            </div>
+            {(provider === "openai" || provider === "deepseek") && (
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Model</label>
+                <select
+                  value={ollamaModel}
+                  onChange={(e) => setOllamaModel(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+                >
+                  {provider === "openai" && (
+                    <>
+                      <option value="gpt-4o-mini">GPT-4o Mini (fast, cheap)</option>
+                      <option value="gpt-4o">GPT-4o (best quality)</option>
+                      <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                      <option value="gpt-4.1">GPT-4.1</option>
+                      <option value="o3-mini">o3-mini (reasoning)</option>
+                    </>
+                  )}
+                  {provider === "deepseek" && (
+                    <>
+                      <option value="deepseek-chat">DeepSeek Chat (general)</option>
+                      <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            )}
           </div>
         )}
       </section>

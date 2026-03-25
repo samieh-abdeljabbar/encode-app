@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import Shell from "./components/layout/Shell";
+import { applyTheme, getCurrentTheme } from "./lib/themes";
 import Home from "./pages/Home";
 import VaultPage from "./pages/Vault";
 import ReaderPage from "./pages/Reader";
@@ -72,6 +73,10 @@ function UpdateBanner() {
 }
 
 function App() {
+  useEffect(() => {
+    applyTheme(getCurrentTheme());
+  }, []);
+
   return (
     <MemoryRouter>
       <UpdateBanner />

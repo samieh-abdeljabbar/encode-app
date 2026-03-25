@@ -43,15 +43,20 @@ export default function MarkdownEditor({
 
   return (
     <div className="h-full overflow-auto" onBlur={onBlur}>
-      {/* Force bright text color — CM6 default dark theme makes text too dim */}
+      {/* Force text color to match theme */}
       <style>{`
-        .cm-editor .cm-content { color: #e5e5e5 !important; }
-        .cm-editor .cm-line { color: #e5e5e5 !important; }
-        .cm-editor .cm-content .cm-line span[class=""] { color: #e5e5e5 !important; }
-        .cm-editor .ͼ5 { color: #e5e5e5 !important; }
-        .cm-editor .ͼ6 { color: #e5e5e5 !important; }
-        .cm-editor .ͼ7 { color: #e5e5e5 !important; }
-        .cm-editor .ͼ1 { color: #e5e5e5; }
+        .cm-editor .cm-content { color: var(--color-text) !important; }
+        .cm-editor .cm-line { color: var(--color-text) !important; }
+        .cm-editor .cm-content .cm-line span[class=""] { color: var(--color-text) !important; }
+        .cm-editor .ͼ5 { color: var(--color-text) !important; }
+        .cm-editor .ͼ6 { color: var(--color-text) !important; }
+        .cm-editor .ͼ7 { color: var(--color-text) !important; }
+        .cm-editor .ͼ1 { color: var(--color-text); }
+        .cm-editor { background-color: var(--color-bg) !important; }
+        .cm-editor .cm-gutters { background-color: var(--color-bg) !important; border-color: var(--color-border) !important; }
+        .cm-editor .cm-activeLineGutter { background-color: var(--color-surface) !important; }
+        .cm-editor .cm-activeLine { background-color: var(--color-surface) !important; }
+        .cm-editor .cm-cursor { border-color: var(--color-text) !important; }
       `}</style>
       <CodeMirror
         value={value}

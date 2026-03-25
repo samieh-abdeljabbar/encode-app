@@ -5,6 +5,7 @@ import { useVaultStore } from "../stores/vault";
 import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
 import { useFlashcardStore } from "../stores/flashcard";
+import { useAppStore } from "../stores/app";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import DigestionGate from "../components/reader/DigestionGate";
 import ProgressBar from "../components/reader/ProgressBar";
@@ -185,6 +186,7 @@ Bloom: 1=Remember, 2=Understand, 3=Apply. Target levels 1-3.`,
 export default function ReaderPage() {
   const navigate = useNavigate();
   const selectedFile = useVaultStore((s) => s.selectedFile);
+  const config = useAppStore((s) => s.config);
   const {
     filePath,
     rawContent,
@@ -376,6 +378,7 @@ export default function ReaderPage() {
                           AI Feedback
                         </p>
                         <p className="text-sm text-text">{r.feedback}</p>
+                        <p className="text-[9px] text-text-muted mt-1 opacity-50">via {config?.ollama_model || config?.ai_provider || "AI"}</p>
                       </div>
                     )}
                   </div>

@@ -39,12 +39,12 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
   return (
     <div
       ref={ref}
-      className="fixed z-50 w-48 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-2xl py-1 overflow-hidden"
+      className="fixed z-50 w-48 bg-surface border border-border rounded-lg shadow-2xl py-1 overflow-hidden"
       style={{ left: x, top: y }}
     >
       {items.map((item, i) =>
         item.divider ? (
-          <div key={i} className="h-px bg-[#333] my-1" />
+          <div key={i} className="h-px bg-border my-1" />
         ) : (
           <button
             key={i}
@@ -54,8 +54,8 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             }}
             className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
               item.danger
-                ? "text-[#D85A30] hover:bg-[#D85A30]/10"
-                : "text-[#e5e5e5] hover:bg-[#252525]"
+                ? "text-coral hover:bg-coral/10"
+                : "text-text hover:bg-surface-2"
             }`}
           >
             {item.icon && <span className="w-4">{item.icon}</span>}

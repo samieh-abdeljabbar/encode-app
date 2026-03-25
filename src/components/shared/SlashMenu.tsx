@@ -150,7 +150,7 @@ export default function SlashMenu({ textarea, onChange }: SlashMenuProps) {
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 w-56 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-2xl overflow-hidden"
+      className="fixed z-50 w-56 bg-surface border border-border rounded-lg shadow-2xl overflow-hidden"
       style={{ top: position.top, left: position.left }}
     >
       {filtered.map((item, i) => (
@@ -163,11 +163,11 @@ export default function SlashMenu({ textarea, onChange }: SlashMenuProps) {
           onMouseEnter={() => setSelectedIdx(i)}
           className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${
             i === selectedIdx
-              ? "bg-[#252525] text-[#e5e5e5]"
-              : "text-[#888880] hover:bg-[#1f1f1f]"
+              ? "bg-surface-2 text-text"
+              : "text-text-muted hover:bg-surface-2/50"
           }`}
         >
-          <span className="text-[#7F77DD] font-mono text-xs">/{item.command}</span>
+          <span className="text-purple font-mono text-xs">/{item.command}</span>
           <span className="text-xs">{item.label}</span>
         </button>
       ))}

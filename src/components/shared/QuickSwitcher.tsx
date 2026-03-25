@@ -116,11 +116,11 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
 
       {/* Modal */}
       <div
-        className="relative w-[520px] max-h-[60vh] bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-[520px] max-h-[60vh] bg-surface border border-border rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="px-4 py-3 border-b border-[#333]">
+        <div className="px-4 py-3 border-b border-border">
           <input
             ref={inputRef}
             type="text"
@@ -128,14 +128,14 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Search files..."
-            className="w-full bg-transparent text-[#e5e5e5] text-base outline-none placeholder:text-[#888880]"
+            className="w-full bg-transparent text-text text-base outline-none placeholder:text-text-muted"
           />
         </div>
 
         {/* Results */}
         <div className="overflow-y-auto max-h-[45vh]">
           {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-[#888880]">
+            <div className="px-4 py-8 text-center text-sm text-text-muted">
               {files.length === 0 ? "Loading..." : "No files found"}
             </div>
           ) : (
@@ -146,32 +146,32 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
                 onMouseEnter={() => setSelectedIdx(i)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                   i === selectedIdx
-                    ? "bg-[#252525]"
-                    : "hover:bg-[#1f1f1f]"
+                    ? "bg-surface-2"
+                    : "hover:bg-surface-2/50"
                 }`}
               >
                 {/* Type badge */}
                 <span
                   className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-bold shrink-0 ${
                     f.type === "chapters"
-                      ? "bg-[#7F77DD]/20 text-[#7F77DD]"
+                      ? "bg-purple/20 text-purple"
                       : f.type === "flashcards"
-                        ? "bg-[#1D9E75]/20 text-[#1D9E75]"
+                        ? "bg-teal/20 text-teal"
                         : f.type === "quizzes"
-                          ? "bg-[#BA7517]/20 text-[#BA7517]"
-                          : "bg-[#333] text-[#888880]"
+                          ? "bg-amber/20 text-amber"
+                          : "bg-border text-text-muted"
                   }`}
                 >
                   {TYPE_ICONS[f.type] || "?"}
                 </span>
 
                 {/* File name */}
-                <span className="flex-1 text-sm text-[#e5e5e5] truncate">
+                <span className="flex-1 text-sm text-text truncate">
                   {f.name}
                 </span>
 
                 {/* Subject badge */}
-                <span className="text-[10px] text-[#888880] bg-[#252525] px-2 py-0.5 rounded shrink-0">
+                <span className="text-[10px] text-text-muted bg-surface-2 px-2 py-0.5 rounded shrink-0">
                   {f.subject}
                 </span>
               </button>
@@ -180,7 +180,7 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-[#333] flex gap-4 text-[10px] text-[#888880]">
+        <div className="px-4 py-2 border-t border-border flex gap-4 text-[10px] text-text-muted">
           <span>↑↓ navigate</span>
           <span>↵ open</span>
           <span>esc close</span>

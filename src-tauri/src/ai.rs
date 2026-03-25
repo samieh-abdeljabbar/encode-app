@@ -5,6 +5,7 @@ use std::time::Duration;
 pub struct AiResponse {
     pub text: String,
     pub provider: String,
+    pub model: String,
 }
 
 /// Send a request to the configured AI provider.
@@ -18,17 +19,25 @@ pub async fn ai_request(
     max_tokens: u32,
 ) -> Result<AiResponse, String> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
+        .no_proxy()
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    match provider {
-        "ollama" => ollama_request(&client, url, model, system_prompt, user_prompt, max_tokens).await,
+    // Normalize localhost to 127.0.0.1 to avoid DNS resolution issues on macOS
+    let url = url.replace("localhost", "127.0.0.1");
+
+    let mut response = match provider {
+        "ollama" => ollama_request(&client, &url, model, system_prompt, user_prompt, max_tokens).await,
         "claude" => claude_request(&client, api_key, system_prompt, user_prompt, max_tokens).await,
         "gemini" => gemini_request(&client, api_key, system_prompt, user_prompt, max_tokens).await,
+        "openai" => openai_request(&client, api_key, model, system_prompt, user_prompt, max_tokens).await,
+        "deepseek" => deepseek_request(&client, api_key, model, system_prompt, user_prompt, max_tokens).await,
         "none" | "" => Err("No AI provider configured".to_string()),
         other => Err(format!("Unknown AI provider: {}", other)),
-    }
+    }?;
+    response.model = model.to_string();
+    Ok(response)
 }
 
 async fn ollama_request(
@@ -72,6 +81,7 @@ async fn ollama_request(
     Ok(AiResponse {
         text: response_text,
         provider: "ollama".to_string(),
+        model: String::new(),
     })
 }
 
@@ -121,6 +131,7 @@ async fn claude_request(
     Ok(AiResponse {
         text: response_text,
         provider: "claude".to_string(),
+        model: String::new(),
     })
 }
 
@@ -173,5 +184,98 @@ async fn gemini_request(
     Ok(AiResponse {
         text: response_text,
         provider: "gemini".to_string(),
+        model: String::new(),
+    })
+}
+
+async fn openai_request(
+    client: &reqwest::Client,
+    api_key: Option<&str>,
+    model: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+    max_tokens: u32,
+) -> Result<AiResponse, String> {
+    let key = api_key.ok_or("OpenAI API key not configured")?;
+    let model_name = if model.is_empty() { "gpt-4o-mini" } else { model };
+
+    let body = serde_json::json!({
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "max_tokens": max_tokens,
+    });
+
+    let resp = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("OpenAI request failed: {}", e))?;
+
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let response_text = parsed["choices"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|c| c["message"]["content"].as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Ok(AiResponse {
+        text: response_text,
+        provider: "openai".to_string(),
+        model: String::new(),
+    })
+}
+
+async fn deepseek_request(
+    client: &reqwest::Client,
+    api_key: Option<&str>,
+    model: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+    max_tokens: u32,
+) -> Result<AiResponse, String> {
+    let key = api_key.ok_or("DeepSeek API key not configured")?;
+    let model_name = if model.is_empty() { "deepseek-chat" } else { model };
+
+    let body = serde_json::json!({
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "max_tokens": max_tokens,
+    });
+
+    let resp = client
+        .post("https://api.deepseek.com/chat/completions")
+        .header("Authorization", format!("Bearer {}", key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("DeepSeek request failed: {}", e))?;
+
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let response_text = parsed["choices"]
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|c| c["message"]["content"].as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Ok(AiResponse {
+        text: response_text,
+        provider: "deepseek".to_string(),
+        model: String::new(),
     })
 }
