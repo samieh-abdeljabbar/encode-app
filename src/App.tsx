@@ -11,8 +11,9 @@ import TeachBackPage from "./pages/TeachBack";
 import Settings from "./pages/Settings";
 
 function UpdateBanner() {
-  const [status, setStatus] = useState<"idle" | "available" | "downloading" | "ready">("idle");
+  const [status, setStatus] = useState<"idle" | "available" | "downloading" | "ready" | "error">("idle");
   const [version, setVersion] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     // Check for updates on launch (skip in dev)
@@ -43,8 +44,10 @@ function UpdateBanner() {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       }
-    } catch {
-      setStatus("available"); // Reset on error
+    } catch (err) {
+      console.error("Update failed:", err);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStatus("error");
     }
   };
 
@@ -56,6 +59,7 @@ function UpdateBanner() {
         {status === "available" && `Update v${version} available`}
         {status === "downloading" && "Downloading update..."}
         {status === "ready" && "Update installed — restarting..."}
+        {status === "error" && `Update failed: ${errorMsg}`}
       </p>
       {status === "available" && (
         <button
@@ -63,6 +67,14 @@ function UpdateBanner() {
           className="text-xs px-3 py-1 bg-purple text-white rounded hover:opacity-90"
         >
           Update Now
+        </button>
+      )}
+      {status === "error" && (
+        <button
+          onClick={handleUpdate}
+          className="text-xs px-3 py-1 bg-coral text-white rounded hover:opacity-90"
+        >
+          Retry
         </button>
       )}
       {status === "downloading" && (
