@@ -16,7 +16,7 @@ function UpdateBanner() {
 
   useEffect(() => {
     // Check for updates on launch (skip in dev)
-    if (window.location.hostname === "localhost") return;
+    if (import.meta.env.DEV) return;
 
     import("@tauri-apps/plugin-updater").then(async ({ check }) => {
       try {
