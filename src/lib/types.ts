@@ -80,6 +80,10 @@ export interface AppConfig {
   ollama_model: string;
   ollama_url: string;
   api_key: string;
+  // User profile
+  user_role: string;
+  user_hobbies: string;
+  user_learning_style: string;
 }
 
 /** Digestion gate prompt types — rotate after each section */
@@ -92,6 +96,9 @@ export interface GateResponse {
   prompt: string;
   response: string;
   feedback: string | null;
+  mastery: number | null;           // 1=weak, 2=partial, 3=solid
+  followUp: string | null;          // Follow-up question if mastery low
+  followUpResponse: string | null;  // User's answer to follow-up
   timestamp: string;
 }
 
@@ -108,6 +115,7 @@ export interface Flashcard {
   interval: number;
   nextReview: string;
   lastReviewed: string | null;
+  cardType?: "basic" | "cloze" | "reversed"; // default "basic"
   // FSRS fields (optional for backward compat with SM-2 cards)
   stability?: number;
   difficulty?: number;

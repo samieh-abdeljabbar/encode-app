@@ -4,11 +4,75 @@ import {
   EditorView,
   ViewPlugin,
   type ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
-import { type EditorState, type Range, RangeSetBuilder } from "@codemirror/state";
+import { type EditorState, type Range, RangeSetBuilder, StateField } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 
-// Table styling uses line-level decorations (no widget replacement needed)
+/** Parse markdown table text into rows of cells */
+function parseTable(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.split("\n").filter((l) => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const parseRow = (line: string): string[] =>
+    line.split("|").slice(1, -1).map((c) => c.trim());
+
+  const headers = parseRow(lines[0]);
+  // Skip separator line (lines[1])
+  const rows = lines.slice(2).map(parseRow);
+  return { headers, rows };
+}
+
+/** Widget that renders a markdown table as an actual HTML table */
+class TableWidget extends WidgetType {
+  constructor(private readonly tableText: string) {
+    super();
+  }
+
+  eq(other: TableWidget): boolean {
+    return this.tableText === other.tableText;
+  }
+
+  toDOM(): HTMLElement {
+    const { headers, rows } = parseTable(this.tableText);
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-table-widget";
+
+    const table = document.createElement("table");
+    // Header
+    if (headers.length > 0) {
+      const thead = document.createElement("thead");
+      const tr = document.createElement("tr");
+      for (const h of headers) {
+        const th = document.createElement("th");
+        th.textContent = h;
+        tr.appendChild(th);
+      }
+      thead.appendChild(tr);
+      table.appendChild(thead);
+    }
+    // Body
+    if (rows.length > 0) {
+      const tbody = document.createElement("tbody");
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        for (let i = 0; i < headers.length; i++) {
+          const td = document.createElement("td");
+          td.textContent = row[i] ?? "";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+    }
+    wrapper.appendChild(table);
+    return wrapper;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
 
 /** Check if the cursor's line overlaps with a position */
 function cursorOnLine(state: EditorState, pos: number): boolean {
@@ -95,8 +159,12 @@ function buildDecorations(state: EditorState): DecorationSet {
               decos.push(Decoration.replace({ inclusive: false }).range(marks[0].from, marks[0].to));
               // Hide ]( through )
               decos.push(Decoration.replace({ inclusive: false }).range(marks[1].from, to));
-              // Style the link text
-              decos.push(Decoration.mark({ class: "cm-link-text" }).range(marks[0].to, marks[1].from));
+              // Style the link text with the URL stored as data attribute
+              const href = state.sliceDoc(url.from, url.to);
+              decos.push(Decoration.mark({
+                class: "cm-link-text",
+                attributes: { "data-href": href },
+              }).range(marks[0].to, marks[1].from));
             }
           }
           break;
@@ -118,31 +186,43 @@ function buildDecorations(state: EditorState): DecorationSet {
           break;
         }
 
-        // Blockquote > markers — dim
-        case "QuoteMark": {
-          decos.push(Decoration.mark({ class: "cm-quote-mark" }).range(from, to));
-          break;
-        }
-
-        // Table styling — add background to rows, dim pipes, bold headers
-        case "Table": {
-          // Style each line of the table
-          const startLine = state.doc.lineAt(from);
-          const endLine = state.doc.lineAt(Math.min(to, state.doc.length));
-          for (let i = startLine.number; i <= endLine.number; i++) {
+        // Blockquote — left border + background on each line, dim > marker
+        case "Blockquote": {
+          const bqStart = state.doc.lineAt(from);
+          const bqEnd = state.doc.lineAt(Math.min(to, state.doc.length));
+          for (let i = bqStart.number; i <= bqEnd.number; i++) {
             const line = state.doc.line(i);
-            const lineClass = i === startLine.number ? "cm-table-header-line"
-              : i === startLine.number + 1 ? "cm-table-separator-line"
-              : "cm-table-row-line";
-            decos.push(Decoration.line({ class: lineClass }).range(line.from));
+            if (line.text.trim()) {
+              decos.push(Decoration.line({ class: "cm-blockquote-line" }).range(line.from));
+            }
           }
           break;
         }
 
-        case "TableDelimiter": {
-          decos.push(Decoration.mark({ class: "cm-table-delim" }).range(from, to));
+        case "QuoteMark": {
+          if (!cursorOnLine(state, from)) {
+            decos.push(Decoration.replace({ inclusive: false }).range(from, Math.min(to + 1, state.doc.lineAt(from).to)));
+          } else {
+            decos.push(Decoration.mark({ class: "cm-quote-mark" }).range(from, to));
+          }
           break;
         }
+
+        // List items — style bullet/number markers
+        case "ListMark": {
+          if (!cursorOnLine(state, from)) {
+            decos.push(Decoration.mark({ class: "cm-list-mark" }).range(from, to));
+          } else {
+            decos.push(Decoration.mark({ class: "cm-list-mark-active" }).range(from, to));
+          }
+          break;
+        }
+
+        // BulletList/OrderedList: no line decoration — just let ListMark handle markers
+
+        // Table decorations handled by tableDecoField (block decos need StateField)
+        case "Table":
+          return false; // Skip — handled separately
 
         // Horizontal rule
         case "HorizontalRule": {
@@ -169,16 +249,99 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = buildDecorations(view.state);
+      try {
+        this.decorations = buildDecorations(view.state);
+      } catch {
+        this.decorations = Decoration.none;
+      }
     }
     update(update: ViewUpdate) {
       if (update.docChanged || update.selectionSet || update.viewportChanged) {
-        this.decorations = buildDecorations(update.state);
+        try {
+          this.decorations = buildDecorations(update.state);
+        } catch {
+          this.decorations = Decoration.none;
+        }
       }
     }
   },
   { decorations: (v) => v.decorations },
 );
+
+/** Build table decorations — block widgets need a StateField, not a ViewPlugin */
+function buildTableDecorations(state: EditorState): DecorationSet {
+  const decos: Range<Decoration>[] = [];
+
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "Table") return;
+
+      const { from, to } = node;
+      const startLine = state.doc.lineAt(from);
+      const endLine = state.doc.lineAt(Math.min(to, state.doc.length));
+
+      if (!cursorInRange(state, startLine.from, endLine.to)) {
+        const tableText = state.sliceDoc(from, to);
+        decos.push(
+          Decoration.replace({
+            widget: new TableWidget(tableText),
+            block: true,
+          }).range(startLine.from, endLine.to),
+        );
+      } else {
+        // Cursor inside — line-level styling
+        for (let i = startLine.number; i <= endLine.number; i++) {
+          const line = state.doc.line(i);
+          const lineClass = i === startLine.number ? "cm-table-header-line"
+            : i === startLine.number + 1 ? "cm-table-separator-line"
+            : "cm-table-row-line";
+          decos.push(Decoration.line({ class: lineClass }).range(line.from));
+        }
+      }
+
+      return false; // Skip child nodes
+    },
+  });
+
+  decos.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of decos) {
+    builder.add(d.from, d.to, d.value);
+  }
+  return builder.finish();
+}
+
+export const tableDecoField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildTableDecorations(state);
+  },
+  update(decos, tr) {
+    if (tr.docChanged || tr.selection) {
+      return buildTableDecorations(tr.state);
+    }
+    return decos;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/** Cmd+Click (Mac) / Ctrl+Click opens links in browser */
+export const linkClickHandler = EditorView.domEventHandlers({
+  click(event: MouseEvent, _view: EditorView) {
+    if (!(event.metaKey || event.ctrlKey)) return false;
+
+    const target = event.target as HTMLElement;
+    const href = target.closest("[data-href]")?.getAttribute("data-href");
+    if (!href) return false;
+
+    event.preventDefault();
+    import("@tauri-apps/plugin-opener").then(({ openUrl }) => {
+      openUrl(href);
+    }).catch(() => {
+      window.open(href, "_blank");
+    });
+    return true;
+  },
+});
 
 export const livePreviewStyles = EditorView.baseTheme({
   ".cm-heading-mark": {
@@ -205,7 +368,20 @@ export const livePreviewStyles = EditorView.baseTheme({
     paddingLeft: "12px !important",
   },
   ".cm-quote-mark": {
-    color: "#444",
+    color: "#555",
+    fontSize: "0.8em",
+  },
+  ".cm-blockquote-line": {
+    borderLeft: "3px solid #7F77DD",
+    paddingLeft: "14px !important",
+    backgroundColor: "rgba(127, 119, 221, 0.04)",
+  },
+  ".cm-list-mark": {
+    color: "#7F77DD",
+    fontWeight: "700",
+  },
+  ".cm-list-mark-active": {
+    color: "#888880",
   },
   ".cm-hr": {
     color: "#333",
@@ -227,5 +403,32 @@ export const livePreviewStyles = EditorView.baseTheme({
   ".cm-table-row-line": {
     backgroundColor: "rgba(255,255,255,0.015)",
     borderBottom: "1px solid #1f1f1f",
+  },
+  // Rendered table widget
+  ".cm-table-widget": {
+    padding: "8px 0",
+  },
+  ".cm-table-widget table": {
+    borderCollapse: "collapse",
+    width: "auto",
+    minWidth: "40%",
+    fontFamily: "Inter, system-ui, sans-serif",
+    fontSize: "14px",
+  },
+  ".cm-table-widget th": {
+    backgroundColor: "#1a1a1a",
+    color: "#e5e5e5",
+    fontWeight: "600",
+    padding: "8px 16px",
+    borderBottom: "2px solid #333",
+    textAlign: "left",
+  },
+  ".cm-table-widget td": {
+    padding: "7px 16px",
+    borderBottom: "1px solid #1f1f1f",
+    color: "#ccc",
+  },
+  ".cm-table-widget tbody tr:hover": {
+    backgroundColor: "rgba(127, 119, 221, 0.05)",
   },
 });

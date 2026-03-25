@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../stores/app";
-import { getDueCount, listSubjects, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
+import { listSubjects, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
+import { useFlashcardStore } from "../stores/flashcard";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -18,11 +19,13 @@ export default function Home() {
   const [action, setAction] = useState("");
   const [reflection, setReflection] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dueCount, setDueCount] = useState(0);
+  const { allCards, loadAllCards } = useFlashcardStore();
   const [subjectCount, setSubjectCount] = useState(0);
   const [grades, setGrades] = useState<SubjectGrade[]>([]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dueCount = allCards.filter((c) => c.nextReview <= todayStr).length;
+  const today = todayStr;
   const dayOfWeek = new Date().toLocaleDateString("en-US", {
     weekday: "long",
   });
@@ -30,7 +33,7 @@ export default function Home() {
   useEffect(() => {
     loadToday();
     loadStreak();
-    getDueCount().then(setDueCount);
+    loadAllCards();
     listSubjects()
       .then((s) => setSubjectCount(s.length))
       .catch(() => setSubjectCount(0));

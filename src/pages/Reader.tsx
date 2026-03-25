@@ -198,10 +198,15 @@ export default function ReaderPage() {
     advanceSection,
     goToSection,
     submitGateResponse,
+    submitFollowUp,
     clearError,
     dismissSuggestions,
     closeReader,
     suggestedCards,
+    followUpMode,
+    pendingResponse,
+    gateQuestion,
+    gateGenerating,
   } = useReaderStore();
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -419,12 +424,18 @@ export default function ReaderPage() {
           )}
 
           {/* Gate or navigation */}
-          {gateOpen && currentGatePrompt ? (
+          {(gateOpen || followUpMode) && currentGatePrompt ? (
             <DigestionGate
               promptType={currentGatePrompt.type}
-              prompt={currentGatePrompt.prompt}
+              prompt={gateQuestion || currentGatePrompt.prompt}
               sectionHeading={currentSectionHeading}
               onSubmit={submitGateResponse}
+              followUpMode={followUpMode}
+              followUpQuestion={pendingResponse?.followUp}
+              feedbackText={pendingResponse?.feedback}
+              mastery={pendingResponse?.mastery}
+              onSubmitFollowUp={submitFollowUp}
+              generating={gateGenerating}
             />
           ) : (
             <div className="flex items-center justify-between py-6 border-t border-border mt-8">

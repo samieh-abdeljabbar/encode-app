@@ -18,6 +18,14 @@ import {
   type FSRSCard,
 } from "../lib/sr";
 
+export interface SessionStats {
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
+  total: number;
+}
+
 interface FlashcardState {
   cards: Flashcard[];
   allCards: Flashcard[];
@@ -26,6 +34,8 @@ interface FlashcardState {
   dueCount: number;
   loading: boolean;
   sessionComplete: boolean;
+  sessionStats: SessionStats;
+  requeueCount: Map<string, number>; // Track requeues per card id
 
   loadDueCards: () => Promise<void>;
   loadDueCount: () => Promise<void>;
@@ -38,7 +48,9 @@ interface FlashcardState {
     question: string,
     answer: string,
     bloom: number,
+    cardType?: string,
   ) => Promise<void>;
+  loadAllCardsForReview: (subjectFilter?: string) => Promise<void>;
   resetSession: () => void;
 }
 
@@ -65,6 +77,7 @@ function parseFlashcards(
       let interval = 0;
       let nextReview = today();
       let lastReviewed: string | null = null;
+      let cardType: "basic" | "cloze" | "reversed" = "basic";
       let stability: number | undefined;
       let difficulty: number | undefined;
       let reps: number | undefined;
@@ -94,26 +107,18 @@ function parseFlashcards(
           reps = parseInt(l.replace("**Reps:**", "").trim());
         else if (l.startsWith("**Lapses:**"))
           lapses = parseInt(l.replace("**Lapses:**", "").trim());
+        else if (l.startsWith("**Type:**")) {
+          const t = l.replace("**Type:**", "").trim().toLowerCase();
+          if (t === "cloze" || t === "reversed") cardType = t;
+        }
         i++;
       }
 
       if (question) {
         cards.push({
-          id,
-          filePath,
-          subject,
-          topic,
-          question,
-          answer,
-          bloom,
-          ease,
-          interval,
-          nextReview,
-          lastReviewed,
-          stability,
-          difficulty,
-          reps,
-          lapses,
+          id, filePath, subject, topic, question, answer,
+          bloom, ease, interval, nextReview, lastReviewed,
+          cardType, stability, difficulty, reps, lapses,
         });
       }
     } else {
@@ -164,48 +169,21 @@ async function updateCardInFile(
       const cardLines: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) {
         const l = lines[i];
-        if (l.includes("**Ease:**")) {
-          cardLines.push(l); // Preserve original SM-2 ease unchanged
-          existingFields.add("Ease");
-        } else if (l.includes("**Interval:**")) {
-          cardLines.push(`> **Interval:** ${newInterval}`);
-          existingFields.add("Interval");
-        } else if (l.includes("**Next:**")) {
-          cardLines.push(`> **Next:** ${addDays(newInterval)}`);
-          existingFields.add("Next");
-        } else if (l.includes("**Last:**")) {
-          cardLines.push(`> **Last:** ${today()}`);
-          existingFields.add("Last");
-        } else if (l.includes("**Stability:**")) {
-          cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
-          existingFields.add("Stability");
-        } else if (l.includes("**Difficulty:**")) {
-          cardLines.push(
-            `> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`,
-          );
-          existingFields.add("Difficulty");
-        } else if (l.includes("**Reps:**")) {
-          cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
-          existingFields.add("Reps");
-        } else if (l.includes("**Lapses:**")) {
-          cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`);
-          existingFields.add("Lapses");
-        } else {
-          cardLines.push(l);
-        }
+        if (l.includes("**Ease:**")) { cardLines.push(l); existingFields.add("Ease"); }
+        else if (l.includes("**Interval:**")) { cardLines.push(`> **Interval:** ${newInterval}`); existingFields.add("Interval"); }
+        else if (l.includes("**Next:**")) { cardLines.push(`> **Next:** ${addDays(newInterval)}`); existingFields.add("Next"); }
+        else if (l.includes("**Last:**")) { cardLines.push(`> **Last:** ${today()}`); existingFields.add("Last"); }
+        else if (l.includes("**Stability:**")) { cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`); existingFields.add("Stability"); }
+        else if (l.includes("**Difficulty:**")) { cardLines.push(`> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`); existingFields.add("Difficulty"); }
+        else if (l.includes("**Reps:**")) { cardLines.push(`> **Reps:** ${fsrsCard.reps}`); existingFields.add("Reps"); }
+        else if (l.includes("**Lapses:**")) { cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`); existingFields.add("Lapses"); }
+        else { cardLines.push(l); }
         i++;
       }
-      // Add FSRS fields if they didn't exist before
-      if (!existingFields.has("Stability"))
-        cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
-      if (!existingFields.has("Difficulty"))
-        cardLines.push(
-          `> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`,
-        );
-      if (!existingFields.has("Reps"))
-        cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
-      if (!existingFields.has("Lapses"))
-        cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`);
+      if (!existingFields.has("Stability")) cardLines.push(`> **Stability:** ${fsrsCard.stability.toFixed(2)}`);
+      if (!existingFields.has("Difficulty")) cardLines.push(`> **Difficulty:** ${fsrsCard.difficulty.toFixed(2)}`);
+      if (!existingFields.has("Reps")) cardLines.push(`> **Reps:** ${fsrsCard.reps}`);
+      if (!existingFields.has("Lapses")) cardLines.push(`> **Lapses:** ${fsrsCard.lapses}`);
       result.push(...cardLines);
     } else {
       result.push(lines[i]);
@@ -217,17 +195,13 @@ async function updateCardInFile(
 }
 
 /** Format a card callout block */
-function formatCardBlock(
-  id: string,
-  question: string,
-  answer: string,
-  bloom: number,
-): string {
+function formatCardBlock(id: string, question: string, answer: string, bloom: number, type: string = "basic"): string {
   const d = today();
   return [
     `> [!card] id: ${id}`,
     `> **Q:** ${question}`,
     `> **A:** ${answer}`,
+    `> **Type:** ${type}`,
     `> **Bloom:** ${bloom}`,
     `> **Ease:** 2.50`,
     `> **Interval:** 0`,
@@ -240,13 +214,11 @@ function formatCardBlock(
   ].join("\n");
 }
 
-/** Slugify a string for file paths */
 function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
+
+const emptyStats: SessionStats = { again: 0, hard: 0, good: 0, easy: 0, total: 0 };
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   cards: [],
@@ -256,6 +228,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   dueCount: 0,
   loading: false,
   sessionComplete: false,
+  sessionStats: { ...emptyStats },
+  requeueCount: new Map(),
 
   loadAllCards: async () => {
     set({ loading: true });
@@ -276,9 +250,9 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
                 topicMatch?.[1]?.trim() || "",
               );
               all.push(...cards);
-            } catch { /* skip unreadable files */ }
+            } catch { /* skip */ }
           }
-        } catch { /* skip subjects with no flashcards */ }
+        } catch { /* skip */ }
       }
       set({ allCards: all, loading: false });
     } catch {
@@ -292,35 +266,55 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   },
 
   loadDueCards: async () => {
-    set({ loading: true });
+    set({ loading: true, sessionStats: { ...emptyStats }, requeueCount: new Map() });
     try {
       const dueCards = await getDueCards();
-      if (dueCards.length === 0) {
-        set({ cards: [], loading: false, sessionComplete: true });
-        return;
+      let allCards: Flashcard[] = [];
+
+      if (dueCards.length > 0) {
+        const fileMap = new Map<string, typeof dueCards>();
+        for (const dc of dueCards) {
+          const list = fileMap.get(dc.file_path) || [];
+          list.push(dc);
+          fileMap.set(dc.file_path, list);
+        }
+
+        for (const [filePath, duelist] of fileMap) {
+          try {
+            const content = await readFile(filePath);
+            const subjectMatch = content.match(/^subject:\s*(.+)$/m);
+            const topicMatch = content.match(/^topic:\s*(.+)$/m);
+            const subject = subjectMatch?.[1]?.trim() || "";
+            const topic = topicMatch?.[1]?.trim() || "";
+
+            const fileCards = parseFlashcards(content, filePath, subject, topic);
+            const dueIds = new Set(duelist.map((d) => d.card_id));
+            allCards.push(...fileCards.filter((c) => dueIds.has(c.id)));
+          } catch { /* skip */ }
+        }
       }
 
-      const fileMap = new Map<string, typeof dueCards>();
-      for (const dc of dueCards) {
-        const list = fileMap.get(dc.file_path) || [];
-        list.push(dc);
-        fileMap.set(dc.file_path, list);
-      }
-
-      const allCards: Flashcard[] = [];
-      for (const [filePath, duelist] of fileMap) {
-        try {
-          const content = await readFile(filePath);
-          const subjectMatch = content.match(/^subject:\s*(.+)$/m);
-          const topicMatch = content.match(/^topic:\s*(.+)$/m);
-          const subject = subjectMatch?.[1]?.trim() || "";
-          const topic = topicMatch?.[1]?.trim() || "";
-
-          const fileCards = parseFlashcards(content, filePath, subject, topic);
-          const dueIds = new Set(duelist.map((d) => d.card_id));
-          allCards.push(...fileCards.filter((c) => dueIds.has(c.id)));
-        } catch {
-          // Skip files that can't be read
+      // Fallback: scan files directly
+      if (allCards.length === 0) {
+        const subjects = await listSubjects();
+        const d = today();
+        for (const subj of subjects) {
+          try {
+            const files = await listFiles(subj.slug, "flashcards");
+            for (const f of files) {
+              try {
+                const content = await readFile(f.file_path);
+                const subjectMatch = content.match(/^subject:\s*(.+)$/m);
+                const topicMatch = content.match(/^topic:\s*(.+)$/m);
+                const cards = parseFlashcards(
+                  content, f.file_path,
+                  subjectMatch?.[1]?.trim() || subj.name,
+                  topicMatch?.[1]?.trim() || "",
+                );
+                allCards.push(...cards.filter((c) => !c.nextReview || c.nextReview <= d));
+              } catch { /* skip */ }
+            }
+          } catch { /* skip */ }
         }
       }
 
@@ -339,45 +333,53 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   revealAnswer: () => set({ showAnswer: true }),
 
   rateCard: async (rating) => {
-    const { cards, currentIndex } = get();
+    const { cards, currentIndex, sessionStats, requeueCount } = get();
     const card = cards[currentIndex];
     if (!card) return;
 
-    // Use FSRS (with auto-migration from SM-2)
+    // Track session stats
+    const statKey = rating as string;
+    const updatedStats = { ...sessionStats, total: sessionStats.total + 1 };
+    if (statKey === "again") updatedStats.again++;
+    else if (statKey === "hard") updatedStats.hard++;
+    else if (statKey === "good") updatedStats.good++;
+    else if (statKey === "easy") updatedStats.easy++;
+
+    // Use FSRS
     const fsrsCard = getCardFSRS(card);
     const fsrsRating = fsrsRatingFromButton(rating);
     const elapsed = elapsedDays(card.lastReviewed);
-    const { interval: newInterval, card: newFSRS } = fsrs(
-      fsrsCard,
-      fsrsRating,
-      elapsed,
-    );
+    const { interval: newInterval, card: newFSRS } = fsrs(fsrsCard, fsrsRating, elapsed);
     const nextReview = addDays(newInterval);
     const reviewDate = today();
 
-    // Update DB schedule
-    await updateCardSchedule(
-      card.id,
-      card.filePath,
-      nextReview,
-      newInterval,
-      newFSRS.stability,
-      reviewDate,
-    );
-
-    // Update the markdown file with FSRS fields
+    // Update DB + file
+    await updateCardSchedule(card.id, card.filePath, nextReview, newInterval, newFSRS.stability, reviewDate);
     await updateCardInFile(card, newInterval, newFSRS);
 
-    // Advance to next card
+    // Requeue logic: "Again" cards come back at end of session (max 2 times)
+    const updatedCards = [...cards];
+    if (rating === "again") {
+      const timesRequeued = requeueCount.get(card.id) || 0;
+      if (timesRequeued < 2) {
+        // Add card back to end of queue
+        updatedCards.push({ ...card });
+        const newRequeueCount = new Map(requeueCount);
+        newRequeueCount.set(card.id, timesRequeued + 1);
+        set({ requeueCount: newRequeueCount });
+      }
+    }
+
+    // Advance
     const nextIndex = currentIndex + 1;
-    if (nextIndex >= cards.length) {
-      set({ sessionComplete: true, showAnswer: false });
+    if (nextIndex >= updatedCards.length) {
+      set({ cards: updatedCards, sessionComplete: true, showAnswer: false, sessionStats: updatedStats });
     } else {
-      set({ currentIndex: nextIndex, showAnswer: false });
+      set({ cards: updatedCards, currentIndex: nextIndex, showAnswer: false, sessionStats: updatedStats });
     }
   },
 
-  createCard: async (subject, topic, question, answer, bloom) => {
+  createCard: async (subject, topic, question, answer, bloom, cardType = "basic") => {
     const subjectSlug = slugify(subject);
     const topicSlug = slugify(topic || "general");
     const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
@@ -386,39 +388,74 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     let content: string;
     try {
       content = await readFile(filePath);
-      // Append new card to existing file
-      content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom) + "\n";
+      content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom, cardType) + "\n";
     } catch {
-      // File doesn't exist — create with frontmatter
       const now = new Date().toISOString().split(".")[0];
       content = [
-        "---",
-        `subject: ${subject}`,
-        `topic: ${topic || "General"}`,
-        "type: flashcard",
-        `created_at: ${now}`,
-        "---",
-        "",
-        formatCardBlock(cardId, question, answer, bloom),
-        "",
+        "---", `subject: ${subject}`, `topic: ${topic || "General"}`,
+        "type: flashcard", `created_at: ${now}`, "---", "",
+        formatCardBlock(cardId, question, answer, bloom, cardType), "",
       ].join("\n");
     }
 
     await writeFile(filePath, content);
-
-    // Schedule in DB — due today for immediate first review
     await updateCardSchedule(cardId, filePath, today(), 0, 2.5, "");
 
-    // Refresh due count
+    // For reversed cards, also create the flipped version
+    if (cardType === "reversed") {
+      const reverseId = `fc-${Date.now() + 1}`;
+      content = await readFile(filePath);
+      content = content.trimEnd() + "\n\n" + formatCardBlock(reverseId, answer, question, bloom, "reversed") + "\n";
+      await writeFile(filePath, content);
+      await updateCardSchedule(reverseId, filePath, today(), 0, 2.5, "");
+    }
+
     const count = await getDueCount();
     set({ dueCount: count });
   },
 
+  loadAllCardsForReview: async (subjectFilter) => {
+    set({ loading: true, sessionStats: { ...emptyStats }, requeueCount: new Map() });
+    try {
+      const subjects = await listSubjects();
+      const all: Flashcard[] = [];
+      for (const subj of subjects) {
+        try {
+          const files = await listFiles(subj.slug, "flashcards");
+          for (const f of files) {
+            try {
+              const content = await readFile(f.file_path);
+              const subjectMatch = content.match(/^subject:\s*(.+)$/m);
+              const topicMatch = content.match(/^topic:\s*(.+)$/m);
+              const cards = parseFlashcards(
+                content, f.file_path,
+                subjectMatch?.[1]?.trim() || subj.name,
+                topicMatch?.[1]?.trim() || "",
+              );
+              all.push(...cards);
+            } catch { /* skip */ }
+          }
+        } catch { /* skip */ }
+      }
+      const filtered = subjectFilter
+        ? all.filter((c) => c.subject === subjectFilter)
+        : all;
+      set({
+        cards: filtered,
+        currentIndex: 0,
+        showAnswer: false,
+        loading: false,
+        sessionComplete: filtered.length === 0,
+      });
+    } catch {
+      set({ loading: false });
+    }
+  },
+
   resetSession: () =>
     set({
-      cards: [],
-      currentIndex: 0,
-      showAnswer: false,
-      sessionComplete: false,
+      cards: [], currentIndex: 0, showAnswer: false,
+      sessionComplete: false, sessionStats: { ...emptyStats },
+      requeueCount: new Map(),
     }),
 }));

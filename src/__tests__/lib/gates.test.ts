@@ -39,6 +39,9 @@ describe("formatDigestionMarkdown", () => {
         prompt: "Explain what you just read in one sentence.",
         response: "2NF removes partial dependencies.",
         feedback: null,
+        mastery: null,
+        followUp: null,
+        followUpResponse: null,
         timestamp: "2026-03-21 7:12pm",
       },
     ];
@@ -62,6 +65,9 @@ describe("formatDigestionMarkdown", () => {
         prompt: "How does this relate?",
         response: "Like my store inventory.",
         feedback: "Good connection!",
+        mastery: null,
+        followUp: null,
+        followUpResponse: null,
         timestamp: "2026-03-21",
       },
     ];

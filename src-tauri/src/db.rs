@@ -100,6 +100,19 @@ impl Database {
         Ok(())
     }
 
+    /// Remove all DB entries for files matching a path prefix (e.g. "subjects/my-subject/")
+    pub fn remove_files_by_prefix(&self, prefix: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let pattern = format!("{}%", prefix);
+        conn.execute("DELETE FROM vault_fts WHERE file_path LIKE ?1", params![pattern])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM file_index WHERE file_path LIKE ?1", params![pattern])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM sr_schedule WHERE file_path LIKE ?1", params![pattern])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Full-text search across the vault
     pub fn search(&self, query: &str) -> Result<Vec<SearchResult>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;

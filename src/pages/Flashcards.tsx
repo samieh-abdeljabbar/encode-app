@@ -20,6 +20,7 @@ function NewCardForm() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [bloom, setBloom] = useState(2);
+  const [cardType, setCardType] = useState<"basic" | "cloze" | "reversed">("basic");
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
   const { createCard } = useFlashcardStore();
@@ -40,13 +41,27 @@ function NewCardForm() {
   }
 
   const handleSave = async () => {
-    if (!subject || !question.trim() || !answer.trim()) return;
-    await createCard(subject, topic || "General", question.trim(), answer.trim(), bloom);
+    if (!subject) return;
+    if (cardType === "cloze") {
+      if (!question.trim() || !question.includes("{{")) return;
+      // Extract answer from {{brackets}}
+      const match = question.match(/\{\{(.+?)\}\}/);
+      const clozeAnswer = match ? match[1] : "";
+      await createCard(subject, topic || "General", question.trim(), clozeAnswer, bloom, "cloze");
+    } else {
+      if (!question.trim() || !answer.trim()) return;
+      await createCard(subject, topic || "General", question.trim(), answer.trim(), bloom, cardType);
+    }
     setQuestion("");
     setAnswer("");
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  // Cloze preview
+  const clozePreview = cardType === "cloze" && question.includes("{{")
+    ? question.replace(/\{\{.+?\}\}/g, "___")
+    : null;
 
   return (
     <div className="p-4 bg-surface border border-purple/40 rounded-lg">
@@ -54,6 +69,29 @@ function NewCardForm() {
         <p className="text-xs text-purple font-medium">New Flashcard</p>
         <button onClick={() => setOpen(false)} className="text-xs text-text-muted hover:text-text">Close</button>
       </div>
+
+      {/* Card type picker */}
+      <div className="flex gap-1.5 mb-3">
+        {([
+          { id: "basic" as const, label: "Basic Q&A", desc: "Free recall" },
+          { id: "cloze" as const, label: "Cloze", desc: "Fill-in-blank" },
+          { id: "reversed" as const, label: "Reversed", desc: "Creates both directions" },
+        ]).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setCardType(t.id)}
+            className={`flex-1 py-1.5 text-xs rounded border transition-colors ${
+              cardType === t.id
+                ? "border-purple bg-purple/10 text-purple"
+                : "border-border text-text-muted hover:border-purple/30"
+            }`}
+          >
+            <span className="font-medium">{t.label}</span>
+            <span className="block text-[10px] opacity-60">{t.desc}</span>
+          </button>
+        ))}
+      </div>
+
       <select
         value={subject}
         onChange={(e) => setSubject(e.target.value)}
@@ -71,20 +109,39 @@ function NewCardForm() {
         placeholder="Topic (e.g. Normalization)..."
         className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
       />
-      <textarea
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="Question..."
-        rows={2}
-        className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
-      />
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="Answer..."
-        rows={3}
-        className="w-full mb-3 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
-      />
+
+      {cardType === "cloze" ? (
+        <>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Type sentence with {{key term}} in double braces..."
+            rows={3}
+            className="w-full mb-1 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+          />
+          {clozePreview && (
+            <p className="text-xs text-text-muted mb-3 px-1">Preview: {clozePreview}</p>
+          )}
+        </>
+      ) : (
+        <>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder={cardType === "reversed" ? "Term or concept..." : "Question..."}
+            rows={2}
+            className="w-full mb-2 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+          />
+          <textarea
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder={cardType === "reversed" ? "Definition or explanation..." : "Answer..."}
+            rows={3}
+            className="w-full mb-3 px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+          />
+        </>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
           <span className="text-xs text-text-muted mr-1">Bloom:</span>
@@ -100,10 +157,10 @@ function NewCardForm() {
         </div>
         <button
           onClick={handleSave}
-          disabled={!subject || !question.trim() || !answer.trim()}
+          disabled={!subject || !question.trim() || (cardType !== "cloze" && !answer.trim())}
           className="px-4 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90 disabled:opacity-30"
         >
-          Save Card
+          {cardType === "reversed" ? "Save Both Cards" : "Save Card"}
         </button>
       </div>
       {saved && <p className="text-xs text-teal mt-2">Card saved!</p>}
@@ -111,11 +168,16 @@ function NewCardForm() {
   );
 }
 
-function SubjectDashboard({ onStartReview }: { onStartReview: (subject?: string) => void }) {
+function SubjectDashboard({ onStartReview, onStudyAll }: {
+  onStartReview: (subject?: string) => void;
+  onStudyAll: (subject?: string) => void;
+}) {
   const { allCards, loading, loadAllCards } = useFlashcardStore();
+  const [vaultSubjects, setVaultSubjects] = useState<Subject[]>([]);
 
   useEffect(() => {
     loadAllCards();
+    listSubjects().then(setVaultSubjects).catch(() => {});
   }, [loadAllCards]);
 
   if (loading) {
@@ -125,6 +187,12 @@ function SubjectDashboard({ onStartReview }: { onStartReview: (subject?: string)
   // Group by subject
   const subjects = new Map<string, { total: number; due: number; nextReview: string }>();
   const todayStr = new Date().toISOString().split("T")[0];
+
+  // Start with all vault subjects (so 0-card subjects show)
+  for (const vs of vaultSubjects) {
+    subjects.set(vs.name, { total: 0, due: 0, nextReview: "9999" });
+  }
+
   for (const c of allCards) {
     const key = c.subject || "Unknown";
     const existing = subjects.get(key) || { total: 0, due: 0, nextReview: "9999" };
@@ -136,50 +204,70 @@ function SubjectDashboard({ onStartReview }: { onStartReview: (subject?: string)
 
   const totalDue = allCards.filter((c) => c.nextReview <= todayStr).length;
 
-  if (subjects.size === 0) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-text-muted mb-2">No flashcards yet.</p>
-        <p className="text-text-muted text-sm">Create cards from the Reader while studying.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3 pb-6">
+      {subjects.size === 0 && (
+        <div className="text-center py-8">
+          <p className="text-text-muted mb-2">No flashcards yet.</p>
+          <p className="text-text-muted text-sm">Create your first card below, or cards are auto-created from quizzes.</p>
+        </div>
+      )}
+
       {Array.from(subjects.entries()).map(([name, data]) => (
         <div key={name} className="bg-surface rounded-lg border border-border p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-text">{name}</p>
               <p className="text-xs text-text-muted mt-0.5">
-                {data.total} cards
+                {data.total} card{data.total !== 1 ? "s" : ""}
                 {data.due > 0 && <span className="text-coral ml-2">{data.due} due</span>}
                 {data.due === 0 && data.nextReview !== "9999" && (
                   <span className="ml-2">Next: {data.nextReview}</span>
                 )}
               </p>
             </div>
-            {data.due > 0 && (
+            <div className="flex gap-2">
               <button
-                onClick={() => onStartReview(name)}
-                className="px-3 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90"
+                onClick={() => onStudyAll(name)}
+                className="px-3 py-1.5 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple/50 transition-colors"
               >
-                Review ({data.due})
+                Study All
               </button>
-            )}
+              {data.due > 0 && (
+                <button
+                  onClick={() => onStartReview(name)}
+                  className="px-3 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90"
+                >
+                  Review ({data.due})
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ))}
 
-      {totalDue > 0 && (
-        <button
-          onClick={() => onStartReview()}
-          className="w-full py-3 bg-purple text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
-        >
-          Review All Subjects ({totalDue} due)
-        </button>
-      )}
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        {totalDue > 0 && (
+          <button
+            onClick={() => onStartReview()}
+            className="flex-1 py-3 bg-purple text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+          >
+            Review Due ({totalDue})
+          </button>
+        )}
+        {allCards.length > 0 && (
+          <button
+            onClick={() => onStudyAll()}
+            className="flex-1 py-3 text-text-muted border border-border rounded-lg font-medium hover:text-text hover:border-purple/50 transition-colors"
+          >
+            Study All ({allCards.length})
+          </button>
+        )}
+      </div>
+
+      {/* New Card form */}
+      <NewCardForm />
     </div>
   );
 }
@@ -274,6 +362,7 @@ export default function FlashcardsPage() {
     dueCount,
     loadDueCards,
     loadDueCount,
+    loadAllCardsForReview,
     revealAnswer,
     rateCard,
     resetSession,
@@ -296,7 +385,10 @@ export default function FlashcardsPage() {
           <button onClick={() => setTab("browse")} className="text-sm text-text-muted hover:text-text">All Cards</button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <SubjectDashboard onStartReview={() => { setTab("review"); loadDueCards(); }} />
+          <SubjectDashboard
+            onStartReview={() => { setTab("review"); loadDueCards(); }}
+            onStudyAll={(subject) => { setTab("review"); loadAllCardsForReview(subject); }}
+          />
         </div>
       </div>
     );
@@ -326,6 +418,9 @@ export default function FlashcardsPage() {
   }
 
   if (sessionComplete) {
+    const stats = useFlashcardStore.getState().sessionStats;
+    const hasStats = stats.total > 0;
+
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
@@ -337,12 +432,33 @@ export default function FlashcardsPage() {
           <div className="max-w-md w-full px-8">
             <div className="text-center mb-8">
               <p className="text-teal text-lg font-medium mb-2">
-                {cards.length > 0
-                  ? `Review complete! ${cards.length} cards reviewed.`
+                {hasStats
+                  ? `Review complete! ${stats.total} cards reviewed.`
                   : "No cards due for review."}
               </p>
+
+              {/* Session stats breakdown */}
+              {hasStats && (
+                <div className="my-6">
+                  {/* Stats bar */}
+                  <div className="flex h-3 rounded overflow-hidden mb-3">
+                    {stats.again > 0 && <div className="bg-coral" style={{ width: `${(stats.again / stats.total) * 100}%` }} />}
+                    {stats.hard > 0 && <div className="bg-amber" style={{ width: `${(stats.hard / stats.total) * 100}%` }} />}
+                    {stats.good > 0 && <div className="bg-teal" style={{ width: `${(stats.good / stats.total) * 100}%` }} />}
+                    {stats.easy > 0 && <div className="bg-purple" style={{ width: `${(stats.easy / stats.total) * 100}%` }} />}
+                  </div>
+                  {/* Stats legend */}
+                  <div className="flex justify-center gap-4 text-xs">
+                    {stats.again > 0 && <span className="text-coral">Again: {stats.again}</span>}
+                    {stats.hard > 0 && <span className="text-amber">Hard: {stats.hard}</span>}
+                    {stats.good > 0 && <span className="text-teal">Good: {stats.good}</span>}
+                    {stats.easy > 0 && <span className="text-purple">Easy: {stats.easy}</span>}
+                  </div>
+                </div>
+              )}
+
               <p className="text-text-muted text-sm mb-4">
-                {cards.length > 0
+                {hasStats
                   ? "Great work — your memory traces are stronger now."
                   : "Browse your cards or create new ones in the All Cards tab."}
               </p>
@@ -430,13 +546,31 @@ export default function FlashcardsPage() {
             <span className="text-xs px-2 py-1 bg-purple/20 text-purple rounded">
               Bloom {card.bloom}
             </span>
+            {card.cardType && card.cardType !== "basic" && (
+              <span className="text-xs px-2 py-1 bg-teal/20 text-teal rounded capitalize">
+                {card.cardType}
+              </span>
+            )}
           </div>
 
-          {/* Question */}
+          {/* Question display — varies by card type */}
           <div className="mb-8">
-            <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
-              {card.question}
-            </p>
+            {card.cardType === "cloze" ? (
+              <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                {card.question.replace(/\{\{.+?\}\}/g, "___")}
+              </p>
+            ) : card.cardType === "reversed" ? (
+              <>
+                <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
+                <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                  {card.question}
+                </p>
+              </>
+            ) : (
+              <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                {card.question}
+              </p>
+            )}
           </div>
 
           {/* Answer area */}
@@ -445,7 +579,7 @@ export default function FlashcardsPage() {
               onClick={revealAnswer}
               className="w-full py-3 bg-purple text-white rounded font-medium hover:opacity-90 transition-opacity"
             >
-              Show Answer
+              {card.cardType === "cloze" ? "Reveal Answer" : "Show Answer"}
             </button>
           ) : (
             <div>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { EditorView } from "@codemirror/view";
 import SlashMenu from "../components/shared/SlashMenu";
 import MarkdownEditor from "../components/shared/MarkdownEditor";
+import EditorToolbar from "../components/shared/EditorToolbar";
 import { useVaultStore } from "../stores/vault";
 import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
@@ -15,7 +17,30 @@ export default function VaultPage() {
   const [editContent, setEditContent] = useState("");
   const [saved, setSaved] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const cmViewRef = useRef<EditorView | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleInsert = useCallback((text: string) => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const pos = view.state.selection.main.head;
+    view.dispatch({ changes: { from: pos, insert: text } });
+    view.focus();
+  }, []);
+
+  const handleWrap = useCallback((before: string, after: string) => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    if (from < to) {
+      const selected = view.state.sliceDoc(from, to);
+      view.dispatch({ changes: { from, to, insert: before + selected + after } });
+    } else {
+      view.dispatch({ changes: { from, insert: before + after } });
+      view.dispatch({ selection: { anchor: from + before.length } });
+    }
+    view.focus();
+  }, []);
 
   // Load file content whenever selectedFile changes
   useEffect(() => {
@@ -203,6 +228,11 @@ export default function VaultPage() {
               );
             })()}
 
+            {/* Toolbar (CM6 mode only) */}
+            {!sourceMode && (
+              <EditorToolbar onInsert={handleInsert} onWrap={handleWrap} />
+            )}
+
             {/* Content area */}
             <div className="flex-1 overflow-y-auto">
               {sourceMode ? (
@@ -225,6 +255,7 @@ export default function VaultPage() {
                 <MarkdownEditor
                   value={editContent}
                   onChange={handleEditChange}
+                  onEditorReady={(view) => { cmViewRef.current = view; }}
                 />
               )}
             </div>

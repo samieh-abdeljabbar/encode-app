@@ -102,6 +102,26 @@ pub fn create_subject_dir(vault_path: &Path, name: &str) -> Result<String, Strin
     Ok(slug)
 }
 
+/// Delete a subject and all its contents
+pub fn delete_subject(vault_path: &Path, slug: &str) -> Result<(), String> {
+    if slug.is_empty() || slug.contains("..") {
+        return Err("Invalid subject slug".to_string());
+    }
+    let subject_path = vault_path.join("subjects").join(slug);
+    let canonical = subject_path
+        .canonicalize()
+        .map_err(|_| "Subject not found".to_string())?;
+    let vault_canonical = vault_path
+        .canonicalize()
+        .map_err(|e| format!("Vault path error: {}", e))?;
+    if !canonical.starts_with(&vault_canonical) {
+        return Err("Path traversal denied".to_string());
+    }
+    fs::remove_dir_all(&canonical)
+        .map_err(|e| format!("Failed to delete subject: {}", e))?;
+    Ok(())
+}
+
 /// List all subjects in the vault
 pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
     let subjects_dir = vault_path.join("subjects");

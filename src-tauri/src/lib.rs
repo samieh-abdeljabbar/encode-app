@@ -34,6 +34,10 @@ pub struct AppConfig {
     pub ollama_model: String,
     pub ollama_url: String,
     pub api_key: String,
+    // User profile for personalized AI
+    pub user_role: String,
+    pub user_hobbies: String,
+    pub user_learning_style: String,
 }
 
 // === Tauri Commands ===
@@ -143,6 +147,9 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
         ollama_model: "llama3.1:8b".to_string(),
         ollama_url: "http://localhost:11434".to_string(),
         api_key: String::new(),
+        user_role: String::new(),
+        user_hobbies: String::new(),
+        user_learning_style: String::new(),
     };
 
     for line in content.lines() {
@@ -155,6 +162,12 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
             config.ollama_url = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("api_key =") {
             config.api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_role =") {
+            config.user_role = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_hobbies =") {
+            config.user_hobbies = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_learning_style =") {
+            config.user_learning_style = val.trim().trim_matches('"').to_string();
         }
     }
 
@@ -173,11 +186,19 @@ provider = "{}"
 ollama_model = "{}"
 ollama_url = "{}"
 api_key = "{}"
+
+[profile]
+user_role = "{}"
+user_hobbies = "{}"
+user_learning_style = "{}"
 "#,
         escape_toml_string(&config.ai_provider),
         escape_toml_string(&config.ollama_model),
         escape_toml_string(&config.ollama_url),
         escape_toml_string(&config.api_key),
+        escape_toml_string(&config.user_role),
+        escape_toml_string(&config.user_hobbies),
+        escape_toml_string(&config.user_learning_style),
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
@@ -187,6 +208,15 @@ api_key = "{}"
 #[tauri::command]
 fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<String, String> {
     vault::create_subject_dir(&state.vault_path, &name)
+}
+
+#[tauri::command]
+fn delete_subject(state: tauri::State<'_, AppState>, slug: String) -> Result<(), String> {
+    vault::delete_subject(&state.vault_path, &slug)?;
+    // Clean up DB entries for this subject's files
+    let prefix = format!("subjects/{}/", slug);
+    state.db.remove_files_by_prefix(&prefix)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -419,6 +449,7 @@ pub fn run() {
     let watcher = indexer::start_watcher(vault_path.clone(), Arc::clone(&db)).ok();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -449,6 +480,7 @@ pub fn run() {
             get_config,
             save_config,
             create_subject,
+            delete_subject,
             import_url,
             rebuild_index,
             check_ollama,

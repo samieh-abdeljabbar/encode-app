@@ -1,44 +1,61 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { FilePlus, FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, FileText, BookOpen, Layers, Brain, Map, Pencil, Trash2 } from "lucide-react";
+import { FolderPlus, ChevronsDownUp, ChevronRight, ChevronDown, BookOpen, Layers, Brain, Pencil, Trash2 } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
 import { useQuizStore } from "../../stores/quiz";
-import { writeFile, deleteFile, renameFile } from "../../lib/tauri";
+import { writeFile, deleteFile, deleteSubject, renameFile, listFiles } from "../../lib/tauri";
+import type { FileEntry } from "../../lib/types";
 import ContextMenu from "../shared/ContextMenu";
+
+/** Section inside a subject (Chapters, Flashcards, Quizzes) */
+interface SubjectSection {
+  key: string;
+  label: string;
+  icon: typeof BookOpen;
+  color: string;
+  fileType: string;
+  files: FileEntry[];
+}
 
 export default function VaultBrowser() {
   const navigate = useNavigate();
   const location = useLocation();
   const {
     subjects,
-    files,
     loading,
     error,
     loadSubjects,
-    loadFiles,
     selectFile,
     selectedFile,
     createSubject,
   } = useVaultStore();
-  const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+
+  // Multi-expand: Set of expanded subject slugs
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(() => new Set());
+  // Per-subject section files
+  const [subjectSections, setSubjectSections] = useState<globalThis.Map<string, SubjectSection[]>>(() => new globalThis.Map());
+  // Collapsed sections within subjects (e.g. "d426-data-management:flashcards")
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
 
   const handleFileClick = (path: string) => {
     selectFile(path);
     if (location.pathname !== "/vault") navigate("/vault");
   };
+
   const [creatingSubject, setCreatingSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState("");
-  const [creatingFile, setCreatingFile] = useState(false);
+  const [creatingFileIn, setCreatingFileIn] = useState<string | null>(null); // "slug:chapters"
   const [newFileName, setNewFileName] = useState("");
   const [confirmDeleteFile, setConfirmDeleteFile] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; type: "file" | "subject" } | null>(null);
+  const [confirmDeleteSubject, setConfirmDeleteSubject] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; type: "file" | "subject"; slug?: string } | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
-  const handleContextMenu = (e: React.MouseEvent, path: string, type: "file" | "subject") => {
+  const handleContextMenu = (e: React.MouseEvent, path: string, type: "file" | "subject", slug?: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, path, type });
+    setContextMenu({ x: e.clientX, y: e.clientY, path, type, slug });
   };
 
   const handleRename = async () => {
@@ -49,7 +66,10 @@ export default function VaultBrowser() {
     try {
       await renameFile(renamingPath, newPath);
       loadSubjects();
-      if (expandedSubject) loadFiles(expandedSubject);
+      // Reload sections for affected subjects
+      for (const slug of expandedSubjects) {
+        loadSections(slug);
+      }
     } catch (e) {
       console.error("Rename failed:", e);
     }
@@ -67,14 +87,39 @@ export default function VaultBrowser() {
     return () => clearTimeout(timer);
   }, [confirmDeleteFile]);
 
-  const handleSubjectClick = (slug: string) => {
-    if (expandedSubject === slug) {
-      setExpandedSubject(null);
-    } else {
-      setExpandedSubject(slug);
-      loadFiles(slug);
+  useEffect(() => {
+    if (confirmDeleteSubject === null) return;
+    const timer = setTimeout(() => setConfirmDeleteSubject(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmDeleteSubject]);
+
+  const loadSections = async (slug: string) => {
+    const sections: SubjectSection[] = [
+      { key: "chapters", label: "Chapters", icon: BookOpen, color: "text-purple", fileType: "chapters", files: [] },
+      { key: "flashcards", label: "Flashcards", icon: Layers, color: "text-teal", fileType: "flashcards", files: [] },
+      { key: "quizzes", label: "Quizzes", icon: Brain, color: "text-amber", fileType: "quizzes", files: [] },
+    ];
+
+    for (const section of sections) {
+      try {
+        section.files = await listFiles(slug, section.fileType);
+      } catch { /* no files */ }
     }
-    setCreatingFile(false);
+
+    setSubjectSections((prev) => new globalThis.Map(prev).set(slug, sections));
+  };
+
+  const handleSubjectClick = (slug: string) => {
+    setExpandedSubjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) {
+        next.delete(slug);
+      } else {
+        next.add(slug);
+        loadSections(slug);
+      }
+      return next;
+    });
   };
 
   const handleCreateSubject = async () => {
@@ -85,26 +130,26 @@ export default function VaultBrowser() {
     setCreatingSubject(false);
   };
 
-  const handleCreateFile = async () => {
+  const handleCreateFile = async (slug: string, fileType: string) => {
     const name = newFileName.trim();
-    if (!name || !expandedSubject) return;
+    if (!name) return;
 
-    const slug = name.replace(/\s+/g, "-").toLowerCase();
-    const subjectName = subjects.find(
-      (s) => s.slug === expandedSubject,
-    )?.name;
+    const fileSlug = name.replace(/\s+/g, "-").toLowerCase();
+    const subjectName = subjects.find((s) => s.slug === slug)?.name;
     const now = new Date().toISOString().slice(0, 19);
-    const content = `---\nsubject: ${subjectName ?? expandedSubject}\ntopic: ${name}\ntype: chapter\ncreated_at: ${now}\nstatus: unread\n---\n\n# ${name}\n\n`;
-    const path = `subjects/${expandedSubject}/chapters/${slug}.md`;
+
+    const type = fileType === "flashcards" ? "flashcard" : fileType === "quizzes" ? "quiz" : "chapter";
+    const content = `---\nsubject: ${subjectName ?? slug}\ntopic: ${name}\ntype: ${type}\ncreated_at: ${now}\nstatus: unread\n---\n\n# ${name}\n\n`;
+    const path = `subjects/${slug}/${fileType}/${fileSlug}.md`;
 
     await writeFile(path, content);
     setNewFileName("");
-    setCreatingFile(false);
-    loadFiles(expandedSubject);
+    setCreatingFileIn(null);
+    loadSections(slug);
     selectFile(path);
   };
 
-  const handleDeleteFile = async (filePath: string, e: React.MouseEvent) => {
+  const handleDeleteFile = async (filePath: string, slug: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirmDeleteFile !== filePath) {
       setConfirmDeleteFile(filePath);
@@ -113,16 +158,41 @@ export default function VaultBrowser() {
     setConfirmDeleteFile(null);
     try {
       await deleteFile(filePath);
-      if (selectedFile === filePath) {
-        selectFile(null);
-      }
-      if (expandedSubject) {
-        loadFiles(expandedSubject);
-        loadSubjects();
-      }
+      if (selectedFile === filePath) selectFile(null);
+      loadSections(slug);
+      loadSubjects();
     } catch (err) {
       console.error("Delete failed:", err);
     }
+  };
+
+  const handleDeleteSubject = async (slug: string) => {
+    if (confirmDeleteSubject !== slug) {
+      setConfirmDeleteSubject(slug);
+      return;
+    }
+    setConfirmDeleteSubject(null);
+    try {
+      await deleteSubject(slug);
+      setExpandedSubjects((prev) => {
+        const next = new Set(prev);
+        next.delete(slug);
+        return next;
+      });
+      selectFile(null);
+      loadSubjects();
+    } catch (err) {
+      console.error("Delete subject failed:", err);
+    }
+  };
+
+  const toggleSection = (key: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   if (error) {
@@ -133,211 +203,179 @@ export default function VaultBrowser() {
     <div>
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border mb-1">
-        <button
-          onClick={() => setCreatingFile(true)}
-          title="New note"
-          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
-        >
-          <FilePlus size={14} />
-        </button>
-        <button
-          onClick={() => setCreatingSubject(true)}
-          title="New subject folder"
-          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors"
-        >
+        <button onClick={() => setCreatingSubject(true)} title="New subject folder"
+          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors">
           <FolderPlus size={14} />
         </button>
         <div className="flex-1" />
-        <button
-          onClick={() => setExpandedSubject(null)}
-          title="Collapse all folders"
-          className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
-        >
+        <button onClick={() => setExpandedSubjects(new Set())} title="Collapse all folders"
+          className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors">
           <ChevronsDownUp size={14} />
         </button>
       </div>
 
       {subjects.length === 0 && !loading && !creatingSubject && (
-        <p className="text-text-muted text-sm">
-          No subjects yet. Create one below.
-        </p>
+        <p className="text-text-muted text-sm px-2">No subjects yet. Create one below.</p>
       )}
 
-      {subjects.map((subject) => (
-        <div key={subject.slug} className="mb-1">
-          <button
-            onClick={() => handleSubjectClick(subject.slug)}
-            onContextMenu={(e) => handleContextMenu(e, `subjects/${subject.slug}`, "subject")}
-            className="w-full text-left px-2 py-1.5 text-sm hover:bg-surface-2 rounded flex items-center gap-1.5"
-          >
-            {expandedSubject === subject.slug ? (
-              <ChevronDown size={14} className="text-text-muted shrink-0" />
-            ) : (
-              <ChevronRight size={14} className="text-text-muted shrink-0" />
-            )}
-            <span
-              className={`flex-1 truncate ${
-                expandedSubject === subject.slug ? "text-text" : "text-text-muted"
-              }`}
+      {subjects.map((subject) => {
+        const isExpanded = expandedSubjects.has(subject.slug);
+        const sections = subjectSections.get(subject.slug) || [];
+
+        return (
+          <div key={subject.slug} className="mb-0.5">
+            {/* Subject header */}
+            <button
+              onClick={() => handleSubjectClick(subject.slug)}
+              onContextMenu={(e) => handleContextMenu(e, `subjects/${subject.slug}`, "subject", subject.slug)}
+              className="w-full text-left px-2 py-1.5 text-sm hover:bg-surface-2 rounded flex items-center gap-1.5 group"
             >
-              {subject.name}
-            </span>
-            <span className="text-[10px] text-text-muted shrink-0">
-              {subject.chapter_count}
-            </span>
-          </button>
-
-          {/* Subject actions */}
-          {expandedSubject === subject.slug && (
-            <div className="ml-6 mb-1 flex gap-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  useQuizStore.getState().generateSubjectQuiz(subject.slug, subject.name);
-                  navigate("/quiz");
-                }}
-                className="text-[10px] text-amber hover:text-text transition-colors"
-              >
-                Quiz All
-              </button>
-            </div>
-          )}
-
-          {expandedSubject === subject.slug && (
-            <div className="ml-4 border-l border-border pl-2">
-              {loading ? (
-                <p className="text-xs text-text-muted py-1 px-2">Loading...</p>
-              ) : files.length === 0 ? (
-                <p className="text-xs text-text-muted py-1 px-2">No files</p>
+              {isExpanded ? (
+                <ChevronDown size={14} className="text-text-muted shrink-0" />
               ) : (
-                files.map((file) => {
-                  // Determine file type from path
-                  const pathParts = file.file_path.split("/");
-                  const typeFolder = pathParts.find((p) =>
-                    ["chapters", "flashcards", "quizzes", "teach-backs", "maps"].includes(p)
-                  ) || "";
-                  const TypeIcon = typeFolder === "chapters" ? BookOpen
-                    : typeFolder === "flashcards" ? Layers
-                    : typeFolder === "quizzes" ? Brain
-                    : typeFolder === "teach-backs" ? FileText
-                    : typeFolder === "maps" ? Map : FileText;
-                  const typeColor = typeFolder === "chapters" ? "text-purple"
-                    : typeFolder === "flashcards" ? "text-teal"
-                    : typeFolder === "quizzes" ? "text-amber"
-                    : "text-text-muted";
-
-                  return (
-                  <div
-                    key={file.file_path}
-                    className="group flex items-center"
-                  >
-                    <button
-                      onClick={() => handleFileClick(file.file_path)}
-                      onContextMenu={(e) => handleContextMenu(e, file.file_path, "file")}
-                      className={`flex-1 text-left px-2 py-1 text-xs rounded truncate flex items-center gap-1.5 ${
-                        selectedFile === file.file_path
-                          ? "bg-surface-2 text-purple"
-                          : "text-text-muted hover:text-text hover:bg-surface-2"
-                      }`}
-                      title={file.file_path}
-                    >
-                      <TypeIcon size={13} className={`shrink-0 ${typeColor}`} />
-                      {file.file_path.split("/").pop()?.replace(".md", "") ??
-                        file.file_path}
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteFile(file.file_path, e)}
-                      onBlur={() => setConfirmDeleteFile(null)}
-                      className={`px-1 text-xs shrink-0 ${
-                        confirmDeleteFile === file.file_path
-                          ? "block text-coral"
-                          : "hidden group-hover:block text-text-muted hover:text-coral"
-                      }`}
-                      title={
-                        confirmDeleteFile === file.file_path
-                          ? "Click again to confirm delete"
-                          : "Delete file"
-                      }
-                    >
-                      {confirmDeleteFile === file.file_path ? "?" : "\u00d7"}
-                    </button>
-                  </div>
-                  );
-                })
+                <ChevronRight size={14} className="text-text-muted shrink-0" />
               )}
+              <span className={`flex-1 truncate ${isExpanded ? "text-text" : "text-text-muted"}`}>
+                {subject.name}
+              </span>
+              <span className="text-[10px] text-text-muted shrink-0">{subject.chapter_count}</span>
+            </button>
 
-              {/* Create file */}
-              {creatingFile ? (
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="File name..."
-                  value={newFileName}
-                  onChange={(e) => setNewFileName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCreateFile();
-                    if (e.key === "Escape") {
-                      setCreatingFile(false);
-                      setNewFileName("");
-                    }
-                  }}
-                  onBlur={() => {
-                    setCreatingFile(false);
-                    setNewFileName("");
-                  }}
-                  className="w-full px-2 py-1 mt-1 text-xs bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
-                />
-              ) : (
-                <div className="flex gap-1 mt-1">
+            {/* Expanded subject content */}
+            {isExpanded && (
+              <div className="ml-4 border-l border-border pl-1">
+                {/* Quick actions */}
+                <div className="flex items-center gap-2 px-2 py-1">
                   <button
-                    onClick={() => setCreatingFile(true)}
-                    className="text-[10px] text-purple hover:text-text transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      useQuizStore.getState().prepareSubjectQuiz(subject.slug, subject.name);
+                      navigate("/quiz");
+                    }}
+                    className="text-[10px] text-amber hover:text-text transition-colors"
                   >
-                    + Chapter
+                    Quiz All
                   </button>
-                  <span className="text-[10px] text-border">|</span>
                   <button
-                    onClick={() => setCreatingFile(true)}
-                    className="text-[10px] text-teal hover:text-text transition-colors"
+                    onClick={() => handleDeleteSubject(subject.slug)}
+                    className={`text-[10px] transition-colors ${
+                      confirmDeleteSubject === subject.slug
+                        ? "text-coral font-medium"
+                        : "text-text-muted hover:text-coral"
+                    }`}
                   >
-                    + Card
+                    {confirmDeleteSubject === subject.slug ? "Confirm Delete?" : "Delete Subject"}
                   </button>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
+
+                {/* Sections: Chapters, Flashcards, Quizzes */}
+                {sections.map((section) => {
+                  const sectionKey = `${subject.slug}:${section.key}`;
+                  const isCollapsed = collapsedSections.has(sectionKey);
+                  const SectionIcon = section.icon;
+
+                  return (
+                    <div key={section.key} className="mb-0.5">
+                      {/* Section header */}
+                      <button
+                        onClick={() => toggleSection(sectionKey)}
+                        className="w-full flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-surface-2 rounded transition-colors"
+                      >
+                        {isCollapsed ? <ChevronRight size={11} className="text-text-muted" /> : <ChevronDown size={11} className="text-text-muted" />}
+                        <SectionIcon size={12} className={section.color} />
+                        <span className="text-text-muted">{section.label}</span>
+                        <span className="text-[10px] text-text-muted ml-auto">{section.files.length}</span>
+                      </button>
+
+                      {/* Section files */}
+                      {!isCollapsed && (
+                        <div className="ml-4">
+                          {section.files.length === 0 && (
+                            <p className="text-[10px] text-text-muted px-2 py-0.5">Empty</p>
+                          )}
+                          {section.files.map((file) => (
+                            <div key={file.file_path} className="group flex items-center">
+                              <button
+                                onClick={() => handleFileClick(file.file_path)}
+                                onContextMenu={(e) => handleContextMenu(e, file.file_path, "file")}
+                                className={`flex-1 text-left px-2 py-1 text-xs rounded truncate flex items-center gap-1.5 ${
+                                  selectedFile === file.file_path
+                                    ? "bg-surface-2 text-purple"
+                                    : "text-text-muted hover:text-text hover:bg-surface-2"
+                                }`}
+                                title={file.file_path}
+                              >
+                                {file.file_path.split("/").pop()?.replace(".md", "")}
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteFile(file.file_path, subject.slug, e)}
+                                onBlur={() => setConfirmDeleteFile(null)}
+                                className={`px-1 text-xs shrink-0 ${
+                                  confirmDeleteFile === file.file_path
+                                    ? "block text-coral"
+                                    : "hidden group-hover:block text-text-muted hover:text-coral"
+                                }`}
+                                title={confirmDeleteFile === file.file_path ? "Click again to confirm" : "Delete"}
+                              >
+                                {confirmDeleteFile === file.file_path ? "?" : "\u00d7"}
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Create file in section */}
+                          {creatingFileIn === sectionKey ? (
+                            <input
+                              type="text" autoFocus placeholder={`New ${section.label.toLowerCase().slice(0, -1)}...`}
+                              value={newFileName}
+                              onChange={(e) => setNewFileName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleCreateFile(subject.slug, section.fileType);
+                                if (e.key === "Escape") { setCreatingFileIn(null); setNewFileName(""); }
+                              }}
+                              onBlur={() => { setCreatingFileIn(null); setNewFileName(""); }}
+                              className="w-full px-2 py-1 mt-0.5 text-xs bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
+                            />
+                          ) : (
+                            section.key === "chapters" && (
+                              <button
+                                onClick={() => setCreatingFileIn(sectionKey)}
+                                className={`text-[10px] px-2 py-0.5 ${section.color} hover:text-text transition-colors`}
+                              >
+                                + {section.label.slice(0, -1)}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* Create subject */}
       {creatingSubject ? (
         <input
-          type="text"
-          autoFocus
-          placeholder="Subject name..."
+          type="text" autoFocus placeholder="Subject name..."
           value={newSubjectName}
           onChange={(e) => setNewSubjectName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleCreateSubject();
-            if (e.key === "Escape") {
-              setCreatingSubject(false);
-              setNewSubjectName("");
-            }
+            if (e.key === "Escape") { setCreatingSubject(false); setNewSubjectName(""); }
           }}
-          onBlur={() => {
-            setCreatingSubject(false);
-            setNewSubjectName("");
-          }}
+          onBlur={() => { setCreatingSubject(false); setNewSubjectName(""); }}
           className="w-full px-3 py-2 mt-2 text-sm bg-surface-2 border border-border rounded text-text placeholder:text-text-muted focus:outline-none focus:border-purple"
         />
       ) : (
-        <button
-          onClick={() => setCreatingSubject(true)}
-          className="w-full text-left px-3 py-2 mt-2 text-sm text-purple hover:text-text transition-colors"
-        >
+        <button onClick={() => setCreatingSubject(true)}
+          className="w-full text-left px-3 py-2 mt-2 text-sm text-purple hover:text-text transition-colors">
           + New Subject
         </button>
       )}
+
       {/* Context menu */}
       {contextMenu && (
         <ContextMenu
@@ -364,14 +402,19 @@ export default function VaultBrowser() {
             }] : []),
             { label: "", onClick: () => {}, divider: true },
             {
-              label: "Delete",
+              label: contextMenu.type === "subject" ? "Delete Subject" : "Delete",
               icon: <Trash2 size={12} />,
               danger: true,
               onClick: async () => {
-                if (contextMenu.type === "file") {
+                if (contextMenu.type === "subject" && contextMenu.slug) {
+                  await deleteSubject(contextMenu.slug);
+                  loadSubjects();
+                } else if (contextMenu.type === "file") {
                   await deleteFile(contextMenu.path);
                   loadSubjects();
-                  if (expandedSubject) loadFiles(expandedSubject);
+                  for (const slug of expandedSubjects) {
+                    loadSections(slug);
+                  }
                 }
               },
             },
@@ -384,10 +427,7 @@ export default function VaultBrowser() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRenamingPath(null)}>
           <div className="bg-surface border border-border rounded-lg p-4 w-80 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <p className="text-xs text-text-muted mb-2">Rename</p>
-            <input
-              autoFocus
-              type="text"
-              value={renameValue}
+            <input autoFocus type="text" value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenamingPath(null); }}
               className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"

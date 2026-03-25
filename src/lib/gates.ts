@@ -49,6 +49,14 @@ export function formatDigestionMarkdown(responses: GateResponse[]): string {
     if (r.feedback) {
       lines.push(`**AI Feedback:** ${r.feedback}`);
     }
+    if (r.mastery !== null && r.mastery !== undefined) {
+      const masteryLabel = r.mastery <= 1 ? "Needs work" : r.mastery === 2 ? "Partial" : "Solid";
+      lines.push(`**Mastery:** ${r.mastery}/3 (${masteryLabel})`);
+    }
+    if (r.followUp && r.followUpResponse) {
+      lines.push(`**Follow-up:** ${r.followUp}`);
+      lines.push(`**Follow-up Response:** ${r.followUpResponse}`);
+    }
     lines.push(`*(${r.timestamp})*\n`);
   }
 

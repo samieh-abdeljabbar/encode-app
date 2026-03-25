@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useQuizStore } from "../stores/quiz";
+import { useQuizStore, type QuestionType } from "../stores/quiz";
 import { listSubjects, listFiles, readFile, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 import type { Subject, FileEntry } from "../lib/types";
-import { Flag, ChevronDown, ChevronRight, BookOpen, Brain } from "lucide-react";
+import { Flag, ChevronDown, ChevronRight, BookOpen, Brain, RotateCcw, Sparkles, CreditCard } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────
 interface SubjectWithChapters {
@@ -21,12 +21,124 @@ interface PastQuiz {
   content: string | null;
 }
 
+// ─── Pre-Quiz Config ────────────────────────────────────
+function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel: () => void }) {
+  const { config, setConfig, configSubject, configTopic } = useQuizStore();
+
+  const typeOptions: { id: QuestionType; label: string; desc: string }[] = [
+    { id: "multiple-choice", label: "Multiple Choice", desc: "4 options, pick one" },
+    { id: "true-false", label: "True / False", desc: "Binary choice" },
+    { id: "fill-blank", label: "Fill in the Blank", desc: "Type the missing word" },
+    { id: "free-recall", label: "Free Recall", desc: "Open-ended, AI-evaluated" },
+    { id: "code", label: "Code Problem", desc: "SQL, Python, or pseudocode" },
+  ];
+
+  const toggleType = (type: QuestionType) => {
+    const types = config.types.includes(type)
+      ? config.types.filter((t) => t !== type)
+      : [...config.types, type];
+    if (types.length > 0) setConfig({ types });
+  };
+
+  return (
+    <div className="max-w-md mx-auto py-8 px-4">
+      <h2 className="text-lg font-semibold text-text mb-1">Quiz Setup</h2>
+      <p className="text-xs text-text-muted mb-6">{configSubject} — {configTopic}</p>
+
+      {/* Question Types */}
+      <div className="mb-6">
+        <p className="text-xs font-medium text-text mb-2">Question Types</p>
+        <div className="space-y-1.5">
+          {typeOptions.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => toggleType(opt.id)}
+              className={`w-full flex items-center justify-between p-2.5 rounded border text-left transition-colors ${
+                config.types.includes(opt.id)
+                  ? "border-purple bg-purple/10 text-text"
+                  : "border-border bg-surface text-text-muted hover:border-purple/30"
+              }`}
+            >
+              <div>
+                <span className="text-sm">{opt.label}</span>
+                <span className="text-[10px] text-text-muted ml-2">{opt.desc}</span>
+              </div>
+              <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                config.types.includes(opt.id) ? "bg-purple border-purple" : "border-border"
+              }`}>
+                {config.types.includes(opt.id) && <span className="text-white text-[10px]">✓</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Question Count */}
+      <div className="mb-6">
+        <p className="text-xs font-medium text-text mb-2">Number of Questions</p>
+        <div className="flex gap-2">
+          {[5, 10, 15].map((n) => (
+            <button
+              key={n}
+              onClick={() => setConfig({ questionCount: n })}
+              className={`flex-1 py-2 rounded border text-sm font-medium transition-colors ${
+                config.questionCount === n
+                  ? "border-purple bg-purple/10 text-purple"
+                  : "border-border bg-surface text-text-muted hover:border-purple/30"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bloom Level */}
+      <div className="mb-8">
+        <p className="text-xs font-medium text-text mb-2">Difficulty</p>
+        <div className="flex gap-2">
+          {([
+            { label: "Beginner", range: [1, 3] as [number, number] },
+            { label: "Intermediate", range: [2, 4] as [number, number] },
+            { label: "Advanced", range: [3, 6] as [number, number] },
+          ]).map((opt) => (
+            <button
+              key={opt.label}
+              onClick={() => setConfig({ bloomRange: opt.range })}
+              className={`flex-1 py-2 rounded border text-sm transition-colors ${
+                config.bloomRange[0] === opt.range[0] && config.bloomRange[1] === opt.range[1]
+                  ? "border-purple bg-purple/10 text-purple font-medium"
+                  : "border-border bg-surface text-text-muted hover:border-purple/30"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-text-muted mt-1.5">
+          Bloom {config.bloomRange[0]}-{config.bloomRange[1]}: {config.bloomRange[0] <= 2 ? "Remember → Apply" : config.bloomRange[0] <= 3 ? "Understand → Analyze" : "Apply → Create"}
+        </p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <button onClick={onCancel} className="flex-1 py-2.5 text-sm border border-border rounded text-text-muted hover:text-text hover:border-purple/30 transition-colors">
+          Cancel
+        </button>
+        <button onClick={onStart} className="flex-1 py-2.5 text-sm bg-purple text-white rounded font-medium hover:opacity-90">
+          Start Quiz
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard Tab ──────────────────────────────────────
 function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   const [subjects, setSubjects] = useState<SubjectWithChapters[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { generateQuiz, generateSubjectQuiz } = useQuizStore();
+  const { prepareQuiz, prepareSubjectQuiz } = useQuizStore();
 
   useEffect(() => {
     (async () => {
@@ -56,15 +168,15 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   const handleChapterQuiz = async (chapter: FileEntry, subjectName: string) => {
     try {
       const raw = await readFile(chapter.file_path);
-      const { content } = parseFrontmatter(raw);
-      const fm = parseFrontmatter(raw).frontmatter;
-      await generateQuiz(subjectName, (fm.topic as string) || chapter.file_path.split("/").pop()?.replace(".md", "") || "", content);
+      const { content, frontmatter } = parseFrontmatter(raw);
+      const topic = (frontmatter.topic as string) || chapter.file_path.split("/").pop()?.replace(".md", "") || "";
+      prepareQuiz(subjectName, topic, content);
       onStartQuiz();
     } catch { /* */ }
   };
 
   const handleSubjectQuiz = async (slug: string, name: string) => {
-    await generateSubjectQuiz(slug, name);
+    await prepareSubjectQuiz(slug, name);
     onStartQuiz();
   };
 
@@ -84,7 +196,6 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
 
   return (
     <div className="pb-8">
-      {/* Card grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {subjects.map(({ subject, chapters, grade }) => {
           const score = grade ? Math.round(grade.avg_score) : null;
@@ -95,7 +206,6 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
 
           return (
             <div key={subject.slug} className="bg-surface rounded-xl border border-border overflow-hidden">
-              {/* Card header with grade ring */}
               <div className="p-5">
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -105,7 +215,6 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                       {grade ? ` · ${grade.total_quizzes} quiz${grade.total_quizzes !== 1 ? "zes" : ""}` : ""}
                     </p>
                   </div>
-                  {/* Grade circle */}
                   <div className="relative w-14 h-14 shrink-0">
                     <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
                       <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="3" />
@@ -120,7 +229,6 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                   </div>
                 </div>
 
-                {/* Quick actions */}
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleSubjectQuiz(subject.slug, subject.name)}
@@ -138,7 +246,6 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                 </div>
               </div>
 
-              {/* Expanded chapter list */}
               {isExpanded && chapters.length > 0 && (
                 <div className="border-t border-border bg-[#0f0f0f]">
                   {chapters.map((ch) => {
@@ -168,10 +275,11 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
 }
 
 // ─── History Tab ────────────────────────────────────────
-function QuizHistory() {
+function QuizHistory({ onRetake }: { onRetake: () => void }) {
   const [quizzes, setQuizzes] = useState<PastQuiz[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { retakeQuiz } = useQuizStore();
 
   useEffect(() => {
     (async () => {
@@ -196,7 +304,6 @@ function QuizHistory() {
         } catch { /* */ }
       }
 
-      // Sort by date descending
       all.sort((a, b) => b.date.localeCompare(a.date));
       setQuizzes(all);
       setLoading(false);
@@ -208,18 +315,21 @@ function QuizHistory() {
       setExpanded(null);
       return;
     }
-    // Load content if not loaded
     if (!quiz.content) {
       try {
         const raw = await readFile(quiz.path);
-        const { content } = parseFrontmatter(raw);
-        const fm = parseFrontmatter(raw).frontmatter;
+        const { content, frontmatter } = parseFrontmatter(raw);
         quiz.content = content;
-        quiz.score = fm.score ? String(fm.score) : "";
+        quiz.score = frontmatter.score ? String(frontmatter.score) : "";
         setQuizzes([...quizzes]);
       } catch { /* */ }
     }
     setExpanded(quiz.path);
+  };
+
+  const handleRetake = async (path: string) => {
+    await retakeQuiz(path);
+    onRetake();
   };
 
   if (loading) return <p className="text-text-muted text-center py-12">Loading history...</p>;
@@ -237,26 +347,34 @@ function QuizHistory() {
     <div className="space-y-2 pb-8">
       {quizzes.map((q) => (
         <div key={q.path} className="bg-surface rounded border border-border overflow-hidden">
-          <button
-            onClick={() => handleExpand(q)}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors text-left"
-          >
-            <div>
-              <p className="text-sm text-text">{q.name}</p>
-              <p className="text-[10px] text-text-muted">{q.subject} · {q.date}</p>
-            </div>
-            {q.score && (
-              <span className={`text-sm font-bold ${
-                Number(q.score) >= 80 ? "text-teal" : Number(q.score) >= 60 ? "text-amber" : "text-coral"
-              }`}>
-                {q.score}%
-              </span>
-            )}
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => handleExpand(q)}
+              className="flex-1 flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors text-left"
+            >
+              <div>
+                <p className="text-sm text-text">{q.name}</p>
+                <p className="text-[10px] text-text-muted">{q.subject} · {q.date}</p>
+              </div>
+              {q.score && (
+                <span className={`text-sm font-bold ${
+                  Number(q.score) >= 80 ? "text-teal" : Number(q.score) >= 60 ? "text-amber" : "text-coral"
+                }`}>
+                  {q.score}%
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => handleRetake(q.path)}
+              className="flex items-center gap-1.5 px-3 py-3 text-xs text-text-muted hover:text-purple transition-colors border-l border-border"
+            >
+              <RotateCcw size={13} />
+              <span>Retake</span>
+            </button>
+          </div>
 
           {expanded === q.path && q.content && (
             <div className="border-t border-border px-4 py-3 space-y-3 text-xs">
-              {/* Parse and display questions from markdown content */}
               {q.content.split("\n## ").filter((s) => s.startsWith("[")).map((block, i) => {
                 const lines = block.split("\n");
                 const questionLine = lines[0] || "";
@@ -284,11 +402,11 @@ function QuizHistory() {
   );
 }
 
-// ─── Active Quiz (existing flow) ────────────────────────
+// ─── Active Quiz ────────────────────────────────────────
 function ActiveQuiz() {
   const {
     subject, topic, questions, currentIndex, loading, generating,
-    showFeedback, sessionComplete, error,
+    showFeedback, sessionComplete, error, summary, generatedCards,
     submitAnswer, flagQuestion, nextQuestion, resetQuiz,
   } = useQuizStore();
 
@@ -318,12 +436,12 @@ function ActiveQuiz() {
     );
   }
 
-  if (questions.length === 0) {
-    return null; // Dashboard will show instead
-  }
+  if (questions.length === 0) return null;
 
+  // ─── Results Screen ───────────────────────────────
   if (sessionComplete) {
     const correctCount = questions.filter((q) => q.correct === true).length;
+    const wrongCount = questions.filter((q) => q.correct === false).length;
     const pct = Math.round((correctCount / questions.length) * 100);
 
     return (
@@ -335,6 +453,33 @@ function ActiveQuiz() {
           <p className="text-text-muted">{correctCount} of {questions.length} correct</p>
         </div>
 
+        {/* Auto-flashcards notice */}
+        {generatedCards > 0 && (
+          <div className="flex items-center gap-2 p-3 mb-4 rounded border border-purple/30 bg-purple/5">
+            <CreditCard size={14} className="text-purple shrink-0" />
+            <p className="text-xs text-text">
+              Created <span className="font-semibold text-purple">{generatedCards} flashcard{generatedCards !== 1 ? "s" : ""}</span> from wrong answers — they're due for review today.
+            </p>
+          </div>
+        )}
+
+        {/* AI Summary of what to review */}
+        {summary && (
+          <div className="p-4 mb-4 rounded border border-amber/30 bg-amber/5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles size={13} className="text-amber" />
+              <p className="text-xs font-medium text-amber">Review These Concepts</p>
+            </div>
+            <p className="text-sm text-text whitespace-pre-line leading-relaxed">{summary}</p>
+          </div>
+        )}
+        {wrongCount > 0 && !summary && (
+          <div className="p-3 mb-4 rounded border border-border bg-surface text-center">
+            <p className="text-xs text-text-muted animate-pulse">Generating review summary...</p>
+          </div>
+        )}
+
+        {/* Question results */}
         <div className="space-y-2 mb-8">
           {questions.map((q, i) => (
             <div key={q.id} className={`p-3 rounded border ${
@@ -342,9 +487,15 @@ function ActiveQuiz() {
             }`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-[10px] text-text-muted mb-1">Q{i + 1} ({q.type}) Bloom {q.bloomLevel}</p>
+                  <p className="text-[10px] text-text-muted mb-1">
+                    Q{i + 1} ({q.type}{q.language ? ` · ${q.language}` : ""}) Bloom {q.bloomLevel}
+                  </p>
                   <p className="text-sm text-text">{q.question}</p>
-                  {q.userAnswer && <p className="text-xs text-text-muted mt-1">Your answer: {q.userAnswer}</p>}
+                  {q.userAnswer && (
+                    <p className="text-xs text-text-muted mt-1">
+                      Your answer: {q.type === "code" ? <code className="bg-surface-2 px-1 rounded">{q.userAnswer}</code> : q.userAnswer}
+                    </p>
+                  )}
                   {q.correctAnswer && q.correct === false && (
                     <p className="text-xs text-teal mt-1">Correct answer: {q.correctAnswer}</p>
                   )}
@@ -367,7 +518,7 @@ function ActiveQuiz() {
     );
   }
 
-  // Active question
+  // ─── Active Question ──────────────────────────────
   const question = questions[currentIndex];
   if (!question) return null;
 
@@ -394,6 +545,9 @@ function ActiveQuiz() {
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xs px-2 py-0.5 bg-purple/20 text-purple rounded">Bloom {question.bloomLevel}</span>
         <span className="text-xs px-2 py-0.5 bg-surface-2 text-text-muted rounded capitalize">{question.type.replace("-", " ")}</span>
+        {question.language && (
+          <span className="text-xs px-2 py-0.5 bg-teal/20 text-teal rounded uppercase">{question.language}</span>
+        )}
       </div>
 
       <p className="text-lg leading-relaxed mb-6" style={{ fontFamily: "var(--editor-font-family, Georgia, serif)" }}>
@@ -404,7 +558,11 @@ function ActiveQuiz() {
         <div>
           <div className="p-3 bg-surface rounded border border-border mb-4">
             <p className="text-xs text-text-muted mb-1">Your answer:</p>
-            <p className="text-sm text-text">{question.userAnswer}</p>
+            {question.type === "code" ? (
+              <pre className="text-sm text-text font-mono bg-[#0f0f0f] p-2 rounded overflow-x-auto">{question.userAnswer}</pre>
+            ) : (
+              <p className="text-sm text-text">{question.userAnswer}</p>
+            )}
           </div>
 
           {question.feedback && (
@@ -422,7 +580,14 @@ function ActiveQuiz() {
               </div>
               <p className="text-sm text-text">{question.feedback}</p>
               {question.correctAnswer && question.correct === false && (
-                <p className="text-xs text-teal mt-2">Correct answer: {question.correctAnswer}</p>
+                <div className="mt-2">
+                  <p className="text-xs text-teal">Correct answer:</p>
+                  {question.type === "code" ? (
+                    <pre className="text-xs text-teal font-mono bg-teal/5 p-2 rounded mt-1 overflow-x-auto">{question.correctAnswer}</pre>
+                  ) : (
+                    <p className="text-xs text-teal">{question.correctAnswer}</p>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -448,6 +613,22 @@ function ActiveQuiz() {
                 className="flex-1 py-3 bg-teal/10 border border-teal/30 rounded text-teal font-medium hover:bg-teal/20 disabled:opacity-50">True</button>
               <button onClick={() => handleSubmit("false")} disabled={loading}
                 className="flex-1 py-3 bg-coral/10 border border-coral/30 rounded text-coral font-medium hover:bg-coral/20 disabled:opacity-50">False</button>
+            </div>
+          ) : question.type === "code" ? (
+            <div>
+              <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
+                placeholder={`Write your ${question.language || "code"} solution here...`}
+                rows={8}
+                className="w-full p-3 bg-[#0f0f0f] border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
+                spellCheck={false}
+                onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
+              <div className="flex items-center justify-between mt-3">
+                <span className="text-xs text-text-muted">Cmd+Enter to submit</span>
+                <button onClick={() => handleSubmit()} disabled={!answer.trim() || loading}
+                  className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-30">
+                  {loading ? "Evaluating..." : "Submit"}
+                </button>
+              </div>
             </div>
           ) : (
             <div>
@@ -499,7 +680,6 @@ function QuizGrades() {
           return (
             <div key={g.subject} className="bg-surface rounded-xl border border-border p-5">
               <div className="flex items-center gap-5">
-                {/* Grade ring */}
                 <div className="relative w-20 h-20 shrink-0">
                   <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
                     <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="2.5" />
@@ -510,8 +690,6 @@ function QuizGrades() {
                     <span className="text-lg font-bold" style={{ color }}>{score}%</span>
                   </div>
                 </div>
-
-                {/* Details */}
                 <div className="flex-1">
                   <h3 className="text-base font-semibold text-text">{g.subject}</h3>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-2">
@@ -538,15 +716,17 @@ function QuizGrades() {
 
 // ─── Main Quiz Page ─────────────────────────────────────
 export default function QuizPage() {
-  const { questions, generating, resetQuiz } = useQuizStore();
-  const [tab, setTab] = useState<"dashboard" | "quiz" | "grades" | "history">("dashboard");
+  const { questions, generating, showConfig, startQuiz, resetQuiz } = useQuizStore();
+  const [tab, setTab] = useState<"dashboard" | "quiz" | "config" | "grades" | "history">("dashboard");
 
-  // Auto-switch to quiz tab when questions are generated
+  // Auto-switch tabs based on quiz state
   useEffect(() => {
-    if (questions.length > 0 || generating) {
+    if (showConfig) {
+      setTab("config");
+    } else if (questions.length > 0 || generating) {
       setTab("quiz");
     }
-  }, [questions.length, generating]);
+  }, [questions.length, generating, showConfig]);
 
   return (
     <div className="flex flex-col h-full">
@@ -558,12 +738,12 @@ export default function QuizPage() {
         >
           Dashboard
         </button>
-        {(questions.length > 0 || generating) && (
+        {(questions.length > 0 || generating || showConfig) && (
           <button
-            onClick={() => setTab("quiz")}
-            className={`text-sm transition-colors ${tab === "quiz" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
+            onClick={() => setTab(showConfig ? "config" : "quiz")}
+            className={`text-sm transition-colors ${(tab === "quiz" || tab === "config") ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
           >
-            Active Quiz
+            {showConfig ? "Setup" : "Active Quiz"}
           </button>
         )}
         <button
@@ -583,11 +763,17 @@ export default function QuizPage() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {tab === "dashboard" && (
-          <QuizDashboard onStartQuiz={() => setTab("quiz")} />
+          <QuizDashboard onStartQuiz={() => setTab("config")} />
+        )}
+        {tab === "config" && (
+          <QuizConfigScreen
+            onStart={() => { startQuiz(); setTab("quiz"); }}
+            onCancel={() => { resetQuiz(); setTab("dashboard"); }}
+          />
         )}
         {tab === "quiz" && <ActiveQuiz />}
         {tab === "grades" && <QuizGrades />}
-        {tab === "history" && <QuizHistory />}
+        {tab === "history" && <QuizHistory onRetake={() => setTab("quiz")} />}
       </div>
     </div>
   );

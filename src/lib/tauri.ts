@@ -30,6 +30,9 @@ export const createSubject = (name: string) =>
 export const deleteFile = (path: string) =>
   invoke<void>("delete_vault_file", { path });
 
+export const deleteSubject = (slug: string) =>
+  invoke<void>("delete_subject", { slug });
+
 export const renameFile = (oldPath: string, newPath: string) =>
   invoke<void>("rename_vault_file", { oldPath, newPath });
 

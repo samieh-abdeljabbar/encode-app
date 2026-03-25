@@ -1,24 +1,30 @@
 import { useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { Table } from "@lezer/markdown";
 import { EditorView } from "@codemirror/view";
 import { encodeTheme, encodeHighlighting } from "../../lib/cm-theme";
-import { livePreviewPlugin, livePreviewStyles } from "../../lib/cm-decorations";
+import { livePreviewPlugin, livePreviewStyles, tableDecoField, linkClickHandler } from "../../lib/cm-decorations";
+import { slashMenuExtension } from "../../lib/cm-slash-menu";
 
 interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
   autoFocus?: boolean;
+  onEditorReady?: (view: EditorView) => void;
 }
 
 const extensions = [
-  markdown(),
+  markdown({ extensions: [Table] }),
   encodeTheme,
   encodeHighlighting,
   livePreviewPlugin,
   livePreviewStyles,
+  tableDecoField,
+  linkClickHandler,
   EditorView.lineWrapping,
+  ...slashMenuExtension,
 ];
 
 export default function MarkdownEditor({
@@ -26,6 +32,7 @@ export default function MarkdownEditor({
   onChange,
   onBlur,
   autoFocus = true,
+  onEditorReady,
 }: MarkdownEditorProps) {
   const handleChange = useCallback(
     (val: string) => {
@@ -49,6 +56,7 @@ export default function MarkdownEditor({
       <CodeMirror
         value={value}
         onChange={handleChange}
+        onCreateEditor={onEditorReady}
         extensions={extensions}
         autoFocus={autoFocus}
         theme="none"
@@ -60,7 +68,7 @@ export default function MarkdownEditor({
           highlightSelectionMatches: true,
           bracketMatching: false,
           closeBrackets: false,
-          autocompletion: false,
+          autocompletion: false, // we provide our own via slashMenuExtension
           indentOnInput: false,
         }}
         style={{ height: "100%" }}

@@ -27,6 +27,10 @@ export default function Settings() {
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("encode-font-size") || "16");
   const [fontFamily, setFontFamily] = useState(() => localStorage.getItem("encode-font-family") || "georgia");
   const [contentWidth, setContentWidth] = useState(() => localStorage.getItem("encode-content-width") || "medium");
+  // User profile
+  const [userRole, setUserRole] = useState("");
+  const [userHobbies, setUserHobbies] = useState("");
+  const [userLearningStyle, setUserLearningStyle] = useState("");
 
   useEffect(() => {
     loadConfig();
@@ -39,6 +43,9 @@ export default function Settings() {
       setOllamaModel(config.ollama_model);
       setOllamaUrl(config.ollama_url);
       setApiKey(config.api_key || "");
+      setUserRole(config.user_role || "");
+      setUserHobbies(config.user_hobbies || "");
+      setUserLearningStyle(config.user_learning_style || "");
     }
   }, [config]);
 
@@ -62,6 +69,9 @@ export default function Settings() {
       ollama_model: ollamaModel,
       ollama_url: ollamaUrl,
       api_key: apiKey,
+      user_role: userRole,
+      user_hobbies: userHobbies,
+      user_learning_style: userLearningStyle,
     });
     setSaving(false);
   };
@@ -74,6 +84,46 @@ export default function Settings() {
   return (
     <div className="max-w-xl mx-auto py-8 px-8 space-y-8">
       <h2 className="text-xl font-semibold">Settings</h2>
+
+      {/* About You — User Profile */}
+      <div>
+        <h3 className="text-sm font-medium text-text mb-3">About You</h3>
+        <p className="text-xs text-text-muted mb-4">
+          Help the AI personalize questions and examples to your background. All fields are optional.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-text-muted mb-1">What do you do?</label>
+            <input
+              type="text"
+              value={userRole}
+              onChange={(e) => setUserRole(e.target.value)}
+              placeholder="e.g., Software engineer, nurse, manage retail stores, student"
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted/50 focus:outline-none focus:border-purple"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-text-muted mb-1">What are your hobbies?</label>
+            <input
+              type="text"
+              value={userHobbies}
+              onChange={(e) => setUserHobbies(e.target.value)}
+              placeholder="e.g., Gaming, basketball, cooking, working on cars"
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted/50 focus:outline-none focus:border-purple"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-text-muted mb-1">How do you learn best?</label>
+            <input
+              type="text"
+              value={userLearningStyle}
+              onChange={(e) => setUserLearningStyle(e.target.value)}
+              placeholder="e.g., Real-world examples, hands-on practice, teach-then-quiz"
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted/50 focus:outline-none focus:border-purple"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* AI Provider */}
       <section className="space-y-4">
@@ -168,25 +218,53 @@ export default function Settings() {
                 {showGuide ? "Hide setup guide" : "How to install Ollama + download models"}
               </button>
 
-              {showGuide && (
-                <div className="mt-3 p-4 bg-[#0f0f0f] rounded border border-border space-y-3 text-xs">
+              {showGuide && (() => {
+                const isMac = navigator.platform.toLowerCase().includes("mac");
+                const isWin = navigator.platform.toLowerCase().includes("win");
+                const platform = isMac ? "mac" : isWin ? "windows" : "linux";
+                return (
+                <div className="mt-3 p-4 bg-[#0f0f0f] rounded border border-border space-y-4 text-xs">
+                  {/* Platform tabs */}
+                  <div className="flex gap-1">
+                    {(["mac", "windows", "linux"] as const).map((p) => (
+                      <span key={p} className={`px-2 py-0.5 rounded text-[10px] ${p === platform ? "bg-purple/20 text-purple font-medium" : "text-text-muted"}`}>
+                        {p === "mac" ? "macOS" : p === "windows" ? "Windows" : "Linux"}
+                        {p === platform && " (detected)"}
+                      </span>
+                    ))}
+                  </div>
+
                   <div>
                     <p className="text-text font-medium mb-1">1. Install Ollama</p>
-                    <p className="text-text-muted">
-                      Download from{" "}
-                      <button
-                        onClick={() => window.open("https://ollama.com", "_blank")}
-                        className="text-purple hover:underline"
-                      >
-                        ollama.com
-                      </button>
-                      {" "}and install. It runs as a background service.
-                    </p>
+                    {isMac && (
+                      <div className="space-y-1">
+                        <p className="text-text-muted">Option A: Download the .dmg from <button onClick={() => window.open("https://ollama.com", "_blank")} className="text-purple hover:underline">ollama.com</button></p>
+                        <p className="text-text-muted">Option B: Install via Homebrew:</p>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">brew install ollama</code></div>
+                        <p className="text-text-muted mt-1">Apple Silicon (M1/M2/M3/M4) is GPU-accelerated automatically.</p>
+                      </div>
+                    )}
+                    {isWin && (
+                      <div className="space-y-1">
+                        <p className="text-text-muted">Download the installer from <button onClick={() => window.open("https://ollama.com", "_blank")} className="text-purple hover:underline">ollama.com</button> and run it.</p>
+                        <p className="text-text-muted">It installs as a Windows service and starts automatically.</p>
+                        <p className="text-text-muted">NVIDIA GPUs: Install CUDA drivers for GPU acceleration.</p>
+                      </div>
+                    )}
+                    {!isMac && !isWin && (
+                      <div className="space-y-1">
+                        <p className="text-text-muted">Run this in your terminal:</p>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">curl -fsSL https://ollama.com/install.sh | sh</code></div>
+                        <p className="text-text-muted mt-1">Then start the service:</p>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">systemctl start ollama</code></div>
+                        <p className="text-text-muted mt-1">NVIDIA GPUs: Install CUDA drivers for GPU acceleration.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div>
                     <p className="text-text font-medium mb-1">2. Download a model</p>
-                    <p className="text-text-muted mb-2">Open Terminal and run one of these:</p>
+                    <p className="text-text-muted mb-1">Open {isMac ? "Terminal" : isWin ? "PowerShell" : "a terminal"} and run one of these:</p>
                     <div className="space-y-1.5">
                       {POPULAR_MODELS.map((m) => (
                         <div key={m.id} className="flex items-center justify-between bg-surface-2 rounded px-3 py-1.5">
@@ -195,6 +273,9 @@ export default function Settings() {
                         </div>
                       ))}
                     </div>
+                    <p className="text-text-muted mt-2">
+                      <span className="text-amber font-medium">RAM guide:</span> 8B models need 8GB RAM. 16B models need 16GB RAM.
+                    </p>
                   </div>
 
                   <div>
@@ -205,7 +286,8 @@ export default function Settings() {
                     </p>
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}
