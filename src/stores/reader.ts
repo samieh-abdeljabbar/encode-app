@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import type { GateResponse } from "../lib/types";
+import type { GateResponse, GateSubQuestion, GatePromptType } from "../lib/types";
 import { splitSections, parseFrontmatter } from "../lib/markdown";
 import type { Section } from "../lib/markdown";
 import {
-  getGatePrompt,
   shouldGateSection,
+  shouldSkipRemaining,
   formatDigestionMarkdown,
 } from "../lib/gates";
 import { readFile, writeFile, aiRequest, getConfig } from "../lib/tauri";
@@ -14,6 +14,11 @@ export interface SuggestedCard {
   question: string;
   answer: string;
   bloom: number;
+}
+
+interface GeneratedQuestion {
+  type: GatePromptType;
+  question: string;
 }
 
 interface ReaderState {
@@ -27,61 +32,104 @@ interface ReaderState {
   loading: boolean;
   error: string | null;
 
-  // AI-generated gate question
-  gateQuestion: string | null;
+  // Multi-question gate state
   gateGenerating: boolean;
-
-  // Follow-up state
-  pendingResponse: GateResponse | null;
-  followUpMode: boolean;
+  gatePhase: number;                         // 0-indexed: which sub-question we're on
+  gateQuestions: GeneratedQuestion[];         // All questions for this gate
+  currentGateSubQuestions: GateSubQuestion[]; // Answered sub-questions so far
+  lastFeedback: string | null;               // Feedback from previous sub-question
+  lastMastery: number | null;                // Mastery from previous sub-question
+  gateSkipped: boolean;                      // True if remaining Qs were skipped (adaptive)
 
   loadFile: (path: string) => Promise<void>;
   advanceSection: () => void;
   goToSection: (index: number) => void;
   submitGateResponse: (response: string) => Promise<void>;
-  submitFollowUp: (response: string) => Promise<void>;
   clearError: () => void;
   dismissSuggestions: () => void;
   closeReader: () => void;
 }
 
-/** Generate a content-specific gate question using AI */
-async function generateGateQuestion(
+/** Generate 2-3 content-specific questions from a section using AI */
+async function generateGateQuestions(
   sectionContent: string,
   sectionHeading: string,
-  gateType: string,
-  previousResponses: GateResponse[],
-): Promise<string | null> {
+): Promise<GeneratedQuestion[]> {
   try {
-    const prevContext = previousResponses.length > 0
-      ? previousResponses.map((r) =>
-        `[${r.promptType}] Q: ${r.prompt}\nA: ${r.response}`
-      ).join("\n\n")
-      : "None yet — this is the first section.";
-
-    // Load user profile for personalization
     let profileContext = "";
     try {
       const config = await getConfig();
       profileContext = getProfileContext(config);
-    } catch { /* no profile — skip personalization */ }
+    } catch { /* skip */ }
 
     const profileLine = profileContext
-      ? `\n\nStudent context: ${profileContext} Use their background and interests for real-world analogies when relevant.`
+      ? `\nStudent context: ${profileContext} Use their background for relevant examples.`
       : "";
 
     const { text } = await aiRequest(
-      `Generate ONE study question about the section below. Technique: "${gateType}".${profileLine}
+      `Read the study section below and generate 2-3 questions that test the student's understanding. Output ONLY JSON array.${profileLine}
 
-${gateType}=summarize: name a specific concept and ask to explain it. ${gateType}=connect: relate a concept to their life/work. ${gateType}=predict: what comes next and why. ${gateType}=apply: give a scenario, ask to solve it.
+Format: [{"type":"recall","q":"..."},{"type":"explain","q":"..."},{"type":"apply","q":"..."}]
 
-Be specific to the content. Reference actual terms. 1-2 sentences only. Output ONLY the question.`,
-      `Section: ${sectionHeading}\n${sectionContent.slice(0, 1500)}\n\nPrior responses:\n${prevContext}`,
-      150,
+- recall: Ask about a specific fact, term, or detail from the section.
+- explain: Ask the student to explain a concept, relationship, or why something works.
+- apply: Give a scenario and ask how to use the knowledge.
+
+Questions must reference actual content, terms, and examples from the section. Be specific. Each question 1-2 sentences.`,
+      `Section: ${sectionHeading || "Introduction"}\n\n${sectionContent.slice(0, 2000)}`,
+      400,
     );
-    return text.trim();
+
+    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]) as { type?: string; q: string }[];
+      const types: GatePromptType[] = ["recall", "explain", "apply"];
+      return parsed.slice(0, 3).map((p, i) => ({
+        type: (types.includes(p.type as GatePromptType) ? p.type : types[i]) as GatePromptType,
+        question: p.q,
+      }));
+    }
   } catch {
-    return null; // Fall back to generic prompt
+    // AI unavailable
+  }
+
+  // Fallback: generic questions if AI fails
+  return [
+    { type: "recall", question: "What is the main concept covered in this section?" },
+    { type: "explain", question: "Explain why this concept matters in your own words." },
+  ];
+}
+
+/** Evaluate a student's response to a gate question */
+async function evaluateResponse(
+  sectionContent: string,
+  sectionHeading: string,
+  question: string,
+  response: string,
+): Promise<{ feedback: string | null; mastery: number | null }> {
+  try {
+    const result = await aiRequest(
+      `Evaluate the student's answer. Reply ONLY JSON: {"right":"1 sentence","gap":"1 sentence","mastery":1}
+mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
+      `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 800)}\nQuestion: ${question}\nStudent's answer: ${response}`,
+      200,
+    );
+
+    const cleaned = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        right?: string;
+        gap?: string;
+        mastery?: number;
+      };
+      const feedback = [parsed.right, parsed.gap].filter(Boolean).join(" ");
+      return { feedback: feedback || null, mastery: parsed.mastery ?? null };
+    }
+    return { feedback: result.text, mastery: null };
+  } catch {
+    return { feedback: null, mastery: null };
   }
 }
 
@@ -95,10 +143,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   suggestedCards: [],
   loading: false,
   error: null,
-  gateQuestion: null,
   gateGenerating: false,
-  pendingResponse: null,
-  followUpMode: false,
+  gatePhase: 0,
+  gateQuestions: [],
+  currentGateSubQuestions: [],
+  lastFeedback: null,
+  lastMastery: null,
+  gateSkipped: false,
 
   loadFile: async (path) => {
     set({ loading: true });
@@ -114,10 +165,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         gateOpen: false,
         gateResponses: [],
         loading: false,
-        gateQuestion: null,
         gateGenerating: false,
-        pendingResponse: null,
-        followUpMode: false,
+        gatePhase: 0,
+        gateQuestions: [],
+        currentGateSubQuestions: [],
+        lastFeedback: null,
+        lastMastery: null,
+        gateSkipped: false,
       });
     } catch (e) {
       console.error("Failed to load file for reader:", e);
@@ -126,30 +180,32 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   advanceSection: () => {
-    const { currentSectionIndex, sections, gateResponses } = get();
+    const { currentSectionIndex, sections } = get();
     const nextIndex = currentSectionIndex + 1;
 
     if (nextIndex >= sections.length) return;
 
     const nextSection = sections[nextIndex];
     if (shouldGateSection(nextIndex, nextSection.content)) {
-      // Open gate and generate AI-specific question
       const currentSection = sections[currentSectionIndex];
-      const gatePrompt = getGatePrompt(nextIndex);
 
-      set({ gateOpen: true, gateQuestion: null, gateGenerating: true });
+      set({
+        gateOpen: true,
+        gateGenerating: true,
+        gatePhase: 0,
+        gateQuestions: [],
+        currentGateSubQuestions: [],
+        lastFeedback: null,
+        lastMastery: null,
+        gateSkipped: false,
+      });
 
-      // Generate content-specific question (async, non-blocking)
-      generateGateQuestion(
+      // Generate all questions for this gate
+      generateGateQuestions(
         currentSection?.content || "",
         currentSection?.heading || "Introduction",
-        gatePrompt.type,
-        gateResponses,
-      ).then((question) => {
-        set({
-          gateQuestion: question, // null = fallback to generic
-          gateGenerating: false,
-        });
+      ).then((questions) => {
+        set({ gateQuestions: questions, gateGenerating: false });
       });
     } else {
       set({ currentSectionIndex: nextIndex, gateOpen: false });
@@ -170,94 +226,66 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   submitGateResponse: async (response) => {
-    const { currentSectionIndex, sections, filePath, rawContent, gateQuestion } = get();
+    const {
+      currentSectionIndex, sections, filePath, rawContent,
+      gateQuestions, gatePhase, currentGateSubQuestions, gateResponses,
+    } = get();
     const nextIndex = currentSectionIndex + 1;
 
     if (nextIndex >= sections.length || !filePath || !rawContent) return;
+    if (gatePhase >= gateQuestions.length) return;
 
-    const prompt = getGatePrompt(nextIndex);
-    // Use AI-generated question if available, otherwise generic
-    const displayedPrompt = gateQuestion || prompt.prompt;
+    const currentQ = gateQuestions[gatePhase];
+    const sectionContent = sections[currentSectionIndex]?.content || "";
+    const sectionHeading = sections[currentSectionIndex]?.heading || "Introduction";
 
-    const now = new Date().toLocaleString("en-US", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    // Evaluate the answer
+    const { feedback, mastery } = await evaluateResponse(
+      sectionContent, sectionHeading, currentQ.question, response,
+    );
 
-    // AI evaluation with mastery scoring
-    let feedback: string | null = null;
-    let mastery: number | null = null;
-    let followUp: string | null = null;
-
-    try {
-      const sectionHeading = sections[currentSectionIndex]?.heading || "Introduction";
-      const sectionContent = sections[currentSectionIndex]?.content || "";
-      const result = await aiRequest(
-        `Evaluate the student's response. Reply ONLY JSON: {"right":"1 sentence","gap":"1 sentence","followUp":"a question","mastery":1}
-mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
-        `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 800)}\nPrompt: ${displayedPrompt}\nResponse: ${response}`,
-        250,
-      );
-
-      const cleanedResult = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-      const jsonMatch = cleanedResult.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as {
-          right?: string;
-          gap?: string;
-          followUp?: string;
-          mastery?: number;
-        };
-        feedback = [
-          parsed.right && `${parsed.right}`,
-          parsed.gap && `${parsed.gap}`,
-        ].filter(Boolean).join(" ");
-        mastery = parsed.mastery ?? null;
-        followUp = parsed.followUp || null;
-      } else {
-        feedback = result.text;
-      }
-    } catch {
-      // AI unavailable
-    }
-
-    const newResponse: GateResponse = {
-      sectionIndex: nextIndex,
-      promptType: prompt.type,
-      prompt: displayedPrompt,
+    const subQuestion: GateSubQuestion = {
+      promptType: currentQ.type,
+      prompt: currentQ.question,
       response,
       feedback,
       mastery,
-      followUp,
-      followUpResponse: null,
-      timestamp: now,
     };
 
-    // If mastery is weak, require follow-up
-    if (mastery !== null && mastery <= 1 && followUp) {
-      set({ pendingResponse: newResponse, followUpMode: true });
-      return;
+    const updatedSubQuestions = [...currentGateSubQuestions, subQuestion];
+    const nextPhase = gatePhase + 1;
+    const isLastQuestion = nextPhase >= gateQuestions.length;
+    const shouldSkip = shouldSkipRemaining(updatedSubQuestions);
+
+    if (isLastQuestion || shouldSkip) {
+      // Gate complete — save and advance
+      const now = new Date().toLocaleString("en-US", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "numeric", minute: "2-digit",
+      });
+
+      const newResponse: GateResponse = {
+        sectionIndex: nextIndex,
+        subQuestions: updatedSubQuestions,
+        timestamp: now,
+      };
+
+      set({
+        gateSkipped: shouldSkip && !isLastQuestion,
+        lastFeedback: feedback,
+        lastMastery: mastery,
+      });
+
+      await saveAndAdvance(newResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses);
+    } else {
+      // Move to next question
+      set({
+        gatePhase: nextPhase,
+        currentGateSubQuestions: updatedSubQuestions,
+        lastFeedback: feedback,
+        lastMastery: mastery,
+      });
     }
-
-    // Mastery OK — advance
-    set({ gateQuestion: null });
-    await saveAndAdvance(newResponse, filePath, rawContent, sections, currentSectionIndex, get().gateResponses);
-  },
-
-  submitFollowUp: async (followUpAnswer) => {
-    const { pendingResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses } = get();
-    if (!pendingResponse || !filePath || !rawContent) return;
-
-    const updatedResponse: GateResponse = {
-      ...pendingResponse,
-      followUpResponse: followUpAnswer,
-    };
-
-    set({ followUpMode: false, pendingResponse: null, gateQuestion: null });
-    await saveAndAdvance(updatedResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses);
   },
 
   clearError: () => set({ error: null }),
@@ -273,10 +301,13 @@ mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
       gateOpen: false,
       gateResponses: [],
       suggestedCards: [],
-      gateQuestion: null,
       gateGenerating: false,
-      pendingResponse: null,
-      followUpMode: false,
+      gatePhase: 0,
+      gateQuestions: [],
+      currentGateSubQuestions: [],
+      lastFeedback: null,
+      lastMastery: null,
+      gateSkipped: false,
     });
   },
 }));
@@ -290,7 +321,6 @@ async function saveAndAdvance(
   currentSectionIndex: number,
   gateResponses: GateResponse[],
 ) {
-
   const updatedResponses = [...gateResponses, newResponse];
 
   try {
@@ -310,6 +340,9 @@ async function saveAndAdvance(
       gateResponses: updatedResponses,
       rawContent: updatedContent,
       suggestedCards: [],
+      gatePhase: 0,
+      gateQuestions: [],
+      currentGateSubQuestions: [],
     });
 
     // Auto-suggest flashcards (fire-and-forget)

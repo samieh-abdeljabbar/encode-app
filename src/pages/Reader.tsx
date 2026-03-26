@@ -9,7 +9,7 @@ import { useAppStore } from "../stores/app";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import DigestionGate from "../components/reader/DigestionGate";
 import ProgressBar from "../components/reader/ProgressBar";
-import { getGatePrompt } from "../lib/gates";
+import HighlightAskAI from "../components/reader/HighlightAskAI";
 import { parseFrontmatter } from "../lib/markdown";
 import type { Section } from "../lib/markdown";
 
@@ -187,6 +187,9 @@ export default function ReaderPage() {
   const navigate = useNavigate();
   const selectedFile = useVaultStore((s) => s.selectedFile);
   const config = useAppStore((s) => s.config);
+  const aiEnabled = config?.ai_provider !== "none";
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState<{ text: string; rect: DOMRect } | null>(null);
   const {
     filePath,
     rawContent,
@@ -200,15 +203,16 @@ export default function ReaderPage() {
     advanceSection,
     goToSection,
     submitGateResponse,
-    submitFollowUp,
     clearError,
     dismissSuggestions,
     closeReader,
     suggestedCards,
-    followUpMode,
-    pendingResponse,
-    gateQuestion,
     gateGenerating,
+    gatePhase,
+    gateQuestions,
+    lastFeedback,
+    lastMastery,
+    gateSkipped,
   } = useReaderStore();
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -250,6 +254,30 @@ export default function ReaderPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [gateOpen, currentSectionIndex, advanceSection, goToSection, handleBack]);
 
+  // Text selection detection for highlight-to-ask
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || !aiEnabled) return;
+
+    const handleMouseUp = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+        setTimeout(() => {
+          const s = window.getSelection();
+          if (!s || s.isCollapsed) setSelection(null);
+        }, 200);
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 5) return;
+      const range = sel.getRangeAt(0);
+      setSelection({ text, rect: range.getBoundingClientRect() });
+    };
+
+    el.addEventListener("mouseup", handleMouseUp);
+    return () => el.removeEventListener("mouseup", handleMouseUp);
+  }, [aiEnabled]);
+
   if (!selectedFile) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -275,10 +303,8 @@ export default function ReaderPage() {
   }
 
   const isLastSection = currentSectionIndex >= sections.length - 1;
-  const currentGatePrompt = !isLastSection
-    ? getGatePrompt(currentSectionIndex + 1)
-    : null;
   const currentSectionHeading = sections[currentSectionIndex]?.heading ?? null;
+  const currentGateQ = gateQuestions[gatePhase];
 
   return (
     <div className="flex flex-col h-full">
@@ -332,7 +358,7 @@ export default function ReaderPage() {
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[720px] mx-auto px-8 py-8">
+        <div ref={contentRef} className="max-w-[720px] mx-auto px-8 py-8 relative">
           {error && (
             <div className="mx-auto max-w-[720px] mb-4 p-3 bg-coral/10 border border-coral rounded text-coral flex justify-between items-center">
               <span>{error}</span>
@@ -362,25 +388,24 @@ export default function ReaderPage() {
                 .map((r, j) => (
                   <div
                     key={`gate-${j}`}
-                    className={`mb-8 p-4 bg-surface-2 rounded border border-border ${
+                    className={`mb-8 p-4 bg-surface-2 rounded border border-border space-y-3 ${
                       i < currentSectionIndex ? "opacity-60" : ""
                     }`}
                   >
-                    <p className="text-xs text-purple font-medium mb-1">
-                      {r.promptType.charAt(0).toUpperCase() + r.promptType.slice(1)} gate
-                    </p>
-                    <p className="text-sm text-text-muted italic mb-2">
-                      &ldquo;{r.response}&rdquo;
-                    </p>
-                    {r.feedback && (
-                      <div className="mt-2 pt-2 border-t border-border">
-                        <p className="text-xs text-teal font-medium mb-1">
-                          AI Feedback
+                    {r.subQuestions.map((sq, k) => (
+                      <div key={k} className={k > 0 ? "pt-3 border-t border-border" : ""}>
+                        <p className="text-xs text-purple font-medium mb-1">
+                          Q{k + 1} — {sq.promptType.charAt(0).toUpperCase() + sq.promptType.slice(1)}
                         </p>
-                        <p className="text-sm text-text">{r.feedback}</p>
-                        <p className="text-[9px] text-text-muted mt-1 opacity-50">via {config?.ollama_model || config?.ai_provider || "AI"}</p>
+                        <p className="text-xs text-text-muted mb-1">{sq.prompt}</p>
+                        <p className="text-sm text-text italic mb-1">
+                          &ldquo;{sq.response}&rdquo;
+                        </p>
+                        {sq.feedback && (
+                          <p className="text-sm text-teal">{sq.feedback}</p>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 ))}
             </div>
@@ -427,18 +452,18 @@ export default function ReaderPage() {
           )}
 
           {/* Gate or navigation */}
-          {(gateOpen || followUpMode) && currentGatePrompt ? (
+          {gateOpen ? (
             <DigestionGate
-              promptType={currentGatePrompt.type}
-              prompt={gateQuestion || currentGatePrompt.prompt}
+              promptType={currentGateQ?.type || "recall"}
+              prompt={currentGateQ?.question || "What is the main idea of this section?"}
               sectionHeading={currentSectionHeading}
               onSubmit={submitGateResponse}
-              followUpMode={followUpMode}
-              followUpQuestion={pendingResponse?.followUp}
-              feedbackText={pendingResponse?.feedback}
-              mastery={pendingResponse?.mastery}
-              onSubmitFollowUp={submitFollowUp}
               generating={gateGenerating}
+              currentPhase={gatePhase}
+              totalQuestions={gateQuestions.length || 2}
+              lastFeedback={lastFeedback}
+              lastMastery={lastMastery}
+              skipped={gateSkipped}
             />
           ) : (
             <div className="flex items-center justify-between py-6 border-t border-border mt-8">
@@ -509,6 +534,18 @@ export default function ReaderPage() {
           )}
 
           <div ref={bottomRef} />
+
+          {/* Highlight-to-Ask AI overlay */}
+          {aiEnabled && selection && (
+            <HighlightAskAI
+              selectedText={selection.text}
+              selectionRect={selection.rect}
+              containerRef={contentRef}
+              sectionContent={sections[currentSectionIndex]?.content || ""}
+              sectionHeading={sections[currentSectionIndex]?.heading || null}
+              onDismiss={() => setSelection(null)}
+            />
+          )}
         </div>
       </div>
     </div>

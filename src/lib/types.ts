@@ -86,19 +86,22 @@ export interface AppConfig {
   user_learning_style: string;
 }
 
-/** Digestion gate prompt types — rotate after each section */
-export type GatePromptType = "summarize" | "connect" | "predict" | "apply";
+/** Digestion gate prompt types */
+export type GatePromptType = "recall" | "explain" | "apply";
 
-/** A completed gate response for one section */
-export interface GateResponse {
-  sectionIndex: number;
+/** A single sub-question within a multi-question gate */
+export interface GateSubQuestion {
   promptType: GatePromptType;
   prompt: string;
   response: string;
   feedback: string | null;
-  mastery: number | null;           // 1=weak, 2=partial, 3=solid
-  followUp: string | null;          // Follow-up question if mastery low
-  followUpResponse: string | null;  // User's answer to follow-up
+  mastery: number | null;  // 1=weak, 2=partial, 3=solid
+}
+
+/** A completed gate for one section (contains 2-3 sub-questions) */
+export interface GateResponse {
+  sectionIndex: number;
+  subQuestions: GateSubQuestion[];
   timestamp: string;
 }
 

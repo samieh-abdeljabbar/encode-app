@@ -1,55 +1,34 @@
 import { describe, it, expect } from "vitest";
 import {
-  getGatePrompt,
   formatDigestionMarkdown,
   shouldGateSection,
+  shouldSkipRemaining,
 } from "../../lib/gates";
-import type { GateResponse } from "../../lib/types";
-
-describe("getGatePrompt", () => {
-  it("returns summarize for section 1", () => {
-    const prompt = getGatePrompt(1);
-    expect(prompt.type).toBe("summarize");
-    expect(prompt.prompt).toContain("one sentence");
-  });
-
-  it("returns connect for section 2", () => {
-    expect(getGatePrompt(2).type).toBe("connect");
-  });
-
-  it("returns predict for section 3", () => {
-    expect(getGatePrompt(3).type).toBe("predict");
-  });
-
-  it("returns apply for section 4", () => {
-    expect(getGatePrompt(4).type).toBe("apply");
-  });
-
-  it("rotates back to summarize for section 5", () => {
-    expect(getGatePrompt(5).type).toBe("summarize");
-  });
-});
+import type { GateResponse, GateSubQuestion } from "../../lib/types";
 
 describe("formatDigestionMarkdown", () => {
-  it("formats responses as markdown", () => {
+  it("formats responses with sub-questions as markdown", () => {
     const responses: GateResponse[] = [
       {
         sectionIndex: 1,
-        promptType: "summarize",
-        prompt: "Explain what you just read in one sentence.",
-        response: "2NF removes partial dependencies.",
-        feedback: null,
-        mastery: null,
-        followUp: null,
-        followUpResponse: null,
+        subQuestions: [
+          {
+            promptType: "recall",
+            prompt: "What data type is the id column?",
+            response: "Integer",
+            feedback: "Correct!",
+            mastery: 3,
+          },
+        ],
         timestamp: "2026-03-21 7:12pm",
       },
     ];
 
     const md = formatDigestionMarkdown(responses);
     expect(md).toContain("## Digestion");
-    expect(md).toContain("Gate 1 (Summarize)");
-    expect(md).toContain("2NF removes partial dependencies.");
+    expect(md).toContain("Gate 1");
+    expect(md).toContain("Q1 (Recall)");
+    expect(md).toContain("Integer");
     expect(md).toContain("2026-03-21 7:12pm");
   });
 
@@ -61,13 +40,15 @@ describe("formatDigestionMarkdown", () => {
     const responses: GateResponse[] = [
       {
         sectionIndex: 1,
-        promptType: "connect",
-        prompt: "How does this relate?",
-        response: "Like my store inventory.",
-        feedback: "Good connection!",
-        mastery: null,
-        followUp: null,
-        followUpResponse: null,
+        subQuestions: [
+          {
+            promptType: "explain",
+            prompt: "How does this relate?",
+            response: "Like my store inventory.",
+            feedback: "Good connection!",
+            mastery: 2,
+          },
+        ],
         timestamp: "2026-03-21",
       },
     ];
@@ -79,9 +60,7 @@ describe("formatDigestionMarkdown", () => {
 
 describe("shouldGateSection", () => {
   it("skips section 0", () => {
-    expect(shouldGateSection(0, "Some content here that is long enough")).toBe(
-      false,
-    );
+    expect(shouldGateSection(0, "Some content here that is long enough")).toBe(false);
   });
 
   it("gates sections with enough content", () => {
@@ -91,5 +70,30 @@ describe("shouldGateSection", () => {
 
   it("skips very short sections", () => {
     expect(shouldGateSection(1, "Just a title")).toBe(false);
+  });
+});
+
+describe("shouldSkipRemaining", () => {
+  it("returns false with fewer than 2 sub-questions", () => {
+    const sqs: GateSubQuestion[] = [
+      { promptType: "recall", prompt: "Q", response: "A", feedback: null, mastery: 3 },
+    ];
+    expect(shouldSkipRemaining(sqs)).toBe(false);
+  });
+
+  it("returns true when all mastery scores are 3", () => {
+    const sqs: GateSubQuestion[] = [
+      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 3 },
+      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 3 },
+    ];
+    expect(shouldSkipRemaining(sqs)).toBe(true);
+  });
+
+  it("returns false when any mastery is below 3", () => {
+    const sqs: GateSubQuestion[] = [
+      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 3 },
+      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 2 },
+    ];
+    expect(shouldSkipRemaining(sqs)).toBe(false);
   });
 });
