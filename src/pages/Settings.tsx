@@ -221,7 +221,7 @@ export default function Settings() {
                 {p === "openai" && "GPT-4o, GPT-4o-mini"}
                 {p === "deepseek" && "DeepSeek API (affordable)"}
               </span>
-              {p === "ollama" && (
+              {p === "ollama" && provider === "ollama" && (
                 <span className={`text-[10px] mt-1 block ${
                   ollamaStatus === "available" ? "text-teal" : ollamaStatus === "unavailable" ? "text-coral" : "text-amber"
                 }`}>
