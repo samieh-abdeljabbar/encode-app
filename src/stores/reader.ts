@@ -228,7 +228,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   submitGateResponse: async (response) => {
     const {
       currentSectionIndex, sections, filePath, rawContent,
-      gateQuestions, gatePhase, currentGateSubQuestions, gateResponses,
+      gateQuestions, gatePhase, currentGateSubQuestions,
     } = get();
     const nextIndex = currentSectionIndex + 1;
 
@@ -259,6 +259,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
     if (isLastQuestion || shouldSkip) {
       // Gate complete — save and advance
+      // Re-read fresh state in case user navigated during AI evaluation
+      const fresh = get();
+      if (fresh.filePath !== filePath) return; // User switched files — abort
+
       const now = new Date().toLocaleString("en-US", {
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "numeric", minute: "2-digit",
@@ -270,13 +274,17 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         timestamp: now,
       };
 
-      set({
-        gateSkipped: shouldSkip && !isLastQuestion,
-        lastFeedback: feedback,
-        lastMastery: mastery,
-      });
+      set({ lastFeedback: feedback, lastMastery: mastery });
 
-      await saveAndAdvance(newResponse, filePath, rawContent, sections, currentSectionIndex, gateResponses);
+      await saveAndAdvance(
+        newResponse, fresh.filePath!, fresh.rawContent!,
+        fresh.sections, fresh.currentSectionIndex, fresh.gateResponses,
+      );
+
+      // Set gateSkipped after successful save
+      if (shouldSkip && !isLastQuestion) {
+        set({ gateSkipped: true });
+      }
     } else {
       // Move to next question
       set({

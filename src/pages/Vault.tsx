@@ -106,18 +106,28 @@ export default function VaultPage() {
     return editedContent;
   }, [fileContent]);
 
-  const handleToggleSource = () => {
-    if (fileContent) {
-      if (sourceMode) {
-        // Switching from source to editor — parse out frontmatter
-        const { content } = parseFrontmatter(fileContent);
-        setEditContent(content);
-        setSourceMode(false);
-      } else {
-        // Switching to source — show full raw content
-        setEditContent(fileContent);
-        setSourceMode(true);
-      }
+  const handleToggleSource = async () => {
+    if (!fileContent || !selectedFile) return;
+
+    // Flush any pending autosave before switching modes
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+      const fullContent = sourceMode ? editContent : reconstructFile(editContent);
+      try {
+        await writeFile(selectedFile, fullContent);
+        setFileContent(fullContent);
+      } catch { /* continue with mode switch anyway */ }
+    }
+
+    if (sourceMode) {
+      const latest = fileContent;
+      const { content } = parseFrontmatter(latest);
+      setEditContent(content);
+      setSourceMode(false);
+    } else {
+      setEditContent(fileContent);
+      setSourceMode(true);
     }
   };
 

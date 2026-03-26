@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Play, Pause, RotateCcw } from "lucide-react";
 
 type Phase = "study" | "break" | "longBreak";
@@ -14,55 +14,64 @@ export default function PomodoroTimer() {
   const [timeLeft, setTimeLeft] = useState(DURATIONS.study);
   const [running, setRunning] = useState(false);
   const [sessions, setSessions] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const completedRef = useRef(false);
 
+  const playDing = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 800;
+      gain.gain.value = 0.3;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+      setTimeout(() => ctx.close(), 500);
+    } catch { /* audio unavailable */ }
+  }, []);
+
+  // Tick interval
   useEffect(() => {
-    if (!running) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
+    if (!running) return;
+    completedRef.current = false;
 
-    intervalRef.current = setInterval(() => {
+    const id = setInterval(() => {
       setTimeLeft((t) => {
         if (t <= 1) {
-          // Timer complete — play sound and switch phase
-          try {
-            const ctx = new AudioContext();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.frequency.value = 800;
-            gain.gain.value = 0.3;
-            osc.start();
-            osc.stop(ctx.currentTime + 0.3);
-            setTimeout(() => ctx.close(), 500);
-          } catch { /* audio unavailable */ }
-
-          setRunning(false);
-
-          if (phase === "study") {
-            const newSessions = sessions + 1;
-            setSessions(newSessions);
-            if (newSessions % 4 === 0) {
-              setPhase("longBreak");
-              return DURATIONS.longBreak;
-            }
-            setPhase("break");
-            return DURATIONS.break;
-          }
-          // Break complete — back to study
-          setPhase("study");
-          return DURATIONS.study;
+          completedRef.current = true;
+          return 0;
         }
         return t - 1;
       });
     }, 1000);
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [running, phase, sessions]);
+    return () => clearInterval(id);
+  }, [running]);
+
+  // Handle phase transition when timer hits 0
+  useEffect(() => {
+    if (timeLeft > 0 || !completedRef.current) return;
+    completedRef.current = false;
+
+    playDing();
+    setRunning(false);
+
+    if (phase === "study") {
+      const newSessions = sessions + 1;
+      setSessions(newSessions);
+      if (newSessions % 4 === 0) {
+        setPhase("longBreak");
+        setTimeLeft(DURATIONS.longBreak);
+      } else {
+        setPhase("break");
+        setTimeLeft(DURATIONS.break);
+      }
+    } else {
+      setPhase("study");
+      setTimeLeft(DURATIONS.study);
+    }
+  }, [timeLeft, phase, sessions, playDing]);
 
   const reset = () => {
     setRunning(false);

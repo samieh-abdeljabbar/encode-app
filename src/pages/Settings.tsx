@@ -19,6 +19,7 @@ function TestConnectionButton({ provider, model, url, apiKey }: { provider: stri
 
   const handleTest = async () => {
     setStatus("testing");
+    setErrorMsg("");
     try {
       await testAiConnection(provider, model, url, apiKey);
       setStatus("success");
