@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EditorView } from "@codemirror/view";
+import { undo, redo, indentMore, indentLess } from "@codemirror/commands";
 import SlashMenu from "../components/shared/SlashMenu";
 import MarkdownEditor from "../components/shared/MarkdownEditor";
 import EditorToolbar from "../components/shared/EditorToolbar";
@@ -40,6 +41,42 @@ export default function VaultPage() {
       view.dispatch({ changes: { from, insert: before + after } });
       view.dispatch({ selection: { anchor: from + before.length } });
     }
+    view.focus();
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const view = cmViewRef.current;
+    if (view) { undo(view); view.focus(); }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    const view = cmViewRef.current;
+    if (view) { redo(view); view.focus(); }
+  }, []);
+
+  const handleIndent = useCallback(() => {
+    const view = cmViewRef.current;
+    if (view) { indentMore(view); view.focus(); }
+  }, []);
+
+  const handleOutdent = useCallback(() => {
+    const view = cmViewRef.current;
+    if (view) { indentLess(view); view.focus(); }
+  }, []);
+
+  const handleClearFormatting = useCallback(() => {
+    const view = cmViewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    if (from >= to) return;
+    const selected = view.state.sliceDoc(from, to);
+    const cleaned = selected
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/~~(.+?)~~/g, "$1")
+      .replace(/==(.+?)==/g, "$1")
+      .replace(/`(.+?)`/g, "$1");
+    view.dispatch({ changes: { from, to, insert: cleaned } });
     view.focus();
   }, []);
 
@@ -248,7 +285,15 @@ export default function VaultPage() {
 
             {/* Toolbar (CM6 mode only) */}
             {!sourceMode && (
-              <EditorToolbar onInsert={handleInsert} onWrap={handleWrap} />
+              <EditorToolbar
+                onInsert={handleInsert}
+                onWrap={handleWrap}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                onIndent={handleIndent}
+                onOutdent={handleOutdent}
+                onClearFormatting={handleClearFormatting}
+              />
             )}
 
             {/* Content area */}

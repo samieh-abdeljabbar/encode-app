@@ -1,9 +1,19 @@
 import { useState } from "react";
-import { Bold, Italic, Heading2, Code, Link, Table, List, Quote } from "lucide-react";
+import {
+  Bold, Italic, Heading1, Heading2, Heading3, Code, Link, Table,
+  List, ListOrdered, Quote, Strikethrough, Highlighter,
+  CheckSquare, Minus, Undo2, Redo2, IndentIncrease, IndentDecrease,
+  RemoveFormatting,
+} from "lucide-react";
 
 interface EditorToolbarProps {
   onInsert: (text: string) => void;
   onWrap: (before: string, after: string) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onIndent?: () => void;
+  onOutdent?: () => void;
+  onClearFormatting?: () => void;
 }
 
 function TablePicker({ onSelect, onClose }: { onSelect: (rows: number, cols: number) => void; onClose: () => void }) {
@@ -11,7 +21,7 @@ function TablePicker({ onSelect, onClose }: { onSelect: (rows: number, cols: num
 
   return (
     <div
-      className="absolute top-full left-0 mt-1 bg-[#1a1a1a] border border-[#333] rounded-lg p-3 shadow-2xl z-50"
+      className="absolute top-full left-0 mt-1 bg-surface border border-border rounded-lg p-3 shadow-2xl z-50"
       onMouseLeave={() => setHover(null)}
     >
       <p className="text-[10px] text-text-muted mb-2">
@@ -46,38 +56,66 @@ function generateTable(rows: number, cols: number): string {
   return [header, separator, ...dataRows].join("\n") + "\n";
 }
 
-export default function EditorToolbar({ onInsert, onWrap }: EditorToolbarProps) {
+export default function EditorToolbar({
+  onInsert, onWrap, onUndo, onRedo, onIndent, onOutdent, onClearFormatting,
+}: EditorToolbarProps) {
   const [showTablePicker, setShowTablePicker] = useState(false);
+  const sz = 14;
 
-  const btn = (icon: React.ReactNode, title: string, onClick: () => void) => (
+  const btn = (icon: React.ReactNode, title: string, onClick: () => void, disabled = false) => (
     <button
       key={title}
       onClick={onClick}
       title={title}
-      className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+      disabled={disabled}
+      className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors disabled:opacity-30"
     >
       {icon}
     </button>
   );
 
-  return (
-    <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-border bg-surface shrink-0">
-      {btn(<Heading2 size={15} />, "Heading", () => onInsert("\n## "))}
-      {btn(<Bold size={15} />, "Bold", () => onWrap("**", "**"))}
-      {btn(<Italic size={15} />, "Italic", () => onWrap("*", "*"))}
-      {btn(<Code size={15} />, "Code block", () => onInsert("\n```\n\n```\n"))}
-      {btn(<Link size={15} />, "Link", () => onInsert("[text](url)"))}
-      {btn(<List size={15} />, "List", () => onInsert("\n- "))}
-      {btn(<Quote size={15} />, "Blockquote", () => onInsert("\n> "))}
+  const sep = <div className="w-px h-4 bg-border mx-0.5 shrink-0" />;
 
-      {/* Table with picker */}
+  return (
+    <div className="flex flex-wrap items-center gap-0.5 px-4 py-1.5 border-b border-border bg-surface shrink-0">
+      {/* Undo / Redo */}
+      {btn(<Undo2 size={sz} />, "Undo (⌘Z)", () => onUndo?.(), !onUndo)}
+      {btn(<Redo2 size={sz} />, "Redo (⌘⇧Z)", () => onRedo?.(), !onRedo)}
+      {sep}
+
+      {/* Headings */}
+      {btn(<Heading1 size={sz} />, "Heading 1", () => onInsert("\n# "))}
+      {btn(<Heading2 size={sz} />, "Heading 2", () => onInsert("\n## "))}
+      {btn(<Heading3 size={sz} />, "Heading 3", () => onInsert("\n### "))}
+      {sep}
+
+      {/* Inline formatting */}
+      {btn(<Bold size={sz} />, "Bold", () => onWrap("**", "**"))}
+      {btn(<Italic size={sz} />, "Italic", () => onWrap("*", "*"))}
+      {btn(<Strikethrough size={sz} />, "Strikethrough", () => onWrap("~~", "~~"))}
+      {btn(<Highlighter size={sz} />, "Highlight", () => onWrap("==", "=="))}
+      {sep}
+
+      {/* Blocks */}
+      {btn(<Code size={sz} />, "Code block", () => onInsert("\n```\n\n```\n"))}
+      {btn(<Link size={sz} />, "Link", () => onInsert("[text](url)"))}
+      {btn(<Quote size={sz} />, "Blockquote", () => onInsert("\n> "))}
+      {sep}
+
+      {/* Lists */}
+      {btn(<List size={sz} />, "Bullet list", () => onInsert("\n- "))}
+      {btn(<ListOrdered size={sz} />, "Numbered list", () => onInsert("\n1. "))}
+      {btn(<CheckSquare size={sz} />, "Checkbox", () => onInsert("\n- [ ] "))}
+      {sep}
+
+      {/* Table */}
       <div className="relative">
         <button
           onClick={() => setShowTablePicker(!showTablePicker)}
           title="Insert table"
           className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
         >
-          <Table size={15} />
+          <Table size={sz} />
         </button>
         {showTablePicker && (
           <TablePicker
@@ -86,6 +124,15 @@ export default function EditorToolbar({ onInsert, onWrap }: EditorToolbarProps) 
           />
         )}
       </div>
+
+      {/* Misc */}
+      {btn(<Minus size={sz} />, "Horizontal rule", () => onInsert("\n---\n"))}
+      {sep}
+
+      {/* Indent / Outdent */}
+      {btn(<IndentIncrease size={sz} />, "Indent", () => onIndent?.(), !onIndent)}
+      {btn(<IndentDecrease size={sz} />, "Outdent", () => onOutdent?.(), !onOutdent)}
+      {btn(<RemoveFormatting size={sz} />, "Clear formatting", () => onClearFormatting?.(), !onClearFormatting)}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useVaultStore } from "../../stores/vault";
 import VaultBrowser from "../vault/VaultBrowser";
 import ImportDialog from "../vault/ImportDialog";
+import PomodoroTimer from "./PomodoroTimer";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -90,6 +91,9 @@ export default function Sidebar() {
           <VaultBrowser />
         )}
       </div>
+
+      {/* Pomodoro Timer */}
+      <PomodoroTimer />
 
       {/* Import dialog */}
       {showImport && (

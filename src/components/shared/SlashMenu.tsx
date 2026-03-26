@@ -47,6 +47,13 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     label: "Callout (Tip)",
     template: "> [!tip] Title\n> Content here.\n",
   },
+  { command: "link", label: "Link", template: "[text](url)" },
+  { command: "image", label: "Image", template: "![alt text](url)" },
+  { command: "divider", label: "Divider", template: "\n---\n" },
+  { command: "checkbox", label: "Checkbox", template: "- [ ] " },
+  { command: "numbered-list", label: "Numbered List", template: "1. " },
+  { command: "quote", label: "Blockquote", template: "> " },
+  { command: "embed", label: "Embed Note", template: "![[filename]]" },
 ];
 
 interface SlashMenuProps {
