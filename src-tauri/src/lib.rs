@@ -380,6 +380,23 @@ async fn ai_request_cmd(
     ai::ai_request(&provider, &model, &url, key, &system_prompt, &user_prompt, max_tokens).await
 }
 
+#[tauri::command]
+async fn test_ai_connection(
+    provider: String,
+    model: String,
+    url: String,
+    api_key: String,
+) -> Result<String, String> {
+    let key = if api_key.is_empty() { None } else { Some(api_key.as_str()) };
+    let result = ai::ai_request(
+        &provider, &model, &url, key,
+        "Reply with exactly: OK",
+        "Test connection",
+        10,
+    ).await?;
+    Ok(result.text)
+}
+
 // === Helpers ===
 
 fn parse_daily_markdown(content: &str, date: &str) -> DailyCommitment {
@@ -516,6 +533,7 @@ pub fn run() {
             check_ollama,
             list_ollama_models,
             ai_request_cmd,
+            test_ai_connection,
             get_due_cards,
             get_due_count,
             update_card_schedule,

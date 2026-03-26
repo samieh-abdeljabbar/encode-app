@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
-import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels } from "../lib/tauri";
+import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection } from "../lib/tauri";
 import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
 
 const POPULAR_MODELS = [
@@ -12,6 +12,37 @@ const POPULAR_MODELS = [
   { id: "gemma2:9b", name: "Gemma 2 9B", size: "5.4 GB", desc: "Google's open model, strong at tasks" },
   { id: "qwen2.5:7b", name: "Qwen 2.5 7B", size: "4.4 GB", desc: "Excellent multilingual, good at math" },
 ];
+
+function TestConnectionButton({ provider, model, url, apiKey }: { provider: string; model: string; url: string; apiKey: string }) {
+  const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleTest = async () => {
+    setStatus("testing");
+    try {
+      await testAiConnection(provider, model, url, apiKey);
+      setStatus("success");
+      setTimeout(() => setStatus("idle"), 3000);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        onClick={handleTest}
+        disabled={status === "testing"}
+        className="px-3 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90 disabled:opacity-50"
+      >
+        {status === "testing" ? "Testing..." : "Test Connection"}
+      </button>
+      {status === "success" && <span className="text-xs text-teal">Connected</span>}
+      {status === "error" && <span className="text-xs text-coral truncate max-w-[300px]">{errorMsg}</span>}
+    </div>
+  );
+}
 
 export default function Settings() {
   const { config, loadConfig, saveConfig } = useAppStore();
@@ -378,6 +409,9 @@ export default function Settings() {
                   )}
                 </select>
               </div>
+            )}
+            {apiKey && (
+              <TestConnectionButton provider={provider} model={ollamaModel} url={ollamaUrl} apiKey={apiKey} />
             )}
           </div>
         )}

@@ -251,12 +251,23 @@ async fn deepseek_request(
     let key = api_key.ok_or("DeepSeek API key not configured")?;
     let model_name = if model.is_empty() { "deepseek-chat" } else { model };
 
-    let body = serde_json::json!({
-        "model": model_name,
-        "messages": [
+    // DeepSeek Reasoner (R1) doesn't support the "system" role —
+    // merge system prompt into user message instead
+    let is_reasoner = model_name.contains("reasoner");
+    let messages = if is_reasoner {
+        serde_json::json!([
+            {"role": "user", "content": format!("{}\n\n{}", system_prompt, user_prompt)}
+        ])
+    } else {
+        serde_json::json!([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ],
+        ])
+    };
+
+    let body = serde_json::json!({
+        "model": model_name,
+        "messages": messages,
         "max_tokens": max_tokens,
     });
 

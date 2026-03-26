@@ -115,3 +115,6 @@ export const checkOllama = (url: string) =>
 
 export const listOllamaModels = (url: string) =>
   invoke<string[]>("list_ollama_models", { url }).catch(() => []);
+
+export const testAiConnection = (provider: string, model: string, url: string, apiKey: string) =>
+  invoke<string>("test_ai_connection", { provider, model, url, apiKey });
