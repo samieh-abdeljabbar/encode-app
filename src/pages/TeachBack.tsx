@@ -145,7 +145,7 @@ export default function TeachBackPage() {
 
               {/* AI evaluation */}
               {evaluation && (
-                <div className="p-4 bg-[#1a2a1a] border border-[#1D9E75] rounded mb-6">
+                <div className="p-4 bg-teal/10 border border-teal rounded mb-6">
                   <p className="text-xs text-teal font-medium mb-2">
                     AI Evaluation
                   </p>

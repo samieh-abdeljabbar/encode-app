@@ -334,9 +334,9 @@ export default function ReaderPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[720px] mx-auto px-8 py-8">
           {error && (
-            <div className="mx-auto max-w-[720px] mb-4 p-3 bg-[#3a1a1a] border border-[#D85A30] rounded text-[#D85A30] flex justify-between items-center">
+            <div className="mx-auto max-w-[720px] mb-4 p-3 bg-coral/10 border border-coral rounded text-coral flex justify-between items-center">
               <span>{error}</span>
-              <button onClick={clearError} className="ml-4 text-[#D85A30] hover:text-white">&times;</button>
+              <button onClick={clearError} className="ml-4 text-coral hover:text-text">&times;</button>
             </div>
           )}
           {/* Render all revealed sections with gate responses */}

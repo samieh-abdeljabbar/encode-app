@@ -7,10 +7,10 @@ import { listSubjects } from "../lib/tauri";
 
 const RATING_BUTTONS: { label: string; rating: ReviewRating; color: string }[] =
   [
-    { label: "Again", rating: "again", color: "bg-[#D85A30]" },
-    { label: "Hard", rating: "hard", color: "bg-[#BA7517]" },
-    { label: "Good", rating: "good", color: "bg-[#1D9E75]" },
-    { label: "Easy", rating: "easy", color: "bg-[#1D9E75]/80" },
+    { label: "Again", rating: "again", color: "bg-coral" },
+    { label: "Hard", rating: "hard", color: "bg-amber" },
+    { label: "Good", rating: "good", color: "bg-teal" },
+    { label: "Easy", rating: "easy", color: "bg-teal/80" },
   ];
 
 function NewCardForm() {

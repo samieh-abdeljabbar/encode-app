@@ -200,8 +200,8 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
         {subjects.map(({ subject, chapters, grade }) => {
           const score = grade ? Math.round(grade.avg_score) : null;
           const scoreColor = score !== null
-            ? score >= 80 ? "#1D9E75" : score >= 60 ? "#BA7517" : "#D85A30"
-            : "#333";
+            ? score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)"
+            : "var(--color-border)";
           const isExpanded = expanded === subject.slug;
 
           return (
@@ -217,7 +217,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                   </div>
                   <div className="relative w-14 h-14 shrink-0">
                     <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-                      <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="3" />
+                      <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-surface-2, #252525)" strokeWidth="3" />
                       <circle cx="18" cy="18" r="15" fill="none" stroke={scoreColor} strokeWidth="3"
                         strokeDasharray={`${(score || 0) * 0.942} 94.2`} strokeLinecap="round" />
                     </svg>
@@ -693,13 +693,13 @@ function QuizGrades() {
       <div className="space-y-4">
         {grades.map((g) => {
           const score = Math.round(g.avg_score);
-          const color = score >= 80 ? "#1D9E75" : score >= 60 ? "#BA7517" : "#D85A30";
+          const color = score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)";
           return (
             <div key={g.subject} className="bg-surface rounded-xl border border-border p-5">
               <div className="flex items-center gap-5">
                 <div className="relative w-20 h-20 shrink-0">
                   <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="#252525" strokeWidth="2.5" />
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-surface-2, #252525)" strokeWidth="2.5" />
                     <circle cx="18" cy="18" r="15" fill="none" stroke={color} strokeWidth="2.5"
                       strokeDasharray={`${score * 0.942} 94.2`} strokeLinecap="round" />
                   </svg>

@@ -88,10 +88,10 @@ function preprocessCallouts(md: string): string {
   return result.join("\n");
 }
 
-/** Comprehensive prose styles for dark theme */
+/** Comprehensive prose styles — uses CSS variables from theme system */
 const PROSE_STYLES = `
   .prose {
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     font-size: var(--editor-font-size, 16px);
     line-height: 1.75;
     max-width: none;
@@ -99,29 +99,29 @@ const PROSE_STYLES = `
   .prose h1 {
     font-size: 28px;
     font-weight: 700;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     margin: 32px 0 16px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--color-border, #333);
     line-height: 1.3;
   }
   .prose h2 {
     font-size: 22px;
     font-weight: 600;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     margin: 28px 0 12px 0;
     line-height: 1.3;
   }
   .prose h3 {
     font-size: 18px;
     font-weight: 600;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     margin: 24px 0 8px 0;
   }
   .prose h4, .prose h5, .prose h6 {
     font-size: 15px;
     font-weight: 600;
-    color: #888880;
+    color: var(--color-text-muted, #888880);
     margin: 20px 0 8px 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -130,20 +130,20 @@ const PROSE_STYLES = `
     margin: 0 0 16px 0;
   }
   .prose a {
-    color: #7F77DD;
+    color: var(--color-purple, #7F77DD);
     text-decoration: none;
-    border-bottom: 1px solid rgba(127,119,221,0.3);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-purple, #7F77DD) 30%, transparent);
     transition: border-color 0.15s;
   }
   .prose a:hover {
-    border-bottom-color: #7F77DD;
+    border-bottom-color: var(--color-purple, #7F77DD);
   }
   .prose strong {
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     font-weight: 600;
   }
   .prose em {
-    color: #ccc;
+    color: var(--color-text, #ccc);
   }
   .prose ul, .prose ol {
     margin: 0 0 16px 0;
@@ -153,14 +153,14 @@ const PROSE_STYLES = `
     margin-bottom: 6px;
   }
   .prose li::marker {
-    color: #888880;
+    color: var(--color-text-muted, #888880);
   }
   .prose blockquote {
-    border-left: 3px solid #333;
+    border-left: 3px solid var(--color-border, #333);
     margin: 16px 0;
     padding: 8px 16px;
-    color: #888880;
-    background: rgba(255,255,255,0.02);
+    color: var(--color-text-muted, #888880);
+    background: var(--color-surface, rgba(255,255,255,0.02));
     border-radius: 0 6px 6px 0;
   }
   .prose blockquote p {
@@ -169,15 +169,15 @@ const PROSE_STYLES = `
   .prose code {
     font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
     font-size: 13px;
-    background: #252525;
-    color: #D85A30;
+    background: var(--color-surface-2, #252525);
+    color: var(--color-coral, #D85A30);
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid #333;
+    border: 1px solid var(--color-border, #333);
   }
   .prose pre {
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--color-surface, #1a1a1a);
+    border: 1px solid var(--color-border, #333);
     border-radius: 8px;
     padding: 16px;
     margin: 16px 0;
@@ -187,7 +187,7 @@ const PROSE_STYLES = `
     background: none;
     border: none;
     padding: 0;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     font-size: 13px;
     line-height: 1.6;
   }
@@ -198,29 +198,29 @@ const PROSE_STYLES = `
     font-size: 14px;
   }
   .prose thead {
-    border-bottom: 2px solid #333;
+    border-bottom: 2px solid var(--color-border, #333);
   }
   .prose th {
     text-align: left;
     padding: 10px 12px;
     font-weight: 600;
-    color: #e5e5e5;
-    background: #1a1a1a;
+    color: var(--color-text, #e5e5e5);
+    background: var(--color-surface, #1a1a1a);
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .prose td {
     padding: 8px 12px;
-    border-bottom: 1px solid #252525;
-    color: #ccc;
+    border-bottom: 1px solid var(--color-surface-2, #252525);
+    color: var(--color-text, #ccc);
   }
   .prose tr:nth-child(even) td {
-    background: rgba(255,255,255,0.02);
+    background: var(--color-surface, rgba(255,255,255,0.02));
   }
   .prose hr {
     border: none;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--color-border, #333);
     margin: 32px 0;
   }
   .prose img {
@@ -229,32 +229,32 @@ const PROSE_STYLES = `
     margin: 16px 0;
   }
   .prose del {
-    color: #888880;
+    color: var(--color-text-muted, #888880);
   }
   .prose input[type="checkbox"] {
-    accent-color: #7F77DD;
+    accent-color: var(--color-purple, #7F77DD);
     margin-right: 8px;
   }
   /* Flashcard cards */
   .fc-card {
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--color-surface, #1a1a1a);
+    border: 1px solid var(--color-border, #333);
     border-radius: 8px;
     padding: 16px;
     margin: 12px 0;
-    border-left: 3px solid #7F77DD;
+    border-left: 3px solid var(--color-purple, #7F77DD);
   }
   .fc-q {
     font-size: 15px;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     margin-bottom: 10px;
     font-weight: 500;
   }
   .fc-a {
     font-size: 14px;
-    color: #888880;
+    color: var(--color-text-muted, #888880);
     padding-top: 10px;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--color-border, #333);
   }
   .fc-label {
     display: inline-block;
@@ -301,7 +301,7 @@ const PROSE_STYLES = `
 
   .callout-body {
     font-size: 14px;
-    color: #e5e5e5;
+    color: var(--color-text, #e5e5e5);
     line-height: 1.6;
   }
 `;

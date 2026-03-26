@@ -263,7 +263,7 @@ export default function Settings() {
                 const isWin = navigator.platform.toLowerCase().includes("win");
                 const platform = isMac ? "mac" : isWin ? "windows" : "linux";
                 return (
-                <div className="mt-3 p-4 bg-[#0f0f0f] rounded border border-border space-y-4 text-xs">
+                <div className="mt-3 p-4 bg-bg rounded border border-border space-y-4 text-xs">
                   {/* Platform tabs */}
                   <div className="flex gap-1">
                     {(["mac", "windows", "linux"] as const).map((p) => (
