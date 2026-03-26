@@ -37,16 +37,14 @@ export default function HighlightAskAI({
     ? selectionRect.left - containerRect.left + selectionRect.width / 2
     : 0;
 
-  // Dismiss on scroll
+  // Dismiss on scroll (any phase)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const handleScroll = () => {
-      if (phase === "tooltip") onDismiss();
-    };
+    const handleScroll = () => onDismiss();
     el.addEventListener("scroll", handleScroll);
     return () => el.removeEventListener("scroll", handleScroll);
-  }, [containerRef, onDismiss, phase]);
+  }, [containerRef, onDismiss]);
 
   // Dismiss on click outside
   useEffect(() => {

@@ -56,25 +56,29 @@ export default function DigestionGate({
 
   return (
     <div className="border-t-2 border-purple bg-surface rounded-t-lg p-6 space-y-4">
-      {/* Progress dots */}
+      {/* Progress dots — hidden while generating to avoid flicker */}
       <div className="flex items-center gap-3">
-        <div className="flex gap-1.5">
-          {Array.from({ length: totalQuestions }, (_, i) => (
-            <div
-              key={i}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                i < currentPhase
-                  ? "bg-teal"
-                  : i === currentPhase
-                    ? "bg-purple animate-pulse"
-                    : "bg-border"
-              }`}
-            />
-          ))}
-        </div>
-        <span className="text-xs font-medium text-purple px-2 py-0.5 bg-purple/10 rounded">
-          Q{currentPhase + 1} of {totalQuestions} — {label}
-        </span>
+        {!generating && totalQuestions > 0 && (
+          <div className="flex gap-1.5">
+            {Array.from({ length: totalQuestions }, (_, i) => (
+              <div
+                key={i}
+                className={`w-2 h-2 rounded-full transition-colors ${
+                  i < currentPhase
+                    ? "bg-teal"
+                    : i === currentPhase
+                      ? "bg-purple animate-pulse"
+                      : "bg-border"
+                }`}
+              />
+            ))}
+          </div>
+        )}
+        {!generating && (
+          <span className="text-xs font-medium text-purple px-2 py-0.5 bg-purple/10 rounded">
+            Q{currentPhase + 1} of {totalQuestions} — {label}
+          </span>
+        )}
         {sectionHeading && (
           <span className="text-xs text-text-muted truncate">
             after: {sectionHeading}
