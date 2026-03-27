@@ -1,6 +1,13 @@
 # Encode
 
-A desktop study environment that makes you think harder about what you're learning. Built with Tauri 2.0.
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="Encode" width="128" height="128" />
+</p>
+
+<p align="center">
+  A desktop study environment that makes you think harder about what you're learning.<br/>
+  Built with Tauri 2.0.
+</p>
 
 Encode isn't a note-taking app. It's a structured learning system backed by cognitive science research — spaced repetition, retrieval practice, elaborative interrogation, and the Feynman technique. All your knowledge lives as plain markdown files you own forever.
 
@@ -45,6 +52,8 @@ Encode isn't a note-taking app. It's a structured learning system backed by cogn
 | Icons | Lucide React |
 
 ## Download
+
+**Current version: v0.8.1**
 
 Grab the latest release for your platform from [Releases](https://github.com/samieh-abdeljabbar/encode-app/releases/latest).
 
