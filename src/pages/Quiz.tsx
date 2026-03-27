@@ -5,6 +5,7 @@ import type { QuizHistoryPoint, WeakTopic } from "../lib/types";
 import { parseFrontmatter } from "../lib/markdown";
 import type { Subject, FileEntry } from "../lib/types";
 import { Flag, ChevronDown, ChevronRight, BookOpen, Brain, RotateCcw, Sparkles, CreditCard } from "lucide-react";
+import { EmptyState, InputShell, LoadingState, MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton, SegmentedTabs } from "../components/ui/primitives";
 
 // ─── Types ──────────────────────────────────────────────
 interface SubjectWithChapters {
@@ -20,6 +21,14 @@ interface PastQuiz {
   score: string;
   date: string;
   content: string | null;
+}
+
+function getScoreColor(score: number): string {
+  return score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)";
+}
+
+function getScoreTextClass(score: number): string {
+  return score >= 80 ? "text-teal" : score >= 60 ? "text-amber" : "text-coral";
 }
 
 // ─── Pre-Quiz Config ────────────────────────────────────
@@ -42,95 +51,118 @@ function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel
   };
 
   return (
-    <div className="max-w-md mx-auto py-8 px-4">
-      <h2 className="text-lg font-semibold text-text mb-1">Quiz Setup</h2>
-      <p className="text-xs text-text-muted mb-6">{configSubject} — {configTopic}</p>
+    <div className="mx-auto max-w-3xl px-4 py-8">
+      <PageHeader
+        title="Quiz Setup"
+        subtitle={`${configSubject} — ${configTopic}`}
+        meta={
+          <>
+            <MetaChip>{config.types.length} types</MetaChip>
+            <MetaChip>{config.questionCount} questions</MetaChip>
+            <MetaChip variant="accent">
+              {config.bloomRange[0] === 0 ? "Adaptive difficulty" : `Bloom ${config.bloomRange[0]}-${config.bloomRange[1]}`}
+            </MetaChip>
+          </>
+        }
+        className="rounded-t-2xl border border-border-subtle"
+      />
 
-      {/* Question Types */}
-      <div className="mb-6">
-        <p className="text-xs font-medium text-text mb-2">Question Types</p>
-        <div className="space-y-1.5">
-          {typeOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => toggleType(opt.id)}
-              className={`w-full flex items-center justify-between p-2.5 rounded border text-left transition-colors ${
-                config.types.includes(opt.id)
-                  ? "border-purple bg-purple/10 text-text"
-                  : "border-border bg-surface text-text-muted hover:border-purple/30"
-              }`}
-            >
-              <div>
-                <span className="text-sm">{opt.label}</span>
-                <span className="text-[10px] text-text-muted ml-2">{opt.desc}</span>
-              </div>
-              <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                config.types.includes(opt.id) ? "bg-purple border-purple" : "border-border"
-              }`}>
-                {config.types.includes(opt.id) && <span className="text-white text-[10px]">✓</span>}
-              </div>
-            </button>
-          ))}
+      <Panel
+        className="rounded-t-none border-t-0"
+        footer={
+          <div className="flex gap-3">
+            <SecondaryButton onClick={onCancel} className="flex-1">
+              Cancel
+            </SecondaryButton>
+            <PrimaryButton onClick={onStart} className="flex-1">
+              Start Quiz
+            </PrimaryButton>
+          </div>
+        }
+      >
+        <div className="space-y-8">
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Question Types</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              {typeOptions.map((opt) => {
+                const active = config.types.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => toggleType(opt.id)}
+                    className={`flex items-start justify-between rounded-2xl border px-4 py-4 text-left transition-colors ${
+                      active
+                        ? "border-accent/40 bg-accent-soft text-text"
+                        : "border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong hover:bg-panel-active"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-text">{opt.label}</p>
+                      <p className="mt-1 text-xs text-text-muted">{opt.desc}</p>
+                    </div>
+                    <div className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${
+                      active ? "border-accent bg-accent text-white" : "border-border-strong text-text-muted"
+                    }`}>
+                      {active ? "✓" : ""}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Number of Questions</p>
+            <div className="flex gap-2">
+              {[5, 10, 15].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setConfig({ questionCount: n })}
+                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition-colors ${
+                    config.questionCount === n
+                      ? "border-accent/40 bg-accent-soft text-text"
+                      : "border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong hover:text-text"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Difficulty</p>
+            <div className="grid gap-2 md:grid-cols-4">
+              {([
+                { label: "Auto", range: [0, 0] as [number, number] },
+                { label: "Beginner", range: [1, 3] as [number, number] },
+                { label: "Intermediate", range: [2, 4] as [number, number] },
+                { label: "Advanced", range: [3, 6] as [number, number] },
+              ]).map((opt) => {
+                const active = config.bloomRange[0] === opt.range[0] && config.bloomRange[1] === opt.range[1];
+                return (
+                  <button
+                    key={opt.label}
+                    onClick={() => setConfig({ bloomRange: opt.range })}
+                    className={`rounded-xl border px-4 py-3 text-sm transition-colors ${
+                      active
+                        ? "border-accent/40 bg-accent-soft text-text"
+                        : "border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong hover:text-text"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-text-muted">
+              {config.bloomRange[0] === 0
+                ? "Auto adjusts to your recent performance."
+                : `Bloom ${config.bloomRange[0]}-${config.bloomRange[1]}: ${config.bloomRange[0] <= 2 ? "Remember → Apply" : config.bloomRange[0] <= 3 ? "Understand → Analyze" : "Apply → Create"}`}
+            </p>
+          </div>
         </div>
-      </div>
-
-      {/* Question Count */}
-      <div className="mb-6">
-        <p className="text-xs font-medium text-text mb-2">Number of Questions</p>
-        <div className="flex gap-2">
-          {[5, 10, 15].map((n) => (
-            <button
-              key={n}
-              onClick={() => setConfig({ questionCount: n })}
-              className={`flex-1 py-2 rounded border text-sm font-medium transition-colors ${
-                config.questionCount === n
-                  ? "border-purple bg-purple/10 text-purple"
-                  : "border-border bg-surface text-text-muted hover:border-purple/30"
-              }`}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Bloom Level */}
-      <div className="mb-8">
-        <p className="text-xs font-medium text-text mb-2">Difficulty</p>
-        <div className="flex gap-2">
-          {([
-            { label: "Auto", range: [0, 0] as [number, number] },
-            { label: "Beginner", range: [1, 3] as [number, number] },
-            { label: "Intermediate", range: [2, 4] as [number, number] },
-            { label: "Advanced", range: [3, 6] as [number, number] },
-          ]).map((opt) => (
-            <button
-              key={opt.label}
-              onClick={() => setConfig({ bloomRange: opt.range })}
-              className={`flex-1 py-2 rounded border text-sm transition-colors ${
-                config.bloomRange[0] === opt.range[0] && config.bloomRange[1] === opt.range[1]
-                  ? "border-purple bg-purple/10 text-purple font-medium"
-                  : "border-border bg-surface text-text-muted hover:border-purple/30"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-[10px] text-text-muted mt-1.5">
-          {config.bloomRange[0] === 0 ? "Auto: adjusts based on your recent scores" : `Bloom ${config.bloomRange[0]}-${config.bloomRange[1]}: ${config.bloomRange[0] <= 2 ? "Remember → Apply" : config.bloomRange[0] <= 3 ? "Understand → Analyze" : "Apply → Create"}`}
-        </p>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 py-2.5 text-sm border border-border rounded text-text-muted hover:text-text hover:border-purple/30 transition-colors">
-          Cancel
-        </button>
-        <button onClick={onStart} className="flex-1 py-2.5 text-sm bg-purple text-white rounded font-medium hover:opacity-90">
-          Start Quiz
-        </button>
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -198,16 +230,15 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   };
 
   if (loading) {
-    return <p className="text-text-muted text-center py-12">Loading subjects...</p>;
+    return <LoadingState label="Loading quiz dashboard" detail="Collecting subjects, chapters, and recent scores." />;
   }
 
   if (subjects.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Brain size={32} className="text-text-muted mx-auto mb-3" />
-        <p className="text-text-muted mb-2">No subjects yet.</p>
-        <p className="text-text-muted text-sm">Import content in the Vault to start quizzing.</p>
-      </div>
+      <EmptyState
+        title="No subjects yet"
+        description="Import content in the Vault to start generating quizzes."
+      />
     );
   }
 
@@ -216,14 +247,15 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {subjects.map(({ subject, chapters, grade }) => {
           const score = grade ? Math.round(grade.avg_score) : null;
-          const scoreColor = score !== null
-            ? score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)"
-            : "var(--color-border)";
+          const scoreColor = score !== null ? getScoreColor(score) : "var(--color-border-strong)";
           const isExpanded = expanded === subject.slug;
 
           return (
-            <div key={subject.slug} className="bg-surface rounded-xl border border-border overflow-hidden">
-              <div className="p-5">
+            <Panel
+              key={subject.slug}
+              className="overflow-hidden"
+              bodyClassName="p-0"
+              title={
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="text-base font-semibold text-text">{subject.name}</h3>
@@ -245,21 +277,29 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                     </div>
                   </div>
                 </div>
-
+              }
+              footer={
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleSubjectQuiz(subject.slug, subject.name)}
-                    className="flex-1 py-2 text-xs bg-purple text-white rounded-lg hover:opacity-90 font-medium flex items-center justify-center gap-1.5"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-accent bg-accent px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-95"
                   >
                     <Brain size={13} />
                     Quiz All
                   </button>
                   <button
                     onClick={() => setExpanded(isExpanded ? null : subject.slug)}
-                    className="px-3 py-2 text-xs text-text-muted border border-border rounded-lg hover:text-text hover:border-purple/50 transition-colors"
+                    className="rounded-xl border border-border-strong bg-panel-alt px-3 py-2 text-xs text-text-muted transition-colors hover:border-accent/40 hover:text-text"
                   >
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
+                </div>
+              }
+            >
+              <div className="px-5">
+                <div className="flex flex-wrap gap-2 pb-4">
+                  <MetaChip>{chapters.length} chapter{chapters.length !== 1 ? "s" : ""}</MetaChip>
+                  {grade ? <MetaChip variant={score !== null && score >= 80 ? "success" : score !== null && score >= 60 ? "warning" : "danger"}>{grade.total_quizzes} quiz{grade.total_quizzes !== 1 ? "zes" : ""}</MetaChip> : <MetaChip>No quiz history</MetaChip>}
                 </div>
               </div>
 
@@ -267,13 +307,13 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                 const selected = selectedChapters[subject.slug] || [];
                 const allSelected = chapters.every((c) => selected.includes(c.file_path));
                 return (
-                  <div className="border-t border-border bg-bg">
+                  <div className="border-t border-border-subtle bg-panel-alt">
                     {/* Select all + Quiz Selected bar */}
                     {chapters.length > 1 && (
-                      <div className="flex items-center justify-between px-5 py-2 border-b border-border/50 bg-surface-2/30">
+                      <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
                         <button
                           onClick={() => selectAllChapters(subject.slug, chapters)}
-                          className="text-[10px] text-text-muted hover:text-purple transition-colors"
+                          className="text-[10px] text-text-muted transition-colors hover:text-text"
                         >
                           {allSelected ? "Deselect All" : "Select All"}
                         </button>
@@ -283,7 +323,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                               await prepareMultiChapterQuiz(subject.slug, subject.name, selected);
                               onStartQuiz();
                             }}
-                            className="text-[10px] px-2.5 py-1 bg-purple text-white rounded hover:opacity-90"
+                            className="rounded-lg border border-accent bg-accent px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-95"
                           >
                             Quiz Selected ({selected.length})
                           </button>
@@ -296,27 +336,29 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                       return (
                         <div
                           key={ch.file_path}
-                          className="flex items-center gap-0 border-b border-border/50 last:border-0"
+                          className="flex items-center gap-0 border-b border-border-subtle last:border-0"
                         >
                           <button
                             onClick={() => toggleChapter(subject.slug, ch.file_path)}
-                            className="px-3 py-2.5 hover:bg-surface-2/50 transition-colors"
+                            className="px-3 py-3 transition-colors hover:bg-panel-active"
                           >
                             <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${
-                              isChecked ? "bg-purple border-purple" : "border-border"
+                              isChecked ? "bg-accent border-accent" : "border-border-strong"
                             }`}>
                               {isChecked && <span className="text-white text-[8px]">✓</span>}
                             </div>
                           </button>
                           <button
                             onClick={() => handleChapterQuiz(ch, subject.name)}
-                            className="flex-1 flex items-center justify-between py-2.5 pr-5 hover:bg-surface-2/50 transition-colors text-left"
+                            className="flex-1 text-left transition-colors hover:bg-panel-active"
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <BookOpen size={14} className="text-purple shrink-0" />
-                              <span className="text-xs text-text truncate">{name}</span>
+                            <div className="flex items-center justify-between gap-3 px-2 py-3 pr-5">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <BookOpen size={14} className="shrink-0 text-accent" />
+                                <span className="truncate text-xs text-text">{name}</span>
+                              </div>
+                              <span className="shrink-0 text-[10px] text-accent">Quiz →</span>
                             </div>
-                            <span className="text-[10px] text-purple shrink-0">Quiz →</span>
                           </button>
                         </div>
                       );
@@ -324,7 +366,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                   </div>
                 );
               })()}
-            </div>
+            </Panel>
           );
         })}
       </div>
@@ -346,24 +388,23 @@ function ScoreTrendChart({ timeline }: { timeline: QuizHistoryPoint[] }) {
   });
 
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-  const dotColor = (s: number) => s >= 80 ? "#1D9E75" : s >= 60 ? "#BA7517" : "#D85A30";
+  const dotColor = (s: number) => getScoreColor(s);
 
   return (
-    <div className="bg-surface rounded-lg border border-border p-4 mb-4">
-      <p className="text-xs font-medium text-text mb-3">Score Trend</p>
+    <Panel title="Score Trend" className="mb-4">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 200 }}>
         {/* Grid lines */}
         {[0, 25, 50, 75, 100].map((pct) => {
           const y = PAD + plotH - (pct / 100) * plotH;
           return (
             <g key={pct}>
-              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#333" strokeDasharray="2,4" />
-              <text x={PAD - 6} y={y + 3} fill="#888880" fontSize="9" textAnchor="end">{pct}%</text>
+              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="var(--color-border-subtle)" strokeDasharray="2,4" />
+              <text x={PAD - 6} y={y + 3} fill="var(--color-text-muted)" fontSize="9" textAnchor="end">{pct}%</text>
             </g>
           );
         })}
         {/* Line */}
-        <path d={pathD} fill="none" stroke="#7F77DD" strokeWidth="2" strokeLinejoin="round" />
+        <path d={pathD} fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinejoin="round" />
         {/* Dots */}
         {points.map((p, i) => (
           <g key={i}>
@@ -374,14 +415,14 @@ function ScoreTrendChart({ timeline }: { timeline: QuizHistoryPoint[] }) {
         {/* Date labels (first, last) */}
         {points.length > 0 && (
           <>
-            <text x={points[0].x} y={H - 8} fill="#888880" fontSize="9" textAnchor="middle">{points[0].date}</text>
+            <text x={points[0].x} y={H - 8} fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">{points[0].date}</text>
             {points.length > 1 && (
-              <text x={points[points.length - 1].x} y={H - 8} fill="#888880" fontSize="9" textAnchor="middle">{points[points.length - 1].date}</text>
+              <text x={points[points.length - 1].x} y={H - 8} fill="var(--color-text-muted)" fontSize="9" textAnchor="middle">{points[points.length - 1].date}</text>
             )}
           </>
         )}
       </svg>
-    </div>
+    </Panel>
   );
 }
 
@@ -470,16 +511,13 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
     }
   };
 
-  if (loading) return <p className="text-text-muted text-center py-12">Loading analytics...</p>;
+  if (loading) return <LoadingState label="Loading quiz history" detail="Analyzing trends, weak topics, and prior attempts." />;
 
   const hasData = timeline.length > 0 || grades.length > 0;
 
   if (!hasData) {
     return (
-      <div className="text-center py-12">
-        <p className="text-text-muted">No quiz data yet.</p>
-        <p className="text-text-muted text-sm mt-1">Take a quiz from the Dashboard to see trends.</p>
-      </div>
+      <EmptyState title="No quiz data yet" description="Take a quiz from the dashboard to see trends and weak topics." />
     );
   }
 
@@ -487,12 +525,12 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
     <div className="max-w-2xl mx-auto pb-8">
       {/* Subject filter */}
       {grades.length > 1 && (
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs text-text-muted">Filter:</span>
+        <Panel className="mb-4" bodyClassName="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-muted">Filter</span>
           <button
             onClick={() => setFilterSubject(null)}
-            className={`px-2.5 py-1 text-xs rounded transition-colors ${
-              !filterSubject ? "bg-purple text-white" : "bg-surface border border-border text-text-muted hover:border-purple/50"
+            className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+              !filterSubject ? "bg-accent text-white" : "border border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong hover:text-text"
             }`}
           >
             All
@@ -501,14 +539,14 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
             <button
               key={g.subject}
               onClick={() => setFilterSubject(filterSubject === g.subject ? null : g.subject)}
-              className={`px-2.5 py-1 text-xs rounded transition-colors ${
-                filterSubject === g.subject ? "bg-purple text-white" : "bg-surface border border-border text-text-muted hover:border-purple/50"
+              className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                filterSubject === g.subject ? "bg-accent text-white" : "border border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong hover:text-text"
               }`}
             >
               {g.subject}
             </button>
           ))}
-        </div>
+        </Panel>
       )}
 
       {/* Score Trend Chart */}
@@ -523,8 +561,8 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
             <div
               key={g.subject}
               onClick={() => setFilterSubject(filterSubject === g.subject ? null : g.subject)}
-              className={`bg-surface rounded-lg border p-4 cursor-pointer transition-colors ${
-                filterSubject === g.subject ? "border-purple" : "border-border hover:border-purple/50"
+              className={`cursor-pointer rounded-2xl border p-4 transition-colors ${
+                filterSubject === g.subject ? "border-accent/50 bg-accent-soft" : "border-border-subtle bg-panel hover:border-border-strong"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -553,22 +591,21 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
 
       {/* Weak Topics */}
       {weakTopics.length > 0 && (
-        <div className="bg-surface rounded-lg border border-border p-4 mb-4">
-          <p className="text-xs font-medium text-text mb-3">Weak Topics (lowest accuracy)</p>
+        <Panel title="Weak Topics" className="mb-4">
           <div className="space-y-2">
             {weakTopics.map((wt, i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs text-text truncate">{wt.topic}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-text-muted rounded shrink-0">{wt.subject}</span>
+                    <span className="shrink-0 rounded-full bg-panel-alt px-2 py-0.5 text-[10px] text-text-muted">{wt.subject}</span>
                   </div>
-                  <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-panel-alt">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${wt.accuracy_pct}%`,
-                        backgroundColor: wt.accuracy_pct >= 80 ? "#1D9E75" : wt.accuracy_pct >= 60 ? "#BA7517" : "#D85A30",
+                        backgroundColor: getScoreColor(wt.accuracy_pct),
                       }}
                     />
                   </div>
@@ -576,14 +613,14 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
                 <span className="text-xs text-text-muted shrink-0 w-12 text-right">{Math.round(wt.accuracy_pct)}%</span>
                 <button
                   onClick={() => handleQuizWeakTopic(wt)}
-                  className="text-[10px] text-purple hover:underline shrink-0"
+                  className="shrink-0 text-[10px] text-accent hover:underline"
                 >
                   Quiz
                 </button>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
       )}
 
       {/* All Quizzes (collapsible) */}
@@ -599,34 +636,32 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
           {showAllQuizzes && (
             <div className="space-y-2">
               {quizzes.map((q) => (
-                <div key={q.path} className="bg-surface rounded border border-border overflow-hidden">
+                <div key={q.path} className="overflow-hidden rounded-2xl border border-border-subtle bg-panel shadow-[var(--shadow-panel)]">
                   <div className="flex items-center">
                     <button
                       onClick={() => handleExpand(q)}
-                      className="flex-1 flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors text-left"
+                      className="flex-1 text-left transition-colors hover:bg-panel-alt"
                     >
-                      <div>
+                      <div className="px-4 py-3">
                         <p className="text-sm text-text">{q.name}</p>
                         <p className="text-[10px] text-text-muted">{q.subject} · {q.date}</p>
                       </div>
                       {q.score && (
-                        <span className={`text-sm font-bold ${
-                          Number(q.score) >= 80 ? "text-teal" : Number(q.score) >= 60 ? "text-amber" : "text-coral"
-                        }`}>
+                        <span className={`pr-4 text-sm font-bold ${getScoreTextClass(Number(q.score))}`}>
                           {q.score}%
                         </span>
                       )}
                     </button>
                     <button
                       onClick={() => handleRetake(q.path)}
-                      className="flex items-center gap-1.5 px-3 py-3 text-xs text-text-muted hover:text-purple transition-colors border-l border-border"
+                      className="flex items-center gap-1.5 border-l border-border-subtle px-3 py-3 text-xs text-text-muted transition-colors hover:text-accent"
                     >
                       <RotateCcw size={13} />
                     </button>
                   </div>
 
                   {expanded === q.path && q.content && (
-                    <div className="border-t border-border px-4 py-3 space-y-3 text-xs">
+                    <div className="space-y-3 border-t border-border-subtle px-4 py-3 text-xs">
                       {q.content.split("\n## ").filter((s) => s.startsWith("[")).map((block, i) => {
                         const lines = block.split("\n");
                         const questionLine = lines[0] || "";
@@ -636,7 +671,7 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
                         const feedbackLine = lines.find((l) => l.startsWith("**Feedback:**"))?.replace("**Feedback:**", "").trim() || "";
                         const isCorrect = resultLine.toLowerCase().includes("correct") && !resultLine.toLowerCase().includes("incorrect");
                         return (
-                          <div key={i} className={`p-3 rounded border ${isCorrect ? "border-teal/30 bg-teal/5" : "border-coral/30 bg-coral/5"}`}>
+                          <div key={i} className={`rounded-xl border p-3 ${isCorrect ? "border-teal/30 bg-teal/10" : "border-coral/30 bg-coral/10"}`}>
                             <p className="text-text font-medium mb-1">Q{i + 1}: {questionLine.replace(/^\[.*?\]\s*/, "")}</p>
                             <p className="text-text-muted">Your answer: {answerLine}</p>
                             {correctLine && <p className="text-text-muted">Correct: {correctLine}</p>}
@@ -686,13 +721,13 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
         <div className="mb-3">
           <button
             onClick={() => setShowSchema(!showSchema)}
-            className="text-xs text-purple hover:underline flex items-center gap-1"
+            className="flex items-center gap-1 text-xs text-accent hover:underline"
           >
             {showSchema ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             {showSchema ? "Hide Schema" : "Show Table Schema"}
           </button>
           {showSchema && (
-            <pre className="mt-2 p-3 bg-bg border border-border rounded text-xs text-text-muted font-mono overflow-x-auto max-h-48 overflow-y-auto">
+            <pre className="mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 font-mono text-xs text-text-muted">
               {question.setupSql}
             </pre>
           )}
@@ -700,66 +735,68 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
       )}
 
       {/* SQL Editor */}
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="Write your SQL query here..."
-        rows={6}
-        className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
-        spellCheck={false}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && e.metaKey) onRun();
-          if (e.key === "Enter" && e.shiftKey && e.metaKey) onSubmit();
-        }}
-      />
+      <InputShell className="px-0 py-0">
+        <textarea
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="Write your SQL query here..."
+          rows={6}
+          className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+          spellCheck={false}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.metaKey) onRun();
+            if (e.key === "Enter" && e.shiftKey && e.metaKey) onSubmit();
+          }}
+        />
+      </InputShell>
 
       {/* Action buttons */}
       <div className="flex items-center justify-between mt-3 mb-3">
         <div className="flex gap-2">
-          <button
+          <PrimaryButton
             onClick={onRun}
             disabled={!answer.trim() || !activeSandboxId}
-            className="flex items-center gap-1.5 px-4 py-2 bg-teal text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+            className="bg-teal border-teal px-4 py-2 text-xs"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Run Query
-          </button>
+          </PrimaryButton>
           <span className="text-[10px] text-text-muted self-center">Cmd+Enter to run</span>
         </div>
-        <button
+        <PrimaryButton
           onClick={onSubmit}
           disabled={!answer.trim() || loading}
-          className="px-6 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+          className="px-6 py-2 text-xs"
         >
           {loading ? "Evaluating..." : "Submit Answer"}
-        </button>
+        </PrimaryButton>
       </div>
 
       {/* Sandbox error */}
       {sandboxError && (
-        <div className="p-3 bg-coral/10 border border-coral/30 rounded mb-3">
+        <div className="mb-3 rounded-xl border border-coral/30 bg-coral/10 p-3">
           <p className="text-xs text-coral font-mono">{sandboxError}</p>
         </div>
       )}
 
       {/* Results table */}
       {sandboxResult && (
-        <div className="bg-surface border border-border rounded overflow-hidden mb-3">
-          <div className="px-3 py-2 border-b border-border bg-surface-2">
+        <div className="mb-3 overflow-hidden rounded-xl border border-border-subtle bg-panel">
+          <div className="border-b border-border-subtle bg-panel-alt px-3 py-2">
             <p className="text-[10px] text-text-muted">{sandboxResult.row_count} row{sandboxResult.row_count !== 1 ? "s" : ""} returned</p>
           </div>
           <div className="overflow-x-auto max-h-64 overflow-y-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border">
+                <tr className="border-b border-border-subtle">
                   {sandboxResult.columns.map((col, i) => (
-                    <th key={i} className="text-left px-3 py-2 text-text-muted font-medium bg-surface-2">{col}</th>
+                    <th key={i} className="bg-panel-alt px-3 py-2 text-left font-medium text-text-muted">{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {sandboxResult.rows.map((row, ri) => (
-                  <tr key={ri} className="border-b border-border/50 last:border-0">
+                  <tr key={ri} className="border-b border-border-subtle last:border-0">
                     {row.map((val, ci) => (
                       <td key={ci} className="px-3 py-1.5 text-text font-mono">{val}</td>
                     ))}
@@ -798,13 +835,13 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
         <div className="mb-3">
           <button
             onClick={() => setShowSetup(!showSetup)}
-            className="text-xs text-purple hover:underline flex items-center gap-1"
+            className="flex items-center gap-1 text-xs text-accent hover:underline"
           >
             {showSetup ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             {showSetup ? "Hide Setup Code" : "Show Setup Code"}
           </button>
           {showSetup && (
-            <pre className="mt-2 p-3 bg-bg border border-border rounded text-xs text-text-muted font-mono overflow-x-auto max-h-48 overflow-y-auto">
+            <pre className="mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 font-mono text-xs text-text-muted">
               {question.setupCode}
             </pre>
           )}
@@ -812,25 +849,27 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
       )}
 
       {/* Python Editor */}
-      <textarea
-        value={answer}
-        onChange={(e) => setAnswer(e.target.value)}
-        placeholder="Write your Python code here..."
-        rows={8}
-        className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
-        spellCheck={false}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && e.metaKey) onRun();
-        }}
-      />
+      <InputShell className="px-0 py-0">
+        <textarea
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          placeholder="Write your Python code here..."
+          rows={8}
+          className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+          spellCheck={false}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.metaKey) onRun();
+          }}
+        />
+      </InputShell>
 
       {/* Action buttons */}
       <div className="flex items-center justify-between mt-3 mb-3">
         <div className="flex gap-2">
-          <button
+          <PrimaryButton
             onClick={onRun}
             disabled={!answer.trim() || pythonRunning}
-            className="flex items-center gap-1.5 px-4 py-2 bg-teal text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+            className="border-teal bg-teal px-4 py-2 text-xs"
           >
             {pythonRunning ? (
               <>
@@ -843,29 +882,29 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
                 Run Code
               </>
             )}
-          </button>
+          </PrimaryButton>
           <span className="text-[10px] text-text-muted self-center">Cmd+Enter to run</span>
         </div>
-        <button
+        <PrimaryButton
           onClick={onSubmit}
           disabled={!answer.trim() || loading}
-          className="px-6 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+          className="px-6 py-2 text-xs"
         >
           {loading ? "Evaluating..." : "Submit Answer"}
-        </button>
+        </PrimaryButton>
       </div>
 
       {/* Output panel */}
       {pythonRunning && !pythonResult && (
-        <div className="p-3 bg-bg border border-border rounded mb-3 text-center">
-          <div className="w-4 h-4 border-2 border-purple/30 border-t-purple rounded-full animate-spin mx-auto mb-2" />
+        <div className="mb-3 rounded-xl border border-border-subtle bg-panel-alt p-3 text-center">
+          <div className="mx-auto mb-2 h-4 w-4 animate-spin rounded-full border-2 border-accent/25 border-t-accent" />
           <p className="text-xs text-text-muted">Loading Python runtime...</p>
         </div>
       )}
 
       {pythonResult && (
-        <div className="bg-[#0d0d0d] border border-border rounded overflow-hidden mb-3">
-          <div className="px-3 py-1.5 border-b border-border/50 bg-[#151515]">
+        <div className="mb-3 overflow-hidden rounded-xl border border-border-subtle bg-panel">
+          <div className="border-b border-border-subtle bg-panel-alt px-3 py-1.5">
             <span className="text-[10px] text-text-muted font-mono">Output</span>
           </div>
           <div className="p-3 font-mono text-xs max-h-48 overflow-y-auto">
@@ -907,32 +946,32 @@ function ActiveQuiz() {
 
   if (generating) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="max-w-sm w-full px-8 text-center">
-          <div className="text-purple text-lg font-medium mb-2">Generating quiz...</div>
-          <p className="text-text-muted text-sm mb-4">Creating questions for {topic || subject}</p>
-          {/* Progress bar */}
-          <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden mb-3">
-            <div className="h-full bg-purple rounded-full animate-pulse" style={{ width: `${Math.min(90, elapsed * 2)}%`, transition: "width 1s ease" }} />
+      <div className="mx-auto flex h-full max-w-xl items-center justify-center px-4">
+        <Panel className="w-full text-center">
+          <div className="space-y-4 py-4">
+            <div className="text-lg font-medium text-accent">Generating quiz...</div>
+            <p className="text-sm text-text-muted">Creating questions for {topic || subject}</p>
+            <div className="h-2 overflow-hidden rounded-full bg-panel-alt">
+              <div className="h-full rounded-full bg-accent animate-pulse" style={{ width: `${Math.min(90, elapsed * 2)}%`, transition: "width 1s ease" }} />
+            </div>
+            <p className="text-xs text-text-muted">
+              {elapsed}s elapsed
+              {elapsed > 10 && " — reasoning models take longer to think"}
+            </p>
           </div>
-          <p className="text-xs text-text-muted">
-            {elapsed}s elapsed
-            {elapsed > 10 && " — reasoning models take longer to think"}
-          </p>
-        </div>
+        </Panel>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-coral mb-4">{error}</p>
-          <button onClick={resetQuiz} className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10">
-            Back to Dashboard
-          </button>
-        </div>
+      <div className="mx-auto flex h-full max-w-xl items-center justify-center px-4">
+        <EmptyState
+          title="Quiz failed to generate"
+          description={error}
+          action={<SecondaryButton onClick={resetQuiz}>Back to Dashboard</SecondaryButton>}
+        />
       </div>
     );
   }
@@ -946,77 +985,93 @@ function ActiveQuiz() {
     const pct = Math.round((correctCount / questions.length) * 100);
 
     return (
-      <div className="max-w-lg mx-auto py-8 px-4">
-        <div className="text-center mb-6">
-          <p className="text-3xl font-bold mb-1">
-            <span className={pct >= 80 ? "text-teal" : pct >= 60 ? "text-amber" : "text-coral"}>{pct}%</span>
-          </p>
-          <p className="text-text-muted">{correctCount} of {questions.length} correct</p>
-        </div>
-
-        {/* Auto-flashcards notice */}
-        {generatedCards > 0 && (
-          <div className="flex items-center gap-2 p-3 mb-4 rounded border border-purple/30 bg-purple/5">
-            <CreditCard size={14} className="text-purple shrink-0" />
-            <p className="text-xs text-text">
-              Created <span className="font-semibold text-purple">{generatedCards} flashcard{generatedCards !== 1 ? "s" : ""}</span> from wrong answers — they're due for review today.
-            </p>
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <PageHeader
+          title="Quiz Results"
+          subtitle={`${correctCount} of ${questions.length} correct`}
+          meta={
+            <>
+              <MetaChip variant={pct >= 80 ? "success" : pct >= 60 ? "warning" : "danger"}>{pct}% overall</MetaChip>
+              <MetaChip>{wrongCount} missed</MetaChip>
+              {topic && <MetaChip>{topic}</MetaChip>}
+            </>
+          }
+          className="rounded-t-2xl border border-border-subtle"
+        />
+        <Panel className="rounded-t-none border-t-0" bodyClassName="space-y-4">
+          <div className="text-center">
+            <p className={`mb-1 text-4xl font-bold ${getScoreTextClass(pct)}`}>{pct}%</p>
+            <p className="text-text-muted">{correctCount} of {questions.length} correct</p>
           </div>
-        )}
 
-        {/* AI Summary of what to review */}
-        {summary && (
-          <div className="p-4 mb-4 rounded border border-amber/30 bg-amber/5">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Sparkles size={13} className="text-amber" />
-              <p className="text-xs font-medium text-amber">Review These Concepts</p>
+          {generatedCards > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-accent/25 bg-accent-soft p-3">
+              <CreditCard size={14} className="shrink-0 text-accent" />
+              <p className="text-xs text-text">
+                Created <span className="font-semibold text-accent">{generatedCards} flashcard{generatedCards !== 1 ? "s" : ""}</span> from wrong answers — they are due for review today.
+              </p>
             </div>
-            <p className="text-sm text-text whitespace-pre-line leading-relaxed">{summary}</p>
-          </div>
-        )}
-        {wrongCount > 0 && !summary && (
-          <div className="p-3 mb-4 rounded border border-border bg-surface text-center">
-            <p className="text-xs text-text-muted animate-pulse">Generating review summary...</p>
-          </div>
-        )}
+          )}
 
-        {/* Question results */}
-        <div className="space-y-2 mb-8">
-          {questions.map((q, i) => (
-            <div key={q.id} className={`p-3 rounded border ${
-              q.correct === true ? "border-teal/30 bg-teal/5" : q.correct === false ? "border-coral/30 bg-coral/5" : "border-border bg-surface"
-            }`}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-[10px] text-text-muted mb-1">
-                    Q{i + 1} ({q.type}{q.language ? ` · ${q.language}` : ""}) Bloom {q.bloomLevel}
-                  </p>
-                  <p className="text-sm text-text">{q.question}</p>
-                  {q.userAnswer && (
-                    <p className="text-xs text-text-muted mt-1">
-                      Your answer: {q.type === "code" ? <code className="bg-surface-2 px-1 rounded">{q.userAnswer}</code> : q.userAnswer}
-                    </p>
-                  )}
-                  {q.correctAnswer && (
-                    <p className={`text-xs mt-1 ${q.correct === true ? "text-teal/60" : "text-teal"}`}>
-                      Correct answer: {q.correctAnswer}
-                    </p>
-                  )}
-                  {q.feedback && <p className="text-xs text-text-muted mt-1 italic">{q.feedback}</p>}
+          {summary && (
+            <Panel
+              title={
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-amber" />
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-amber">Review These Concepts</span>
                 </div>
-                <button onClick={() => flagQuestion(i)}
-                  className={`p-1 ml-2 ${q.flagged ? "text-coral" : "text-text-muted hover:text-coral"}`}>
-                  <Flag size={12} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+              }
+              variant="alt"
+              bodyClassName="pt-0"
+            >
+              <p className="whitespace-pre-line text-sm leading-relaxed text-text">{summary}</p>
+            </Panel>
+          )}
+          {wrongCount > 0 && !summary && (
+            <Panel variant="alt" className="text-center">
+              <p className="text-xs text-text-muted animate-pulse">Generating review summary...</p>
+            </Panel>
+          )}
 
-        <button onClick={resetQuiz}
-          className="w-full py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10">
-          Back to Dashboard
-        </button>
+          <div className="space-y-3">
+            {questions.map((q, i) => (
+              <Panel
+                key={q.id}
+                variant={q.correct === true ? "active" : "default"}
+                className={q.correct === true ? "border-teal/30" : q.correct === false ? "border-coral/30" : undefined}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      <MetaChip>Q{i + 1}</MetaChip>
+                      <MetaChip>{q.type}{q.language ? ` · ${q.language}` : ""}</MetaChip>
+                      <MetaChip variant="accent">Bloom {q.bloomLevel}</MetaChip>
+                    </div>
+                    <p className="text-sm text-text">{q.question}</p>
+                    {q.userAnswer && (
+                      <p className="mt-2 text-xs text-text-muted">
+                        Your answer: {q.type === "code" ? <code className="rounded bg-panel-alt px-1">{q.userAnswer}</code> : q.userAnswer}
+                      </p>
+                    )}
+                    {q.correctAnswer && (
+                      <p className={`mt-1 text-xs ${q.correct === true ? "text-teal/70" : "text-teal"}`}>
+                        Correct answer: {q.correctAnswer}
+                      </p>
+                    )}
+                    {q.feedback && <p className="mt-1 text-xs italic text-text-muted">{q.feedback}</p>}
+                  </div>
+                  <button onClick={() => flagQuestion(i)} className={`rounded-lg p-1 ${q.flagged ? "text-coral" : "text-text-muted hover:text-coral"}`}>
+                    <Flag size={12} />
+                  </button>
+                </div>
+              </Panel>
+            ))}
+          </div>
+
+          <SecondaryButton onClick={resetQuiz} className="w-full">
+            Back to Dashboard
+          </SecondaryButton>
+        </Panel>
       </div>
     );
   }
@@ -1033,89 +1088,95 @@ function ActiveQuiz() {
   };
 
   return (
-    <div className="max-w-[600px] mx-auto px-8 py-8">
-      {/* Progress */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-text-muted">Question {currentIndex + 1} of {questions.length}</span>
-        <span className="text-xs text-text-muted">{topic || subject}</span>
-      </div>
-      <div className="h-1 bg-surface-2 rounded mb-6">
-        <div className="h-full bg-purple rounded transition-all duration-300"
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <PageHeader
+        title={`Question ${currentIndex + 1} of ${questions.length}`}
+        subtitle={topic || subject}
+        meta={
+          <>
+            <MetaChip variant="accent">Bloom {question.bloomLevel}</MetaChip>
+            <MetaChip className="capitalize">{question.type.replace("-", " ")}</MetaChip>
+            {question.language && <MetaChip variant="success" className="uppercase">{question.language}</MetaChip>}
+          </>
+        }
+        className="rounded-t-2xl border border-border-subtle"
+      />
+      <Panel className="rounded-t-none border-t-0" bodyClassName="space-y-6">
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-text-muted">Progress</span>
+          <span className="text-xs text-text-muted">{topic || subject}</span>
+        </div>
+        <div className="mb-6 h-2 rounded-full bg-panel-alt">
+          <div className="h-full rounded-full bg-accent transition-all duration-300"
           style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} />
+        </div>
       </div>
 
-      {/* Badges */}
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs px-2 py-0.5 bg-purple/20 text-purple rounded">Bloom {question.bloomLevel}</span>
-        <span className="text-xs px-2 py-0.5 bg-surface-2 text-text-muted rounded capitalize">{question.type.replace("-", " ")}</span>
-        {question.language && (
-          <span className="text-xs px-2 py-0.5 bg-teal/20 text-teal rounded uppercase">{question.language}</span>
-        )}
-      </div>
-
-      <p className="text-lg leading-relaxed mb-6" style={{ fontFamily: "var(--editor-font-family, Georgia, serif)" }}>
+      <p className="text-xl leading-relaxed text-text" style={{ fontFamily: "var(--editor-font-family, Georgia, serif)" }}>
         {question.question}
       </p>
 
       {showFeedback ? (
         <div>
-          <div className="p-3 bg-surface rounded border border-border mb-4">
-            <p className="text-xs text-text-muted mb-1">Your answer:</p>
+          <Panel variant="alt" className="mb-4" title="Your Answer" bodyClassName="space-y-2">
             {question.type === "code" ? (
-              <pre className="text-sm text-text font-mono bg-bg p-2 rounded overflow-x-auto">{question.userAnswer}</pre>
+              <pre className="overflow-x-auto rounded-xl border border-border-subtle bg-panel px-3 py-3 font-mono text-sm text-text">{question.userAnswer}</pre>
             ) : (
               <p className="text-sm text-text">{question.userAnswer}</p>
             )}
-          </div>
+          </Panel>
 
           {question.feedback && (
-            <div className={`p-4 rounded border mb-6 ${
-              question.correct === true ? "border-teal bg-teal/5" : question.correct === false ? "border-coral bg-coral/5" : "border-border bg-surface"
-            }`}>
-              <div className="flex items-center justify-between mb-1">
-                <p className={`text-xs font-medium ${question.correct === true ? "text-teal" : question.correct === false ? "text-coral" : "text-text-muted"}`}>
-                  {question.correct === true ? "Correct" : question.correct === false ? "Incorrect" : "Evaluated"}
-                </p>
-                <button onClick={() => flagQuestion(currentIndex)}
-                  className={`p-1 ${question.flagged ? "text-coral" : "text-text-muted hover:text-coral"}`}>
-                  <Flag size={12} />
-                </button>
-              </div>
+            <Panel
+              variant={question.correct === true ? "active" : "alt"}
+              className={`mb-6 ${question.correct === true ? "border-teal/30" : question.correct === false ? "border-coral/30" : ""}`}
+              title={
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${question.correct === true ? "text-teal" : question.correct === false ? "text-coral" : "text-text-muted"}`}>
+                    {question.correct === true ? "Correct" : question.correct === false ? "Incorrect" : "Evaluated"}
+                  </span>
+                  <button onClick={() => flagQuestion(currentIndex)} className={`rounded-lg p-1 ${question.flagged ? "text-coral" : "text-text-muted hover:text-coral"}`}>
+                    <Flag size={12} />
+                  </button>
+                </div>
+              }
+            >
               <p className="text-sm text-text">{question.feedback}</p>
               {question.correctAnswer && question.correct === false && (
-                <div className="mt-2">
-                  <p className="text-xs text-teal">Correct answer:</p>
+                <div className="mt-3">
+                  <p className="mb-1 text-xs font-medium text-teal">Correct answer</p>
                   {question.type === "code" ? (
-                    <pre className="text-xs text-teal font-mono bg-teal/5 p-2 rounded mt-1 overflow-x-auto">{question.correctAnswer}</pre>
+                    <pre className="overflow-x-auto rounded-xl bg-teal/10 p-3 font-mono text-xs text-teal">{question.correctAnswer}</pre>
                   ) : (
-                    <p className="text-xs text-teal">{question.correctAnswer}</p>
+                    <p className="text-sm text-teal">{question.correctAnswer}</p>
                   )}
                 </div>
               )}
-            </div>
+            </Panel>
           )}
 
-          <button onClick={nextQuestion} className="w-full py-3 bg-purple text-white rounded font-medium hover:opacity-90">
+          <PrimaryButton onClick={nextQuestion} className="w-full py-3">
             {currentIndex + 1 >= questions.length ? "See Results" : "Next Question"}
-          </button>
+          </PrimaryButton>
         </div>
       ) : (
         <div>
           {question.type === "multiple-choice" && question.options ? (
-            <div className="space-y-2 mb-4">
+            <div className="space-y-3">
               {question.options.map((opt, i) => (
                 <button key={i} onClick={() => handleSubmit(opt)} disabled={loading}
-                  className="w-full text-left p-3 bg-surface border border-border rounded hover:border-purple hover:bg-surface-2 transition-colors text-sm disabled:opacity-50">
-                  <span className="text-purple font-medium mr-2">{String.fromCharCode(65 + i)}.</span>{opt}
+                  className="w-full rounded-2xl border border-border-subtle bg-panel-alt p-4 text-left text-sm text-text transition-colors hover:border-border-strong hover:bg-panel-active disabled:opacity-50">
+                  <span className="mr-2 font-medium text-accent">{String.fromCharCode(65 + i)}.</span>{opt}
                 </button>
               ))}
             </div>
           ) : question.type === "true-false" ? (
-            <div className="flex gap-3 mb-4">
+            <div className="flex gap-3">
               <button onClick={() => handleSubmit("true")} disabled={loading}
-                className="flex-1 py-3 bg-teal/10 border border-teal/30 rounded text-teal font-medium hover:bg-teal/20 disabled:opacity-50">True</button>
+                className="flex-1 rounded-2xl border border-teal/30 bg-teal/10 py-4 font-medium text-teal transition-colors hover:bg-teal/15 disabled:opacity-50">True</button>
               <button onClick={() => handleSubmit("false")} disabled={loading}
-                className="flex-1 py-3 bg-coral/10 border border-coral/30 rounded text-coral font-medium hover:bg-coral/20 disabled:opacity-50">False</button>
+                className="flex-1 rounded-2xl border border-coral/30 bg-coral/10 py-4 font-medium text-coral transition-colors hover:bg-coral/15 disabled:opacity-50">False</button>
             </div>
           ) : question.type === "code" && question.language?.toLowerCase() === "python" ? (
             <PythonQuizEditor
@@ -1143,38 +1204,41 @@ function ActiveQuiz() {
             />
           ) : question.type === "code" ? (
             <div>
-              <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
-                placeholder={`Write your ${question.language || "code"} solution here...`}
-                rows={8}
-                className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
-                spellCheck={false}
-                onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
-              <div className="flex items-center justify-between mt-3">
+              <InputShell className="px-0 py-0">
+                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
+                  placeholder={`Write your ${question.language || "code"} solution here...`}
+                  rows={8}
+                  className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+                  spellCheck={false}
+                  onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
+              </InputShell>
+              <div className="mt-3 flex items-center justify-between">
                 <span className="text-xs text-text-muted">Cmd+Enter to submit</span>
-                <button onClick={() => handleSubmit()} disabled={!answer.trim() || loading}
-                  className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-30">
+                <PrimaryButton onClick={() => handleSubmit()} disabled={!answer.trim() || loading}>
                   {loading ? "Evaluating..." : "Submit"}
-                </button>
+                </PrimaryButton>
               </div>
             </div>
           ) : (
             <div>
-              <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
-                placeholder={question.type === "fill-blank" ? "Type the missing word(s)..." : "Type your answer..."}
-                rows={question.type === "fill-blank" ? 2 : 4}
-                className="w-full p-3 bg-surface border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple"
-                onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
-              <div className="flex items-center justify-between mt-3">
+              <InputShell className="px-0 py-0">
+                <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
+                  placeholder={question.type === "fill-blank" ? "Type the missing word(s)..." : "Type your answer..."}
+                  rows={question.type === "fill-blank" ? 2 : 4}
+                  className="input-reset w-full resize-none bg-transparent px-4 py-3 text-sm text-text"
+                  onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
+              </InputShell>
+              <div className="mt-3 flex items-center justify-between">
                 <span className="text-xs text-text-muted">Cmd+Enter to submit</span>
-                <button onClick={() => handleSubmit()} disabled={!answer.trim() || loading}
-                  className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-30">
+                <PrimaryButton onClick={() => handleSubmit()} disabled={!answer.trim() || loading}>
                   {loading ? "Evaluating..." : "Submit"}
-                </button>
+                </PrimaryButton>
               </div>
             </div>
           )}
         </div>
       )}
+      </Panel>
     </div>
   );
 }
@@ -1188,13 +1252,11 @@ function QuizGrades() {
     getSubjectGrades().then((g) => { setGrades(g); setLoading(false); });
   }, []);
 
-  if (loading) return <p className="text-text-muted text-center py-12">Loading grades...</p>;
+  if (loading) return <LoadingState label="Loading grades" detail="Summarizing performance by subject." />;
 
   if (grades.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-text-muted">No grades yet. Take a quiz to see your performance.</p>
-      </div>
+      <EmptyState title="No grades yet" description="Take a quiz to see subject-level performance." />
     );
   }
 
@@ -1203,13 +1265,13 @@ function QuizGrades() {
       <div className="space-y-4">
         {grades.map((g) => {
           const score = Math.round(g.avg_score);
-          const color = score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)";
+          const color = getScoreColor(score);
           return (
-            <div key={g.subject} className="bg-surface rounded-xl border border-border p-5">
+            <Panel key={g.subject}>
               <div className="flex items-center gap-5">
                 <div className="relative w-20 h-20 shrink-0">
                   <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-surface-2, #252525)" strokeWidth="2.5" />
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-panel-alt)" strokeWidth="2.5" />
                     <circle cx="18" cy="18" r="15" fill="none" stroke={color} strokeWidth="2.5"
                       strokeDasharray={`${score * 0.942} 94.2`} strokeLinecap="round" />
                   </svg>
@@ -1231,9 +1293,9 @@ function QuizGrades() {
                       {score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F"}
                     </p>
                   </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+            </Panel>
           );
         })}
       </div>
@@ -1245,6 +1307,12 @@ function QuizGrades() {
 export default function QuizPage() {
   const { questions, generating, showConfig, startQuiz, resetQuiz } = useQuizStore();
   const [tab, setTab] = useState<"dashboard" | "quiz" | "config" | "grades" | "history">("dashboard");
+  const tabs = [
+    { value: "dashboard" as const, label: "Dashboard" },
+    ...(questions.length > 0 || generating || showConfig ? [{ value: showConfig ? "config" as const : "quiz" as const, label: showConfig ? "Setup" : "Active Quiz" }] : []),
+    { value: "grades" as const, label: "Grades" },
+    { value: "history" as const, label: "History" },
+  ];
 
   // Auto-switch tabs based on quiz state
   useEffect(() => {
@@ -1257,35 +1325,22 @@ export default function QuizPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab bar */}
-      <div className="flex items-center gap-4 px-6 py-3 border-b border-border shrink-0">
-        <button
-          onClick={() => { resetQuiz(); setTab("dashboard"); }}
-          className={`text-sm transition-colors ${tab === "dashboard" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
-        >
-          Dashboard
-        </button>
-        {(questions.length > 0 || generating || showConfig) && (
-          <button
-            onClick={() => setTab(showConfig ? "config" : "quiz")}
-            className={`text-sm transition-colors ${(tab === "quiz" || tab === "config") ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
-          >
-            {showConfig ? "Setup" : "Active Quiz"}
-          </button>
-        )}
-        <button
-          onClick={() => setTab("grades")}
-          className={`text-sm transition-colors ${tab === "grades" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
-        >
-          Grades
-        </button>
-        <button
-          onClick={() => setTab("history")}
-          className={`text-sm transition-colors ${tab === "history" ? "text-purple font-medium border-b-2 border-purple pb-0.5" : "text-text-muted hover:text-text"}`}
-        >
-          History
-        </button>
-      </div>
+      <PageHeader
+        title="Quiz"
+        subtitle="Generate targeted checks, review weak areas, and track performance over time."
+        actions={
+          <SegmentedTabs
+            items={tabs}
+            value={tab}
+            onChange={(value) => {
+              if (value === "dashboard") {
+                resetQuiz();
+              }
+              setTab(value);
+            }}
+          />
+        }
+      />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-4">

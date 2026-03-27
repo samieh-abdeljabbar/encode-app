@@ -11,6 +11,7 @@ import { useTeachBackStore } from "../stores/teachback";
 import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
 import { convertHtmlToMarkdown } from "../lib/cm-paste-handler";
+import { MetaChip, PageHeader, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
 export default function VaultPage() {
   const navigate = useNavigate();
   const { selectedFile } = useVaultStore();
@@ -190,106 +191,81 @@ export default function VaultPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {selectedFile && fileContent !== null ? (
           <>
-            {/* Header bar */}
-            <div className="flex items-center justify-between px-8 py-3 border-b border-border shrink-0">
-              <h3 className="text-lg font-semibold truncate">
-                {selectedFile.split("/").pop()?.replace(".md", "")}
-              </h3>
-              <div className="flex gap-2 shrink-0 items-center">
-                {saved && <span className="text-xs text-teal mr-1">Saved</span>}
-
-                {/* Action buttons */}
-                <button
-                  onClick={() => navigate("/reader")}
-                  className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90 transition-opacity"
-                >
-                  Read
-                </button>
-                {selectedFile.includes("/quizzes/") ? (
-                  <button
-                    onClick={() => {
-                      useQuizStore.getState().retakeQuiz(selectedFile);
-                      navigate("/quiz");
-                    }}
-                    className="px-3 py-1 text-xs text-amber border border-amber/50 rounded hover:bg-amber/10 transition-colors"
-                  >
-                    Retake Quiz
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (!fileContent) return;
-                      const { content } = parseFrontmatter(fileContent);
-                      const fm = parseFrontmatter(fileContent).frontmatter;
-                      useQuizStore.getState().generateQuiz(fm.subject ?? "", fm.topic ?? "", content);
-                      navigate("/quiz");
-                    }}
-                    className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                  >
-                    Quiz
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    if (!fileContent) return;
-                    const fm = parseFrontmatter(fileContent).frontmatter;
-                    useTeachBackStore.getState().startTeachBack(fm.subject ?? "", fm.topic ?? "");
-                    navigate("/teach-back");
-                  }}
-                  className="px-3 py-1 text-xs text-text-muted border border-border rounded hover:text-text hover:border-purple transition-colors"
-                >
-                  Teach
-                </button>
-
-                {/* Divider */}
-                <span className="w-px h-4 bg-border" />
-
-                {/* Source toggle */}
-                <button
-                  onClick={handleToggleSource}
-                  className={`px-2.5 py-1 text-xs rounded border transition-colors ${
-                    sourceMode
-                      ? "bg-surface-2 text-text border-purple"
-                      : "text-text-muted border-border hover:text-text hover:border-purple"
-                  }`}
-                >
-                  {sourceMode ? "Editor" : "Source"}
-                </button>
-
-                <button
-                  onClick={handleDelete}
-                  onBlur={() => setConfirmDelete(false)}
-                  className={`px-3 py-1 text-xs rounded transition-colors ${
-                    confirmDelete
-                      ? "bg-coral text-white"
-                      : "text-text-muted border border-border hover:text-coral hover:border-coral"
-                  }`}
-                >
-                  {confirmDelete ? "Confirm?" : "Delete"}
-                </button>
-              </div>
-            </div>
-
-            {/* Properties panel */}
             {(() => {
               const fm = parseFrontmatter(fileContent).frontmatter;
               const props = [
-                fm.subject && { label: "Subject", value: fm.subject, color: "purple" },
-                fm.topic && { label: "Topic", value: fm.topic, color: "purple" },
-                fm.type && { label: "Type", value: fm.type, color: fm.type === "chapter" ? "purple" : fm.type === "flashcard" ? "teal" : "amber" },
-                fm.status && { label: "Status", value: fm.status, color: fm.status === "digested" ? "teal" : "text-muted" },
-                fm.created_at && { label: "Created", value: String(fm.created_at).split("T")[0], color: "text-muted" },
-              ].filter(Boolean) as { label: string; value: unknown; color: string }[];
-              if (props.length === 0) return null;
+                fm.subject && { label: "Subject", value: fm.subject, variant: "accent" as const },
+                fm.topic && { label: "Topic", value: fm.topic, variant: "accent" as const },
+                fm.type && { label: "Type", value: fm.type, variant: fm.type === "flashcard" ? "success" as const : "default" as const },
+                fm.status && { label: "Status", value: fm.status, variant: fm.status === "digested" ? "success" as const : "default" as const },
+                fm.created_at && { label: "Created", value: String(fm.created_at).split("T")[0], variant: "default" as const },
+              ].filter(Boolean) as { label: string; value: unknown; variant: "default" | "accent" | "success" }[];
+
               return (
-                <div className="px-8 py-2 border-b border-border bg-surface flex flex-wrap gap-3 shrink-0">
-                  {props.map((p) => (
-                    <span key={p.label} className="text-xs">
-                      <span className="text-text-muted">{p.label}: </span>
-                      <span className={`text-${p.color}`}>{String(p.value)}</span>
-                    </span>
+                <PageHeader
+                  title={selectedFile.split("/").pop()?.replace(".md", "")}
+                  subtitle={saved ? "Saved" : selectedFile}
+                  actions={
+                    <>
+                      <PrimaryButton onClick={() => navigate("/reader")} className="px-3 py-2 text-xs">Read</PrimaryButton>
+                      {selectedFile.includes("/quizzes/") ? (
+                        <SecondaryButton
+                          onClick={() => {
+                            useQuizStore.getState().retakeQuiz(selectedFile);
+                            navigate("/quiz");
+                          }}
+                          className="px-3 py-2 text-xs"
+                        >
+                          Retake Quiz
+                        </SecondaryButton>
+                      ) : (
+                        <SecondaryButton
+                          onClick={() => {
+                            if (!fileContent) return;
+                            const { content } = parseFrontmatter(fileContent);
+                            const current = parseFrontmatter(fileContent).frontmatter;
+                            useQuizStore.getState().generateQuiz(current.subject ?? "", current.topic ?? "", content);
+                            navigate("/quiz");
+                          }}
+                          className="px-3 py-2 text-xs"
+                        >
+                          Quiz
+                        </SecondaryButton>
+                      )}
+                      <SecondaryButton
+                        onClick={() => {
+                          if (!fileContent) return;
+                          const current = parseFrontmatter(fileContent).frontmatter;
+                          useTeachBackStore.getState().startTeachBack(current.subject ?? "", current.topic ?? "");
+                          navigate("/teach-back");
+                        }}
+                        className="px-3 py-2 text-xs"
+                      >
+                        Teach
+                      </SecondaryButton>
+                      <SecondaryButton onClick={handleToggleSource} className="px-3 py-2 text-xs">
+                        {sourceMode ? "Editor" : "Source"}
+                      </SecondaryButton>
+                      <button
+                        onClick={handleDelete}
+                        onBlur={() => setConfirmDelete(false)}
+                        className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+                          confirmDelete
+                            ? "border-coral bg-coral text-white"
+                            : "border-border-strong bg-panel-alt text-text-muted hover:border-coral/50 hover:text-coral"
+                        }`}
+                      >
+                        {confirmDelete ? "Confirm Delete" : "Delete"}
+                      </button>
+                    </>
+                  }
+                  meta={props.map((p) => (
+                    <MetaChip key={p.label} variant={p.variant}>
+                      <span className="text-text-muted">{p.label}</span>
+                      <span>{String(p.value)}</span>
+                    </MetaChip>
                   ))}
-                </div>
+                />
               );
             })()}
 
@@ -307,7 +283,7 @@ export default function VaultPage() {
             )}
 
             {/* Content area */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto bg-panel">
               {sourceMode ? (
                 <>
                   <textarea
@@ -325,7 +301,7 @@ export default function VaultPage() {
                       const after = editContent.slice(ta.selectionEnd);
                       handleEditChange(before + md + after);
                     }}
-                    className="w-full h-full p-8 bg-bg text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    className="w-full h-full bg-panel px-10 py-10 text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
                     spellCheck={false}
                   />
                   <SlashMenu
@@ -344,7 +320,7 @@ export default function VaultPage() {
             </div>
 
             {/* Status bar */}
-            <div className="px-8 py-1.5 border-t border-border bg-surface flex items-center gap-4 text-[10px] text-text-muted shrink-0">
+            <div className="flex items-center gap-4 border-t border-border-subtle bg-panel-alt px-8 py-2 text-[11px] text-text-muted shrink-0">
               {(() => {
                 const fm = parseFrontmatter(fileContent).frontmatter;
                 const words = parseFrontmatter(fileContent).content.trim().split(/\s+/).length;

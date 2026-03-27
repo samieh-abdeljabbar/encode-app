@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTeachBackStore } from "../stores/teachback";
+import { EmptyState, InputShell, MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
 
 export default function TeachBackPage() {
   const navigate = useNavigate();
@@ -20,42 +21,33 @@ export default function TeachBackPage() {
 
   if (!topic) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-text-muted mb-4">
-            No topic selected. Start a teach-back from the Vault or Reader.
-          </p>
-          <button
-            onClick={() => navigate("/vault")}
-            className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
-          >
-            Go to Vault
-          </button>
-        </div>
+      <div className="flex h-full items-center justify-center px-4">
+        <EmptyState
+          title="No topic selected"
+          description="Start a teach-back from the Vault or Reader."
+          action={<SecondaryButton onClick={() => navigate("/vault")}>Go to Vault</SecondaryButton>}
+        />
       </div>
     );
   }
 
   if (saved) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-teal text-lg font-medium mb-2">
-            Teach-back saved!
-          </p>
-          <p className="text-text-muted text-sm mb-6">
-            Your explanation and evaluation are stored in the vault.
-          </p>
-          <button
-            onClick={() => {
-              reset();
-              navigate("/vault");
-            }}
-            className="px-4 py-2 text-sm text-purple border border-purple rounded hover:bg-purple/10"
-          >
-            Back to Vault
-          </button>
-        </div>
+      <div className="flex h-full items-center justify-center px-4">
+        <EmptyState
+          title="Teach-back saved"
+          description="Your explanation and evaluation are stored in the vault."
+          action={
+            <SecondaryButton
+              onClick={() => {
+                reset();
+                navigate("/vault");
+              }}
+            >
+              Back to Vault
+            </SecondaryButton>
+          }
+        />
       </div>
     );
   }
@@ -67,31 +59,34 @@ export default function TeachBackPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
-          <button
+      <PageHeader
+        title={`Teach-Back: ${topic}`}
+        subtitle="Explain the concept in plain language, then use the evaluation to find the gaps."
+        meta={
+          <>
+            {subject && <MetaChip>{subject}</MetaChip>}
+            <MetaChip variant="accent">Feynman technique</MetaChip>
+          </>
+        }
+        actions={
+          <SecondaryButton
             onClick={() => {
               reset();
               navigate("/vault");
             }}
-            className="text-sm text-text-muted hover:text-text"
           >
-            &larr; Back
-          </button>
-          <span className="text-sm font-medium">Teach-Back: {topic}</span>
-        </div>
-        <span className="text-xs text-text-muted">{subject}</span>
-      </div>
+            Back
+          </SecondaryButton>
+        }
+      />
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-[680px] mx-auto px-8 py-8">
-          {/* Prompt */}
-          <div className="mb-6 p-4 bg-surface rounded border border-purple/30">
-            <p className="text-xs text-purple font-medium mb-2">
-              Feynman Technique
-            </p>
+        <div className="mx-auto max-w-4xl px-6 py-8">
+          <Panel
+            className="mb-6"
+            title={<span className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Feynman Technique</span>}
+            variant="alt"
+          >
             <p
               className="text-base text-text leading-relaxed"
               style={{ fontFamily: "Georgia, serif" }}
@@ -100,68 +95,59 @@ export default function TeachBackPage() {
               who has never heard of it. Use simple words and real examples. If
               you get stuck, that&apos;s where your understanding has gaps.
             </p>
-          </div>
+          </Panel>
 
           {!evaluated ? (
-            /* Writing phase */
-            <div>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Start explaining in your own words..."
-                rows={12}
-                className="w-full p-4 bg-surface border border-border rounded text-text text-base resize-none focus:outline-none focus:border-purple leading-relaxed"
-                style={{ fontFamily: "Georgia, serif" }}
-                disabled={loading}
-              />
-              <div className="flex items-center justify-between mt-4">
+            <Panel title="Your Explanation">
+              <InputShell className="px-0 py-0">
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Start explaining in your own words..."
+                  rows={12}
+                  className="input-reset w-full resize-none bg-transparent px-4 py-4 text-base leading-relaxed text-text"
+                  style={{ fontFamily: "Georgia, serif" }}
+                  disabled={loading}
+                />
+              </InputShell>
+              <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs text-text-muted">
                   {text.split(/\s+/).filter(Boolean).length} words
                 </span>
-                <button
+                <PrimaryButton
                   onClick={handleSubmit}
                   disabled={!text.trim() || loading}
-                  className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   {loading ? "Evaluating..." : "Submit for Evaluation"}
-                </button>
+                </PrimaryButton>
               </div>
-            </div>
+            </Panel>
           ) : (
-            /* Evaluation phase */
-            <div>
-              {/* User's explanation */}
-              <div className="p-4 bg-surface rounded border border-border mb-6">
-                <p className="text-xs text-text-muted mb-2">
-                  Your explanation:
-                </p>
+            <div className="space-y-6">
+              <Panel title="Your Explanation">
                 <p
                   className="text-sm text-text leading-relaxed whitespace-pre-wrap"
                   style={{ fontFamily: "Georgia, serif" }}
                 >
                   {text}
                 </p>
-              </div>
+              </Panel>
 
-              {/* AI evaluation */}
               {evaluation && (
-                <div className="p-4 bg-teal/10 border border-teal rounded mb-6">
-                  <p className="text-xs text-teal font-medium mb-2">
-                    AI Evaluation
-                  </p>
+                <Panel
+                  variant="active"
+                  className="border-teal/30"
+                  title={<span className="text-xs font-semibold uppercase tracking-[0.18em] text-teal">AI Evaluation</span>}
+                >
                   <p className="text-sm text-text leading-relaxed whitespace-pre-wrap">
                     {evaluation}
                   </p>
-                </div>
+                </Panel>
               )}
 
-              {/* Save button */}
-              <button
-                onClick={saveToVault}
-                className="w-full py-3 bg-teal text-white rounded font-medium hover:opacity-90"
-              >
+              <PrimaryButton onClick={saveToVault} className="w-full border-teal bg-teal py-3">
                 Save &amp; Finish
-              </button>
+              </PrimaryButton>
             </div>
           )}
         </div>

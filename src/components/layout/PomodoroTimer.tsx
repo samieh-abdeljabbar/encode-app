@@ -3,6 +3,7 @@ import { Play, Pause, RotateCcw, SlidersHorizontal, Check } from "lucide-react";
 import { useAppStore } from "../../stores/app";
 import { useVaultStore } from "../../stores/vault";
 import { useTrackingStore } from "../../stores/tracking";
+import { localDateTimeString } from "../../lib/dates";
 
 type Phase = "study" | "break" | "longBreak";
 
@@ -128,7 +129,7 @@ export default function PomodoroTimer() {
 
   const handlePlayPause = () => {
     if (!running && phase === "study" && !sessionStartRef.current) {
-      sessionStartRef.current = new Date().toISOString().slice(0, 19);
+      sessionStartRef.current = localDateTimeString();
     }
     setRunning(!running);
   };

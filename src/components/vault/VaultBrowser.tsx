@@ -5,6 +5,7 @@ import { useVaultStore } from "../../stores/vault";
 import { useQuizStore } from "../../stores/quiz";
 import { writeFile, deleteFile, deleteSubject, renameFile, renameDirectory, listFiles, readFile, createDirectory, deleteDirectory } from "../../lib/tauri";
 import type { FileEntry } from "../../lib/types";
+import { localDateTimeString } from "../../lib/dates";
 import ContextMenu from "../shared/ContextMenu";
 import { buildTree, type TreeNode } from "../../lib/file-tree";
 import CreateSubjectWizard from "./CreateSubjectWizard";
@@ -160,7 +161,7 @@ export default function VaultBrowser() {
       const subjectName = subjects.find((s) => s.slug === slug)?.name || slug;
       const sectionType = parts[2] || "chapters";
       const type = sectionType === "flashcards" ? "flashcard" : sectionType === "quizzes" ? "quiz" : "chapter";
-      const now = new Date().toISOString().slice(0, 19);
+      const now = localDateTimeString();
       const content = `---\nsubject: ${subjectName}\ntopic: ${name}\ntype: ${type}\ncreated_at: ${now}\nstatus: unread\n---\n\n# ${name}\n\n`;
       await writeFile(path, content);
       selectFile(path);
