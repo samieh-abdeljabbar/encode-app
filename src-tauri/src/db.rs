@@ -413,12 +413,12 @@ impl Database {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         let chapters_total: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapters'",
+            "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapter'",
             params![subject], |row| row.get(0),
         ).unwrap_or(0);
 
         let chapters_read: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapters' AND status = 'digested'",
+            "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapter' AND status = 'digested'",
             params![subject], |row| row.get(0),
         ).unwrap_or(0);
 

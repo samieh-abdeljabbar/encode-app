@@ -8,6 +8,7 @@ marked.setOptions({ gfm: true, breaks: true });
 // Initialize mermaid once with Encode dark theme
 mermaid.initialize({
   startOnLoad: false,
+  securityLevel: "strict",
   theme: "dark",
   themeVariables: {
     primaryColor: "#7F77DD",
@@ -54,7 +55,8 @@ const CALLOUT_COLORS: Record<string, { border: string; bg: string; label: string
 function preprocessWikilinks(md: string): string {
   // Handle ![[embed]] syntax — render as regular wikilink for now
   return md.replace(/!?\[\[([^\]]+)\]\]/g, (_match, name: string) => {
-    return `<a class="wikilink" data-wikilink="${name}">${name}</a>`;
+    const escaped = name.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<a class="wikilink" data-wikilink="${escaped}">${escaped}</a>`;
   });
 }
 

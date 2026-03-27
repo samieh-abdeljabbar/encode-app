@@ -322,7 +322,6 @@ export default function VaultBrowser() {
           </button>
           <button
             onClick={(e) => handleDeleteFile(node.path, slug, e)}
-            onBlur={() => setConfirmDeleteFile(null)}
             className={`p-1 shrink-0 rounded transition-colors ${
               confirmDeleteFile === node.path ? "block text-coral bg-coral/10" : "hidden group-hover:block text-text-muted hover:text-coral"
             }`}

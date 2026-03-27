@@ -20,7 +20,9 @@ export function shouldGateSection(
  */
 export function shouldSkipRemaining(subQuestions: GateSubQuestion[]): boolean {
   if (subQuestions.length < 3) return false;
-  // Don't skip if there's an unanswered "apply" question coming
+  // Never skip if an apply or analyze question hasn't been answered yet
+  const hasDeepQuestion = subQuestions.some((sq) => sq.promptType === "apply" || sq.promptType === "analyze");
+  if (!hasDeepQuestion) return false;
   return subQuestions.every((sq) => sq.mastery !== null && sq.mastery >= 4);
 }
 

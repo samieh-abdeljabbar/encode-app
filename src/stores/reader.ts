@@ -99,7 +99,7 @@ CRITICAL RULES:
     const match = cleaned.match(/\[[\s\S]*\]/);
     if (match) {
       const parsed = JSON.parse(match[0]) as { type?: string; q: string }[];
-      const validTypes: GatePromptType[] = ["recall", "explain", "apply"];
+      const validTypes: GatePromptType[] = ["recall", "explain", "apply", "analyze"];
       return parsed.slice(0, questionCount).map((p, i) => ({
         type: (validTypes.includes(p.type as GatePromptType) ? p.type : validTypes[i % 3]) as GatePromptType,
         question: p.q,

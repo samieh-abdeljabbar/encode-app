@@ -137,7 +137,7 @@ export interface QueryResult {
 }
 
 /** Digestion gate prompt types */
-export type GatePromptType = "recall" | "explain" | "apply";
+export type GatePromptType = "recall" | "explain" | "apply" | "analyze";
 
 /** A single sub-question within a multi-question gate */
 export interface GateSubQuestion {

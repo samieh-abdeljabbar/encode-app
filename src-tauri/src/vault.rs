@@ -265,8 +265,8 @@ pub fn delete_directory(vault_path: &Path, relative_path: &str) -> Result<(), St
     if !full_path.is_dir() {
         return Err("Not a directory".to_string());
     }
-    fs::remove_dir(&full_path)
-        .map_err(|e| format!("Failed to delete directory (is it empty?): {}", e))
+    fs::remove_dir_all(&full_path)
+        .map_err(|e| format!("Failed to delete directory: {}", e))
 }
 
 /// Rename a directory in the vault.
