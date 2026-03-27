@@ -3,6 +3,15 @@ import { aiRequest } from "../../lib/tauri";
 import MarkdownRenderer from "../shared/MarkdownRenderer";
 
 type Phase = "tooltip" | "input" | "loading" | "response";
+type QuickAction = "explain" | "example" | "define" | "compare" | "why";
+
+const QUICK_ACTIONS: Array<{ id: QuickAction; label: string; prompt: string }> = [
+  { id: "explain", label: "Explain Simply", prompt: "Explain this in simple terms" },
+  { id: "example", label: "Give an Example", prompt: "Give me a concrete example of this" },
+  { id: "define", label: "Define Term", prompt: "Define the key term here" },
+  { id: "compare", label: "Compare Concepts", prompt: "Compare this to the closest related concept" },
+  { id: "why", label: "Why It Matters", prompt: "Why does this matter?" },
+];
 
 interface HighlightAskAIProps {
   selectedText: string;
@@ -24,6 +33,7 @@ export default function HighlightAskAI({
   const [phase, setPhase] = useState<Phase>("tooltip");
   const [question, setQuestion] = useState("Explain this in simple terms");
   const [answer, setAnswer] = useState("");
+  const [selectedAction, setSelectedAction] = useState<QuickAction>("explain");
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Position relative to container
@@ -66,10 +76,25 @@ export default function HighlightAskAI({
   const handleAsk = useCallback(async () => {
     setPhase("loading");
     try {
+      const actionLabel = QUICK_ACTIONS.find((action) => action.id === selectedAction)?.label || "Explain Simply";
       const { text } = await aiRequest(
         "reader_highlight_ask",
-        `You are a study assistant. The student highlighted some text and has a question. Answer clearly and concisely in under 150 words. Use simple language.`,
-        `Selected text: "${selectedText.slice(0, 500)}"\n\nSection: ${sectionHeading || ""}\n${sectionContent.slice(0, 1000)}\n\nQuestion: ${question}`,
+        `You are a contextual reading tutor. The student is reading and asked for help on highlighted text.
+
+Rules:
+- Stay under 120 words.
+- Be concrete and specific to the selected text.
+- Clarify the idea without summarizing the whole section.
+- Do not answer quiz or gate questions for the student.
+- If useful, point back to the key term, relationship, or example in the selected text.`,
+        `Tutor action: ${actionLabel}
+Selected text: "${selectedText.slice(0, 500)}"
+
+Section heading: ${sectionHeading || ""}
+Section context:
+${sectionContent.slice(0, 1200)}
+
+Student request: ${question}`,
         300,
       );
       const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
@@ -79,7 +104,7 @@ export default function HighlightAskAI({
       setAnswer("AI is unavailable. Check your AI provider in Settings.");
       setPhase("response");
     }
-  }, [selectedText, sectionContent, sectionHeading, question]);
+  }, [selectedAction, selectedText, sectionContent, sectionHeading, question]);
 
   // Tooltip phase
   if (phase === "tooltip") {
@@ -117,6 +142,24 @@ export default function HighlightAskAI({
 
         {phase === "input" && (
           <div className="p-4 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {QUICK_ACTIONS.map((action) => (
+                <button
+                  key={action.id}
+                  onClick={() => {
+                    setSelectedAction(action.id);
+                    setQuestion(action.prompt);
+                  }}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                    selectedAction === action.id
+                      ? "border-purple bg-purple/10 text-purple"
+                      : "border-border bg-surface-2 text-text-muted hover:border-purple/40 hover:text-text"
+                  }`}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
             <input
               autoFocus
               value={question}

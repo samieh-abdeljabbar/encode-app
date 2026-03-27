@@ -173,6 +173,9 @@ export interface GateSubQuestion {
 export interface GateResponse {
   sectionIndex: number;
   subQuestions: GateSubQuestion[];
+  remember?: string;
+  watchOut?: string;
+  goDeeper?: string;
   timestamp: string;
 }
 

@@ -20,6 +20,9 @@ describe("formatDigestionMarkdown", () => {
             mastery: 3,
           },
         ],
+        remember: "Integer ids uniquely identify each row.",
+        watchOut: "Do not confuse the id field with the entire record.",
+        goDeeper: "Consider why surrogate keys simplify joins.",
         timestamp: "2026-03-21 7:12pm",
       },
     ];
@@ -29,6 +32,7 @@ describe("formatDigestionMarkdown", () => {
     expect(md).toContain("Gate 1");
     expect(md).toContain("Q1 (Recall)");
     expect(md).toContain("Integer");
+    expect(md).toContain("**Remember:** Integer ids uniquely identify each row.");
     expect(md).toContain("2026-03-21 7:12pm");
   });
 

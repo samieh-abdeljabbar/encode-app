@@ -13,11 +13,11 @@ import {
   extractDigestion,
   mergeGateResponses,
   shouldGateSection,
-  shouldSkipRemaining,
   upsertDigestion,
 } from "../lib/gates";
 import { readFile, writeFile, aiRequest, getConfig } from "../lib/tauri";
 import { getProfileContext } from "../lib/profile";
+import { useFlashcardStore } from "./flashcard";
 
 export interface SuggestedCard {
   question: string;
@@ -25,9 +25,40 @@ export interface SuggestedCard {
   bloom: number;
 }
 
+interface CoreCardState extends SuggestedCard {
+  id: string;
+  filePath: string;
+  created: boolean;
+  skipped: boolean;
+}
+
 interface GeneratedQuestion {
   type: GatePromptType;
   question: string;
+}
+
+interface AnalysisConcept {
+  name: string;
+  kind: "term" | "mechanism" | "relationship";
+  detail: string;
+}
+
+interface SectionAnalysis {
+  concepts: AnalysisConcept[];
+  commonMisconception: string;
+  questions: GeneratedQuestion[];
+  summary: {
+    remember: string;
+    watchOut: string;
+    goDeeper: string;
+  };
+  coreCard: SuggestedCard;
+}
+
+interface EvaluationResult {
+  feedback: string | null;
+  mastery: number | null;
+  repairCardCandidate: SuggestedCard | null;
 }
 
 interface ReaderState {
@@ -38,17 +69,20 @@ interface ReaderState {
   gateOpen: boolean;
   gateResponses: GateResponse[];
   suggestedCards: SuggestedCard[];
+  currentCoreCard: CoreCardState | null;
   loading: boolean;
   error: string | null;
 
   // Multi-question gate state
   gateGenerating: boolean;
-  gatePhase: number;                         // 0-indexed: which sub-question we're on
-  gateQuestions: GeneratedQuestion[];         // All questions for this gate
+  gatePhase: number;
+  gateQuestions: GeneratedQuestion[];
+  currentGateAnalysis: SectionAnalysis | null;
+  gateAnalysisCache: Record<string, SectionAnalysis>;
   currentGateSubQuestions: GateSubQuestion[]; // Answered sub-questions so far
-  lastFeedback: string | null;               // Feedback from previous sub-question
-  lastMastery: number | null;                // Mastery from previous sub-question
-  gateSkipped: boolean;                      // True if remaining Qs were skipped (adaptive)
+  weakestRepairCard: SuggestedCard | null;
+  lastFeedback: string | null;
+  lastMastery: number | null;
 
   // Pre-reading schema activation
   showSchemaActivation: boolean;
@@ -68,17 +102,120 @@ interface ReaderState {
   submitSynthesis: (response: string) => Promise<void>;
   clearError: () => void;
   dismissSuggestions: () => void;
+  dismissCoreCard: () => void;
+  removeCoreCard: () => Promise<void>;
   closeReader: () => void;
   setSchemaActivationResponse: (response: string) => void;
   submitSchemaActivation: (response: string) => Promise<void>;
   dismissSchemaActivation: () => void;
 }
 
-/** Generate 2-3 content-specific questions from a section using AI */
-async function generateGateQuestions(
+const FALLBACK_GATE_QUESTIONS: Array<[GeneratedQuestion, GeneratedQuestion]> = [
+  [
+    { type: "recall", question: "What specific term, rule, or fact from this section matters most?" },
+    { type: "apply", question: "Why does that detail matter in practice?" },
+  ],
+  [
+    { type: "recall", question: "What changed or became clearer in this section compared with the previous one?" },
+    { type: "apply", question: "How would you use that idea in a real example?" },
+  ],
+  [
+    { type: "explain", question: "Which relationship or dependency in this section is most important?" },
+    { type: "apply", question: "What breaks if you misunderstand that relationship?" },
+  ],
+  [
+    { type: "recall", question: "What is one precise claim this section makes?" },
+    { type: "explain", question: "Explain why that claim is true using the section's logic." },
+  ],
+  [
+    { type: "analyze", question: "What distinction did this section draw between similar ideas?" },
+    { type: "apply", question: "Give an example that shows the difference." },
+  ],
+];
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function analysisCacheKey(filePath: string, sectionIndex: number): string {
+  return `${filePath}::${sectionIndex}`;
+}
+
+function getFallbackQuestions(sectionIndex: number, wordCount: number): GeneratedQuestion[] {
+  const pair = FALLBACK_GATE_QUESTIONS[sectionIndex % FALLBACK_GATE_QUESTIONS.length];
+  if (wordCount < 500) {
+    return pair;
+  }
+  return [
+    ...pair,
+    { type: "analyze", question: "Where would someone most likely misuse or overgeneralize this idea?" },
+  ];
+}
+
+function trimSentence(input: string | undefined, fallback: string): string {
+  const normalized = input?.replace(/\s+/g, " ").trim();
+  return normalized || fallback;
+}
+
+function parseAnalysis(text: string, questionCount: number): SectionAnalysis | null {
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  const parsed = JSON.parse(jsonMatch[0]) as {
+    concepts?: { name?: string; kind?: string; detail?: string }[];
+    commonMisconception?: string;
+    questions?: { type?: string; q?: string }[];
+    summary?: { remember?: string; watchOut?: string; goDeeper?: string };
+    coreCard?: { q?: string; a?: string; bloom?: number };
+  };
+
+  const validTypes: GatePromptType[] = ["recall", "explain", "apply", "analyze"];
+  const concepts = (parsed.concepts || []).slice(0, questionCount + 1).map((concept, index) => ({
+    name: trimSentence(concept.name, `Concept ${index + 1}`),
+    kind: (concept.kind === "term" || concept.kind === "mechanism" || concept.kind === "relationship"
+      ? concept.kind
+      : "term") as AnalysisConcept["kind"],
+    detail: trimSentence(concept.detail, "Key detail unavailable."),
+  }));
+  const questions = (parsed.questions || []).slice(0, questionCount).map((question, index) => ({
+    type: (validTypes.includes(question.type as GatePromptType)
+      ? question.type
+      : (index === 0 ? "recall" : index === 1 ? "explain" : "apply")) as GatePromptType,
+    question: trimSentence(question.q, "Explain the most important idea in this section."),
+  }));
+  const summary = parsed.summary;
+  const coreCard = parsed.coreCard;
+
+  if (concepts.length === 0 || questions.length !== questionCount || !summary || !coreCard?.q || !coreCard?.a) {
+    return null;
+  }
+
+  return {
+    concepts,
+    commonMisconception: trimSentence(parsed.commonMisconception, "A common misconception was not identified."),
+    questions,
+    summary: {
+      remember: trimSentence(summary.remember, "Remember the most important idea from this section."),
+      watchOut: trimSentence(summary.watchOut, "Watch for the most common misunderstanding in this section."),
+      goDeeper: trimSentence(summary.goDeeper, "Consider where this idea connects next."),
+    },
+    coreCard: {
+      question: trimSentence(coreCard.q, "What should you remember from this section?"),
+      answer: trimSentence(coreCard.a, "The key answer was not generated."),
+      bloom: Math.min(3, Math.max(1, coreCard.bloom || 2)),
+    },
+  };
+}
+
+async function analyzeSectionForGate(
+  filePath: string,
+  sectionIndex: number,
   sectionContent: string,
   sectionHeading: string,
-): Promise<GeneratedQuestion[]> {
+): Promise<{ analysis: SectionAnalysis | null; questions: GeneratedQuestion[] }> {
+  const wordCount = sectionContent.trim().split(/\s+/).filter(Boolean).length;
+  const questionCount = wordCount < 500 ? 2 : 3;
   try {
     let profileContext = "";
     try {
@@ -90,64 +227,77 @@ async function generateGateQuestions(
       ? `\nStudent context: ${profileContext} Use their background for relevant examples.`
       : "";
 
-    // Scale question count to section length
-    const wordCount = sectionContent.split(/\s+/).length;
-    const questionCount = wordCount < 500 ? 2 : wordCount < 1500 ? 3 : wordCount < 3000 ? 4 : 5;
-
     const { text } = await aiRequest(
-      "reader_gate_generate",
-      `Read the ENTIRE section below carefully. Generate exactly ${questionCount} questions that collectively cover ALL key concepts in the section, not just the beginning. Output ONLY a JSON array.${profileLine}
+      "reader_gate_analyze",
+      `Read the ENTIRE section below carefully and return ONLY valid JSON.${profileLine}
 
-Format: [{"type":"recall","q":"..."},{"type":"explain","q":"..."},{"type":"apply","q":"..."}]
+Use this exact schema:
+{
+  "concepts": [
+    { "name": "string", "kind": "term|mechanism|relationship", "detail": "string" }
+  ],
+  "commonMisconception": "string",
+  "questions": [
+    { "type": "recall|explain|apply|analyze", "q": "string" }
+  ],
+  "summary": {
+    "remember": "string",
+    "watchOut": "string",
+    "goDeeper": "string"
+  },
+  "coreCard": {
+    "q": "string",
+    "a": "string",
+    "bloom": 1
+  }
+}
 
-Question types:
-- recall: Ask about a specific fact, term, definition, or detail from the section.
-- explain: Ask the student to explain WHY something works, how concepts relate, or cause/effect relationships.
-- apply: Give a real-world scenario and ask how to use the knowledge. Be specific and practical.
-- analyze: Ask the student to compare/contrast concepts, identify patterns, or evaluate approaches.
-
-CRITICAL RULES:
-- Questions MUST reference specific content from THROUGHOUT the section, including the middle and end.
-- Do NOT cluster questions around the opening paragraph.
-- Each question should test a DIFFERENT concept from the section.
-- Questions should be 1-2 sentences and demand genuine thought, not yes/no answers.`,
-      `Section: ${sectionHeading || "Introduction"}\n\n${sectionContent.slice(0, 6000)}`,
+Rules:
+- "concepts" must contain exactly ${wordCount < 500 ? 3 : 4} items.
+- each concepts[].detail must be 1 sentence max.
+- "commonMisconception" must be 1 sentence max.
+- "questions" must contain exactly ${questionCount} items.
+- Question 1 must be a concrete recall/detail question.
+- Question 2 must ask about a mechanism, relationship, or why-it-works.
+- Question 3, when present, must ask for application, contrast, or an error-case.
+- Questions must cover different ideas from across the section, not just the opening.
+- "summary" must contain all 3 fields, each 1-2 sentences max.
+- "coreCard" must contain exactly 1 flashcard with Bloom between 1 and 3.
+- Keep all strings concise and specific to the section.`,
+      `File: ${filePath}\nSection: ${sectionHeading || "Introduction"}\n\n${sectionContent.slice(0, 6000)}`,
       1500,
     );
 
-    const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    const match = cleaned.match(/\[[\s\S]*\]/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as { type?: string; q: string }[];
-      const validTypes: GatePromptType[] = ["recall", "explain", "apply", "analyze"];
-      return parsed.slice(0, questionCount).map((p, i) => ({
-        type: (validTypes.includes(p.type as GatePromptType) ? p.type : validTypes[i % 3]) as GatePromptType,
-        question: p.q,
-      }));
+    const analysis = parseAnalysis(text, questionCount);
+    if (analysis) {
+      return { analysis, questions: analysis.questions };
     }
   } catch {
-    // AI unavailable
+    // AI unavailable or invalid JSON.
   }
 
-  // Fallback: generic questions if AI fails
-  return [
-    { type: "recall", question: "What is the main concept covered in this section?" },
-    { type: "explain", question: "Explain why this concept matters in your own words." },
-  ];
+  return {
+    analysis: null,
+    questions: getFallbackQuestions(sectionIndex, wordCount),
+  };
 }
 
 /** Evaluate a student's response to a gate question */
 async function evaluateResponse(
-  sectionContent: string,
   sectionHeading: string,
+  sectionAnalysis: SectionAnalysis | null,
   question: string,
   response: string,
-): Promise<{ feedback: string | null; mastery: number | null }> {
+): Promise<EvaluationResult> {
+  if (!sectionAnalysis) {
+    return { feedback: null, mastery: null, repairCardCandidate: null };
+  }
+
   try {
     const result = await aiRequest(
       "reader_gate_evaluate",
       `You are evaluating a student's understanding of a study section. Reply ONLY with JSON:
-{"right":"what they got correct (1-2 sentences)","gap":"what they missed or got wrong (1-2 sentences)","deeper":"one follow-up question to deepen understanding","mastery":1}
+{"right":"what they got correct (1-2 sentences)","gap":"what they missed or got wrong (1-2 sentences)","deeper":"one follow-up question to deepen understanding","mastery":1,"repairCardCandidate":{"q":"...","a":"..."}}
 
 Mastery scale (1-5):
 1 = Wrong or confused — fundamental misunderstanding
@@ -156,8 +306,12 @@ Mastery scale (1-5):
 4 = Solid understanding — minor gaps only
 5 = Excellent — demonstrates deep comprehension, could teach this
 
-Be specific: reference actual terms and concepts from the section content. Do not give mastery 4-5 unless the answer demonstrates genuine understanding beyond surface recall.`,
-      `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 3000)}\nQuestion: ${question}\nStudent's answer: ${response}`,
+Rules:
+- Be specific: reference actual concepts from the section analysis.
+- Do not give mastery 4-5 unless the answer demonstrates genuine understanding beyond surface recall.
+- Only include repairCardCandidate when mastery is below 3.
+- repairCardCandidate should target the weakest missed concept and be concise.`,
+      `Section: ${sectionHeading}\nSection analysis: ${JSON.stringify(sectionAnalysis)}\nQuestion: ${question}\nStudent's answer: ${response}`,
       500,
     );
 
@@ -169,15 +323,26 @@ Be specific: reference actual terms and concepts from the section content. Do no
         gap?: string;
         deeper?: string;
         mastery?: number;
+        repairCardCandidate?: { q?: string; a?: string };
       };
       const parts = [parsed.right, parsed.gap];
       if (parsed.deeper) parts.push(`Think deeper: ${parsed.deeper}`);
       const feedback = parts.filter(Boolean).join(" ");
-      return { feedback: feedback || null, mastery: parsed.mastery ?? null };
+      return {
+        feedback: feedback || null,
+        mastery: parsed.mastery ?? null,
+        repairCardCandidate: parsed.mastery !== undefined && parsed.mastery < 3 && parsed.repairCardCandidate?.q && parsed.repairCardCandidate?.a
+          ? {
+              question: trimSentence(parsed.repairCardCandidate.q, "What concept needs more work?"),
+              answer: trimSentence(parsed.repairCardCandidate.a, "Review the concept you missed in this section."),
+              bloom: 2,
+            }
+          : null,
+      };
     }
-    return { feedback: result.text, mastery: null };
+    return { feedback: result.text, mastery: null, repairCardCandidate: null };
   } catch {
-    return { feedback: null, mastery: null };
+    return { feedback: null, mastery: null, repairCardCandidate: null };
   }
 }
 
@@ -218,6 +383,16 @@ async function markChapterReading(filePath: string, rawContent: string): Promise
   return updatedContent;
 }
 
+async function countExistingCoreCards(subject: string, topic: string): Promise<number> {
+  const filePath = `subjects/${slugify(subject)}/flashcards/${slugify(topic || "general")}.md`;
+  try {
+    const content = await readFile(filePath);
+    return (content.match(/^>\s*\[!card\]\s*id:\s*fc-core-[\w-]+$/gm) || []).length;
+  } catch {
+    return 0;
+  }
+}
+
 export const useReaderStore = create<ReaderState>((set, get) => ({
   filePath: null,
   rawContent: null,
@@ -226,6 +401,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   gateOpen: false,
   gateResponses: [],
   suggestedCards: [],
+  currentCoreCard: null,
   loading: false,
   showSchemaActivation: false,
   schemaActivationTopic: "",
@@ -238,10 +414,12 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   gateGenerating: false,
   gatePhase: 0,
   gateQuestions: [],
+  currentGateAnalysis: null,
+  gateAnalysisCache: {},
   currentGateSubQuestions: [],
+  weakestRepairCard: null,
   lastFeedback: null,
   lastMastery: null,
-  gateSkipped: false,
 
   loadFile: async (path) => {
     set({ loading: true });
@@ -283,10 +461,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         gateGenerating: false,
         gatePhase: 0,
         gateQuestions: [],
+        currentGateAnalysis: null,
+        gateAnalysisCache: {},
         currentGateSubQuestions: [],
+        weakestRepairCard: null,
         lastFeedback: null,
         lastMastery: null,
-        gateSkipped: false,
+        currentCoreCard: null,
         showSchemaActivation,
         schemaActivationTopic: topic,
         schemaActivationResponse: schemaActivation?.response || "",
@@ -325,18 +506,50 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         gateGenerating: true,
         gatePhase: 0,
         gateQuestions: [],
+        currentGateAnalysis: null,
         currentGateSubQuestions: [],
+        weakestRepairCard: null,
         lastFeedback: null,
         lastMastery: null,
-        gateSkipped: false,
+        suggestedCards: [],
+        currentCoreCard: null,
       });
 
-      // Generate all questions for this gate
-      generateGateQuestions(
+      const cacheKey = filePath ? analysisCacheKey(filePath, currentSectionIndex) : "";
+      const cached = filePath ? get().gateAnalysisCache[cacheKey] : undefined;
+      if (cached) {
+        set({
+          gateQuestions: cached.questions,
+          currentGateAnalysis: cached,
+          gateGenerating: false,
+        });
+        return;
+      }
+
+      analyzeSectionForGate(
+        filePath || "",
+        currentSectionIndex,
         currentSection?.content || "",
         currentSection?.heading || "Introduction",
-      ).then((questions) => {
-        set({ gateQuestions: questions, gateGenerating: false });
+      ).then(({ analysis, questions }) => {
+        if (analysis && filePath) {
+          set((state) => ({
+            gateQuestions: questions,
+            currentGateAnalysis: analysis,
+            gateGenerating: false,
+            gateAnalysisCache: {
+              ...state.gateAnalysisCache,
+              [analysisCacheKey(filePath, currentSectionIndex)]: analysis,
+            },
+          }));
+          return;
+        }
+
+        set({
+          gateQuestions: questions,
+          currentGateAnalysis: null,
+          gateGenerating: false,
+        });
       });
     } else {
       set({ currentSectionIndex: nextIndex, gateOpen: false });
@@ -359,7 +572,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   submitGateResponse: async (response) => {
     const {
       currentSectionIndex, sections, filePath, rawContent,
-      gateQuestions, gatePhase, currentGateSubQuestions,
+      gateQuestions, gatePhase, currentGateSubQuestions, currentGateAnalysis, weakestRepairCard,
     } = get();
     const nextIndex = currentSectionIndex + 1;
 
@@ -367,12 +580,10 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     if (gatePhase >= gateQuestions.length) return;
 
     const currentQ = gateQuestions[gatePhase];
-    const sectionContent = sections[currentSectionIndex]?.content || "";
     const sectionHeading = sections[currentSectionIndex]?.heading || "Introduction";
 
-    // Evaluate the answer
-    const { feedback, mastery } = await evaluateResponse(
-      sectionContent, sectionHeading, currentQ.question, response,
+    const { feedback, mastery, repairCardCandidate } = await evaluateResponse(
+      sectionHeading, currentGateAnalysis, currentQ.question, response,
     );
 
     const subQuestion: GateSubQuestion = {
@@ -386,9 +597,16 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const updatedSubQuestions = [...currentGateSubQuestions, subQuestion];
     const nextPhase = gatePhase + 1;
     const isLastQuestion = nextPhase >= gateQuestions.length;
-    const shouldSkip = shouldSkipRemaining(updatedSubQuestions);
+    const nextWeakest = (() => {
+      if (!repairCardCandidate || mastery === null || mastery >= 3) return weakestRepairCard;
+      const existingWeakest = currentGateSubQuestions
+        .map((sq) => sq.mastery)
+        .filter((value): value is number => value !== null)
+        .reduce((lowest, value) => Math.min(lowest, value), Number.POSITIVE_INFINITY);
+      return mastery <= existingWeakest ? repairCardCandidate : weakestRepairCard;
+    })();
 
-    if (isLastQuestion || shouldSkip) {
+    if (isLastQuestion) {
       const now = new Date().toLocaleString("en-US", {
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "numeric", minute: "2-digit",
@@ -397,6 +615,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       const newResponse: GateResponse = {
         sectionIndex: nextIndex,
         subQuestions: updatedSubQuestions,
+        remember: currentGateAnalysis?.summary.remember,
+        watchOut: currentGateAnalysis?.summary.watchOut,
+        goDeeper: currentGateAnalysis?.summary.goDeeper,
         timestamp: now,
       };
 
@@ -405,19 +626,15 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       await saveAndAdvance(
         newResponse,
         filePath,
-        sections,
         currentSectionIndex,
+        currentGateAnalysis,
+        nextWeakest,
       );
-
-      // Set gateSkipped after successful save
-      if (shouldSkip && !isLastQuestion && get().filePath === filePath) {
-        set({ gateSkipped: true });
-      }
     } else {
-      // Move to next question
       set({
         gatePhase: nextPhase,
         currentGateSubQuestions: updatedSubQuestions,
+        weakestRepairCard: nextWeakest,
         lastFeedback: feedback,
         lastMastery: mastery,
       });
@@ -502,6 +719,15 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
 
   dismissSuggestions: () => set({ suggestedCards: [] }),
 
+  dismissCoreCard: () => set({ currentCoreCard: null }),
+
+  removeCoreCard: async () => {
+    const coreCard = get().currentCoreCard;
+    if (!coreCard) return;
+    await useFlashcardStore.getState().deleteCard(coreCard.id, coreCard.filePath);
+    set({ currentCoreCard: null });
+  },
+
   setSchemaActivationResponse: (schemaActivationResponse) => set({ schemaActivationResponse }),
 
   submitSchemaActivation: async (response) => {
@@ -557,6 +783,7 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
       gateOpen: false,
       gateResponses: [],
       suggestedCards: [],
+      currentCoreCard: null,
       showSchemaActivation: false,
       schemaActivationTopic: "",
       synthesisSaving: false,
@@ -567,10 +794,12 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
       gateGenerating: false,
       gatePhase: 0,
       gateQuestions: [],
+      currentGateAnalysis: null,
+      gateAnalysisCache: {},
       currentGateSubQuestions: [],
+      weakestRepairCard: null,
       lastFeedback: null,
       lastMastery: null,
-      gateSkipped: false,
     });
   },
 }));
@@ -579,8 +808,9 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
 async function saveAndAdvance(
   newResponse: GateResponse,
   filePath: string,
-  sections: Section[],
   currentSectionIndex: number,
+  sectionAnalysis: SectionAnalysis | null,
+  repairCardCandidate: SuggestedCard | null,
 ) {
   try {
     const latestRaw = await readFile(filePath);
@@ -589,43 +819,53 @@ async function saveAndAdvance(
 
     await writeFile(filePath, nextContent);
 
+    let coreCardState: CoreCardState | null = null;
+    if (sectionAnalysis) {
+      const { frontmatter } = parseFrontmatter(nextContent);
+      const subject = String(frontmatter.subject || "");
+      const topic = String(frontmatter.topic || "");
+      const coreCount = await countExistingCoreCards(subject, topic);
+      if (coreCount < 12) {
+        const coreResult = await useFlashcardStore.getState().upsertCoreCard(
+          subject,
+          topic,
+          currentSectionIndex,
+          sectionAnalysis.coreCard.question,
+          sectionAnalysis.coreCard.answer,
+          sectionAnalysis.coreCard.bloom,
+        );
+        coreCardState = {
+          ...sectionAnalysis.coreCard,
+          id: coreResult.id,
+          filePath: coreResult.filePath,
+          created: coreResult.created,
+          skipped: false,
+        };
+      } else {
+        coreCardState = {
+          ...sectionAnalysis.coreCard,
+          id: `fc-core-${slugify(subject)}-${slugify(topic || "general")}-s${currentSectionIndex}`,
+          filePath: `subjects/${slugify(subject)}/flashcards/${slugify(topic || "general")}.md`,
+          created: false,
+          skipped: true,
+        };
+      }
+    }
+
     if (useReaderStore.getState().filePath === filePath) {
       useReaderStore.setState({
         currentSectionIndex: newResponse.sectionIndex,
         gateOpen: false,
         gateResponses: updatedResponses,
         rawContent: nextContent,
-        suggestedCards: [],
+        suggestedCards: repairCardCandidate ? [repairCardCandidate] : [],
+        currentCoreCard: coreCardState,
         gatePhase: 0,
         gateQuestions: [],
+        currentGateAnalysis: null,
         currentGateSubQuestions: [],
+        weakestRepairCard: null,
       });
-    }
-
-    // Auto-suggest flashcards (fire-and-forget)
-    const sectionContent = sections[currentSectionIndex]?.content || "";
-    if (useReaderStore.getState().filePath === filePath && sectionContent.trim().split(/\s+/).length >= 20) {
-      aiRequest(
-        "reader_flashcard_suggest",
-        `Generate 1-2 flashcard Q/A pairs from this study content. Output ONLY JSON: [{"q":"...","a":"...","bloom":1-3}]`,
-        sectionContent.slice(0, 1500),
-        300,
-      ).then(({ text: cardText }) => {
-        const cleanedCards = cardText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-        const match = cleanedCards.match(/\[[\s\S]*\]/);
-        if (match) {
-          let parsed: { q: string; a: string; bloom: number }[] = [];
-          try {
-            parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
-          } catch {
-            return;
-          }
-          if (useReaderStore.getState().filePath !== filePath) return;
-          useReaderStore.setState({
-            suggestedCards: parsed.map((p) => ({ question: p.q, answer: p.a, bloom: p.bloom || 2 })),
-          });
-        }
-      }).catch(() => {});
     }
   } catch (e) {
     console.error("Failed to save digestion:", e);

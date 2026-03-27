@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { files, aiRequestMock, getConfigMock, readFileMock, writeFileMock } = vi.hoisted(() => {
+const { files, aiRequestMock, getConfigMock, readFileMock, writeFileMock, updateCardScheduleMock, getDueCountMock, listSubjectsMock } = vi.hoisted(() => {
   const hoistedFiles = new Map<string, string>();
   return {
     files: hoistedFiles,
@@ -14,6 +14,9 @@ const { files, aiRequestMock, getConfigMock, readFileMock, writeFileMock } = vi.
     writeFileMock: vi.fn(async (path: string, content: string) => {
       hoistedFiles.set(path, content);
     }),
+    updateCardScheduleMock: vi.fn(async () => undefined),
+    getDueCountMock: vi.fn(async () => 0),
+    listSubjectsMock: vi.fn(async () => []),
   };
 });
 
@@ -22,6 +25,13 @@ vi.mock("../../lib/tauri", () => ({
   writeFile: writeFileMock,
   aiRequest: aiRequestMock,
   getConfig: getConfigMock,
+  getDueCards: vi.fn(),
+  getDueCount: getDueCountMock,
+  deleteFile: vi.fn(),
+  updateCardSchedule: updateCardScheduleMock,
+  deleteCardSchedule: vi.fn(),
+  listSubjects: listSubjectsMock,
+  listFiles: vi.fn(),
 }));
 
 vi.mock("../../lib/profile", () => ({
@@ -78,6 +88,9 @@ describe("reader store durability", () => {
     getConfigMock.mockClear();
     readFileMock.mockClear();
     writeFileMock.mockClear();
+    updateCardScheduleMock.mockClear();
+    getDueCountMock.mockClear();
+    listSubjectsMock.mockClear();
     useReaderStore.setState({
       filePath: null,
       rawContent: null,
@@ -86,15 +99,18 @@ describe("reader store durability", () => {
       gateOpen: false,
       gateResponses: [],
       suggestedCards: [],
+      currentCoreCard: null,
       loading: false,
       error: null,
       gateGenerating: false,
       gatePhase: 0,
       gateQuestions: [],
+      currentGateAnalysis: null,
+      gateAnalysisCache: {},
       currentGateSubQuestions: [],
+      weakestRepairCard: null,
       lastFeedback: null,
       lastMastery: null,
-      gateSkipped: false,
       showSchemaActivation: false,
       schemaActivationTopic: "",
       schemaActivationResponse: "",
@@ -188,5 +204,72 @@ describe("reader store durability", () => {
 
     expect(files.get(chapterPath)).toContain("## Digestion");
     expect(useReaderStore.getState().filePath).toBe("subjects/other/chapters/other.md");
+  });
+
+  it("persists summary fields and auto-adds a deterministic core card", async () => {
+    aiRequestMock.mockImplementation(async (feature: string) => {
+      if (feature === "reader_gate_evaluate") {
+        return {
+          text: '{"right":"Correct.","gap":"Minor gap.","deeper":"How does it affect updates?","mastery":4}',
+          provider: "test",
+          model: "test",
+        };
+      }
+      return { text: "[]", provider: "test", model: "test" };
+    });
+
+    const rawContent = files.get(chapterPath)!;
+    useReaderStore.setState({
+      filePath: chapterPath,
+      rawContent,
+      sections: splitSections(parseFrontmatter(rawContent).content),
+      currentSectionIndex: 0,
+      gateQuestions: [
+        { type: "recall", question: "What does first normal form require?" },
+        { type: "explain", question: "Why does that help?" },
+      ],
+      gatePhase: 1,
+      currentGateSubQuestions: [
+        {
+          promptType: "recall",
+          prompt: "What does first normal form require?",
+          response: "Atomic values.",
+          feedback: "Correct.",
+          mastery: 4,
+        },
+      ],
+      currentGateAnalysis: {
+        concepts: [
+          { name: "Atomic values", kind: "term", detail: "Each column stores one value." },
+          { name: "Repeating groups", kind: "relationship", detail: "Repeating groups make rows inconsistent." },
+          { name: "Queryable rows", kind: "mechanism", detail: "Atomic rows are easier to query and update." },
+        ],
+        commonMisconception: "1NF is not just about adding IDs.",
+        questions: [
+          { type: "recall", question: "What does first normal form require?" },
+          { type: "explain", question: "Why does that help?" },
+        ],
+        summary: {
+          remember: "1NF requires atomic values in each column.",
+          watchOut: "Do not confuse atomic values with just naming columns clearly.",
+          goDeeper: "Compare 1NF structure changes to later normalization rules.",
+        },
+        coreCard: {
+          question: "What does first normal form require?",
+          answer: "Atomic values with no repeating groups.",
+          bloom: 2,
+        },
+      },
+    });
+
+    await useReaderStore.getState().submitGateResponse("It keeps rows consistent and queryable.");
+
+    const savedChapter = files.get(chapterPath)!;
+    expect(savedChapter).toContain("**Remember:** 1NF requires atomic values in each column.");
+    expect(savedChapter).toContain("**Watch out:** Do not confuse atomic values with just naming columns clearly.");
+    expect(savedChapter).toContain("**Go deeper:** Compare 1NF structure changes to later normalization rules.");
+
+    const flashcardPath = "subjects/d426-data-management/flashcards/normalization.md";
+    expect(files.get(flashcardPath)).toContain("> [!card] id: fc-core-d426-data-management-normalization-s0");
   });
 });

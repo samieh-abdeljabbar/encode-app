@@ -82,4 +82,31 @@ describe("flashcard creation writes", () => {
     expect(content).toContain("> **Q:** New question");
     expect(content).toContain("> **Q:** New answer");
   });
+
+  it("upserts a deterministic core card without duplicating existing content", async () => {
+    readFileMock.mockResolvedValueOnce([
+      "---",
+      "subject: D426 Data Management",
+      "topic: Normalization",
+      "type: flashcard",
+      "---",
+      "",
+      "> [!card] id: fc-core-d426-data-management-normalization-s1",
+      "> **Q:** Existing core question",
+      "> **A:** Existing core answer",
+    ].join("\n"));
+
+    const result = await useFlashcardStore.getState().upsertCoreCard(
+      "D426 Data Management",
+      "Normalization",
+      1,
+      "What does 2NF remove?",
+      "Partial dependencies.",
+      2,
+    );
+
+    expect(result.created).toBe(false);
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(updateCardScheduleMock).not.toHaveBeenCalled();
+  });
 });

@@ -214,14 +214,16 @@ export default function ReaderPage() {
     submitGateResponse,
     clearError,
     dismissSuggestions,
+    dismissCoreCard,
+    removeCoreCard,
     closeReader,
     suggestedCards,
+    currentCoreCard,
     gateGenerating,
     gatePhase,
     gateQuestions,
     lastFeedback,
     lastMastery,
-    gateSkipped,
     showSchemaActivation,
     schemaActivationTopic,
     schemaActivationResponse,
@@ -488,16 +490,61 @@ export default function ReaderPage() {
                         )}
                       </div>
                     ))}
+                    {(r.remember || r.watchOut || r.goDeeper) && (
+                      <div className="rounded-xl border-l-2 border-accent/60 bg-panel px-4 py-3 text-sm text-text">
+                        <div className="space-y-1.5">
+                          {r.remember && <p><span className="font-medium text-text">Remember:</span> {r.remember}</p>}
+                          {r.watchOut && <p><span className="font-medium text-text">Watch out:</span> {r.watchOut}</p>}
+                          {r.goDeeper && <p><span className="font-medium text-text">Go deeper:</span> {r.goDeeper}</p>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>
           ))}
 
-          {/* Auto-suggested flashcards from AI */}
+          {currentCoreCard && (
+            <div className="mb-4 rounded-xl border border-teal/25 bg-panel px-4 py-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-teal">
+                  {currentCoreCard.skipped ? "Core Card Skipped" : currentCoreCard.created ? "Core Card Added" : "Core Card Already Exists"}
+                </p>
+                <div className="flex gap-2">
+                  {!currentCoreCard.skipped && (
+                    <button
+                      onClick={removeCoreCard}
+                      className="text-xs text-text-muted transition-colors hover:text-coral"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    onClick={dismissCoreCard}
+                    className="text-xs text-text-muted transition-colors hover:text-text"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+              {!currentCoreCard.skipped ? (
+                <div className="space-y-1 text-sm">
+                  <p className="text-text"><strong>Q:</strong> {currentCoreCard.question}</p>
+                  <p className="text-text-muted"><strong>A:</strong> {currentCoreCard.answer}</p>
+                </div>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  The chapter already has enough auto-generated core cards, so no new core card was added for this section.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Repair-card suggestions from the weakest answer */}
           {suggestedCards.length > 0 && (
             <div className="mb-6 p-4 bg-surface border border-amber/30 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs text-amber font-medium">Suggested Flashcards</p>
+                <p className="text-xs text-amber font-medium">Repair Card Suggestion</p>
                 <button onClick={dismissSuggestions} className="text-xs text-text-muted hover:text-text">Dismiss all</button>
               </div>
               <div className="space-y-2">
@@ -545,7 +592,6 @@ export default function ReaderPage() {
               totalQuestions={gateQuestions.length || 2}
               lastFeedback={lastFeedback}
               lastMastery={lastMastery}
-              skipped={gateSkipped}
             />
           ) : (
             <div className="flex items-center justify-between py-6 border-t border-border mt-8">

@@ -53,6 +53,14 @@ interface FlashcardState {
     bloom: number,
     cardType?: string,
   ) => Promise<void>;
+  upsertCoreCard: (
+    subject: string,
+    topic: string,
+    sectionIndex: number,
+    question: string,
+    answer: string,
+    bloom: number,
+  ) => Promise<{ id: string; filePath: string; created: boolean }>;
   loadAllCardsForReview: (subjectFilter?: string) => Promise<void>;
   deleteCard: (cardId: string, filePath: string) => Promise<void>;
   editCard: (cardId: string, filePath: string, newQuestion: string, newAnswer: string, newBloom?: number) => Promise<void>;
@@ -229,6 +237,50 @@ function normalizeSubjectKey(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+async function resolveFlashcardTarget(subject: string, topic: string): Promise<{
+  subjectSlug: string;
+  topicSlug: string;
+  filePath: string;
+  canonicalSubject: string;
+}> {
+  const subjectSlug = slugify(subject);
+  const topicSlug = slugify(topic || "general");
+  const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
+  let canonicalSubject = subject;
+
+  try {
+    const subjects = await listSubjects();
+    const matchedSubject = subjects.find((entry) =>
+      entry.slug === subjectSlug || normalizeSubjectKey(entry.name) === normalizeSubjectKey(subject)
+    );
+    if (matchedSubject) {
+      canonicalSubject = matchedSubject.name;
+    }
+  } catch {
+    // Preserve the provided subject when canonicalization fails.
+  }
+
+  return { subjectSlug, topicSlug, filePath, canonicalSubject };
+}
+
+function appendCardBlocksToContent(
+  content: string | null,
+  canonicalSubject: string,
+  topic: string,
+  appendedBlocks: string,
+): string {
+  if (content) {
+    return content.trimEnd() + "\n\n" + appendedBlocks + "\n";
+  }
+
+  const now = localDateTimeString();
+  return [
+    "---", `subject: ${canonicalSubject}`, `topic: ${topic || "General"}`,
+    "type: flashcard", `created_at: ${now}`, "---", "",
+    appendedBlocks, "",
+  ].join("\n");
+}
+
 const emptyStats: SessionStats = { again: 0, hard: 0, good: 0, easy: 0, total: 0 };
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
@@ -391,23 +443,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
   },
 
   createCard: async (subject, topic, question, answer, bloom, cardType = "basic") => {
-    const subjectSlug = slugify(subject);
-    const topicSlug = slugify(topic || "general");
-    const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
+    const { filePath, canonicalSubject } = await resolveFlashcardTarget(subject, topic);
     const cardId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    let canonicalSubject = subject;
-
-    try {
-      const subjects = await listSubjects();
-      const matchedSubject = subjects.find((entry) =>
-        entry.slug === subjectSlug || normalizeSubjectKey(entry.name) === normalizeSubjectKey(subject)
-      );
-      if (matchedSubject) {
-        canonicalSubject = matchedSubject.name;
-      }
-    } catch {
-      // Ignore canonicalization failures and preserve the provided subject.
-    }
 
     const cardBlocks = [{ id: cardId, question, answer, type: cardType }];
     if (cardType === "reversed") {
@@ -419,23 +456,18 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       });
     }
 
-    let content: string;
     const appendedBlocks = cardBlocks
       .map((block) => formatCardBlock(block.id, block.question, block.answer, bloom, block.type))
       .join("\n\n");
 
+    let existingContent: string | null = null;
     try {
-      content = await readFile(filePath);
-      content = content.trimEnd() + "\n\n" + appendedBlocks + "\n";
+      existingContent = await readFile(filePath);
     } catch {
-      const now = localDateTimeString();
-      content = [
-        "---", `subject: ${canonicalSubject}`, `topic: ${topic || "General"}`,
-        "type: flashcard", `created_at: ${now}`, "---", "",
-        appendedBlocks, "",
-      ].join("\n");
+      existingContent = null;
     }
 
+    const content = appendCardBlocksToContent(existingContent, canonicalSubject, topic, appendedBlocks);
     await writeFile(filePath, content);
     for (const block of cardBlocks) {
       await updateCardSchedule(block.id, filePath, today(), 0, 2.5, "");
@@ -443,6 +475,34 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
 
     const count = await getDueCount();
     set({ dueCount: count });
+  },
+
+  upsertCoreCard: async (subject, topic, sectionIndex, question, answer, bloom) => {
+    const { subjectSlug, topicSlug, filePath, canonicalSubject } = await resolveFlashcardTarget(subject, topic);
+    const cardId = `fc-core-${subjectSlug}-${topicSlug}-s${sectionIndex}`;
+
+    let existingContent: string | null = null;
+    try {
+      existingContent = await readFile(filePath);
+      if (existingContent.includes(`> [!card] id: ${cardId}`)) {
+        return { id: cardId, filePath, created: false };
+      }
+    } catch {
+      existingContent = null;
+    }
+
+    const content = appendCardBlocksToContent(
+      existingContent,
+      canonicalSubject,
+      topic,
+      formatCardBlock(cardId, question, answer, bloom),
+    );
+
+    await writeFile(filePath, content);
+    await updateCardSchedule(cardId, filePath, today(), 0, 2.5, "");
+    const count = await getDueCount();
+    set({ dueCount: count });
+    return { id: cardId, filePath, created: true };
   },
 
   loadAllCardsForReview: async (subjectFilter) => {

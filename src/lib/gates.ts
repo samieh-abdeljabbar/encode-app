@@ -60,6 +60,18 @@ export function formatDigestionMarkdown(responses: GateResponse[]): string {
       }
       lines.push("");
     }
+    if (r.remember) {
+      lines.push(`**Remember:** ${r.remember}`);
+    }
+    if (r.watchOut) {
+      lines.push(`**Watch out:** ${r.watchOut}`);
+    }
+    if (r.goDeeper) {
+      lines.push(`**Go deeper:** ${r.goDeeper}`);
+    }
+    if (r.remember || r.watchOut || r.goDeeper) {
+      lines.push("");
+    }
     lines.push(`*(${r.timestamp})*\n`);
   }
 
@@ -119,7 +131,14 @@ export function extractDigestion(raw: string): GateResponse[] {
     }
 
     if (subQuestions.length === 0) continue;
-    responses.push({ sectionIndex, subQuestions, timestamp });
+    responses.push({
+      sectionIndex,
+      subQuestions,
+      remember: readField(body, "Remember", ["\\*\\*Watch out:\\*\\*", "\\*\\*Go deeper:\\*\\*", "\\*\\(.+\\)\\*"]) || undefined,
+      watchOut: readField(body, "Watch out", ["\\*\\*Go deeper:\\*\\*", "\\*\\(.+\\)\\*"]) || undefined,
+      goDeeper: readField(body, "Go deeper", ["\\*\\(.+\\)\\*"]) || undefined,
+      timestamp,
+    });
   }
 
   return responses.sort((a, b) => a.sectionIndex - b.sectionIndex);
