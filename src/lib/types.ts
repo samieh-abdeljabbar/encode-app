@@ -84,6 +84,56 @@ export interface AppConfig {
   user_role: string;
   user_hobbies: string;
   user_learning_style: string;
+  // Pomodoro timer settings (seconds)
+  pomodoro_study_secs: number;
+  pomodoro_break_secs: number;
+  pomodoro_long_break_secs: number;
+  // Quick timer presets (seconds)
+  quick_timers: number[];
+}
+
+/** Aggregated study time per subject */
+export interface SubjectStudyTime {
+  subject_name: string;
+  subject_slug: string;
+  total_seconds: number;
+  session_count: number;
+}
+
+/** Subject mastery data */
+export interface SubjectMastery {
+  subject: string;
+  chapters_total: number;
+  chapters_read: number;
+  avg_quiz_score: number;
+  cards_total: number;
+  cards_due: number;
+}
+
+/** Quiz history data point for trend chart */
+export interface QuizHistoryPoint {
+  date: string;
+  subject: string;
+  total_questions: number;
+  correct_count: number;
+  score_pct: number;
+}
+
+/** Weak topic identified from quiz history */
+export interface WeakTopic {
+  subject: string;
+  topic: string;
+  bloom_level: number;
+  total: number;
+  correct: number;
+  accuracy_pct: number;
+}
+
+/** SQL sandbox query result */
+export interface QueryResult {
+  columns: string[];
+  rows: string[][];
+  row_count: number;
 }
 
 /** Digestion gate prompt types */

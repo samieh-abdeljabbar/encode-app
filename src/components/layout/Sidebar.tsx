@@ -5,6 +5,7 @@ import { useVaultStore } from "../../stores/vault";
 import VaultBrowser from "../vault/VaultBrowser";
 import ImportDialog from "../vault/ImportDialog";
 import PomodoroTimer from "./PomodoroTimer";
+import TrackingSection from "./TrackingSection";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -60,11 +61,11 @@ export default function Sidebar() {
 
       {/* File browser or search results */}
       <div className="flex-1 overflow-y-auto py-1">
-        {searchResults.length > 0 ? (
+        {searchQuery.trim() ? (
           <div className="px-2">
             <div className="flex items-center justify-between px-2 py-1">
               <span className="text-[10px] text-text-muted uppercase tracking-wider">
-                Results
+                Results ({searchResults.length})
               </span>
               <button
                 onClick={clearSearch}
@@ -73,24 +74,31 @@ export default function Sidebar() {
                 Clear
               </button>
             </div>
-            {searchResults.map((r) => (
-              <button
-                key={r.file_path}
-                onClick={() => {
-                  handleSelectFile(r.file_path);
-                  clearSearch();
-                }}
-                className="w-full text-left px-2 py-2 text-xs rounded hover:bg-surface-2 transition-colors"
-              >
-                <p className="text-text truncate">{r.topic || r.file_path.split("/").pop()}</p>
-                <p className="text-text-muted text-[10px] truncate">{r.subject}</p>
-              </button>
-            ))}
+            {searchResults.length === 0 ? (
+              <p className="text-xs text-text-muted px-2 py-4 text-center">No results found</p>
+            ) : (
+              searchResults.map((r) => (
+                <button
+                  key={r.file_path}
+                  onClick={() => {
+                    handleSelectFile(r.file_path);
+                    clearSearch();
+                  }}
+                  className="w-full text-left px-2 py-2 text-xs rounded hover:bg-surface-2 transition-colors"
+                >
+                  <p className="text-text truncate">{r.topic || r.file_path.split("/").pop()}</p>
+                  <p className="text-text-muted text-[10px] truncate">{r.subject}</p>
+                </button>
+              ))
+            )}
           </div>
         ) : (
           <VaultBrowser />
         )}
       </div>
+
+      {/* Study Time Tracking */}
+      <TrackingSection />
 
       {/* Pomodoro Timer */}
       <PomodoroTimer />

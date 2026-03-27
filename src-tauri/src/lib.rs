@@ -4,10 +4,11 @@ mod importer;
 mod indexer;
 mod vault;
 
-use db::{Database, DueCard, SearchResult, StreakInfo, SubjectGrade};
+use db::{Database, DueCard, QuizHistoryPoint, QueryResult, SearchResult, StreakInfo, SubjectGrade, SubjectMastery, SubjectStudyTime, WeakTopic};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use vault::Subject;
 
 /// App state shared across all Tauri commands
@@ -15,6 +16,7 @@ struct AppState {
     vault_path: PathBuf,
     db: Arc<Database>,
     _watcher: Option<notify::RecommendedWatcher>,
+    sandboxes: Mutex<HashMap<String, db::SandboxDb>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,6 +40,12 @@ pub struct AppConfig {
     pub user_role: String,
     pub user_hobbies: String,
     pub user_learning_style: String,
+    // Pomodoro timer settings (stored as seconds)
+    pub pomodoro_study_secs: u32,
+    pub pomodoro_break_secs: u32,
+    pub pomodoro_long_break_secs: u32,
+    // Quick timer presets (seconds, e.g. [1500, 1800, 2700, 3600])
+    pub quick_timers: Vec<u32>,
 }
 
 // === Tauri Commands ===
@@ -90,6 +98,31 @@ fn delete_vault_file(
     // Also remove from search index
     state.db.remove_file(&path)?;
     Ok(())
+}
+
+#[tauri::command]
+fn create_vault_directory(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    vault::create_directory(&state.vault_path, &path)
+}
+
+#[tauri::command]
+fn delete_vault_directory(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    vault::delete_directory(&state.vault_path, &path)
+}
+
+#[tauri::command]
+fn rename_vault_directory(
+    state: tauri::State<'_, AppState>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    vault::rename_directory(&state.vault_path, &old_path, &new_path)
 }
 
 #[tauri::command]
@@ -150,6 +183,10 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
         user_role: String::new(),
         user_hobbies: String::new(),
         user_learning_style: String::new(),
+        pomodoro_study_secs: 1500,   // 25 min
+        pomodoro_break_secs: 300,     // 5 min
+        pomodoro_long_break_secs: 900, // 15 min
+        quick_timers: vec![1500, 1800, 2700, 3600], // 25m, 30m, 45m, 1h
     };
 
     for line in content.lines() {
@@ -168,6 +205,28 @@ fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
             config.user_hobbies = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("user_learning_style =") {
             config.user_learning_style = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("study_secs =") {
+            config.pomodoro_study_secs = val.trim().trim_matches('"').parse().unwrap_or(1500);
+        } else if let Some(val) = line.strip_prefix("break_secs =") {
+            config.pomodoro_break_secs = val.trim().trim_matches('"').parse().unwrap_or(300);
+        } else if let Some(val) = line.strip_prefix("long_break_secs =") {
+            config.pomodoro_long_break_secs = val.trim().trim_matches('"').parse().unwrap_or(900);
+        } else if let Some(val) = line.strip_prefix("quick_timers =") {
+            // Parse comma-separated seconds: "1500,1800,2700,3600"
+            let cleaned = val.trim().trim_matches('"');
+            let parsed: Vec<u32> = cleaned.split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if !parsed.is_empty() {
+                config.quick_timers = parsed;
+            }
+        // Backward compat: old _minutes fields → convert to seconds
+        } else if let Some(val) = line.strip_prefix("study_minutes =") {
+            config.pomodoro_study_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(25) * 60;
+        } else if let Some(val) = line.strip_prefix("break_minutes =") {
+            config.pomodoro_break_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(5) * 60;
+        } else if let Some(val) = line.strip_prefix("long_break_minutes =") {
+            config.pomodoro_long_break_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(15) * 60;
         }
     }
 
@@ -195,6 +254,12 @@ api_key = "{}"
 user_role = "{}"
 user_hobbies = "{}"
 user_learning_style = "{}"
+
+[pomodoro]
+study_secs = {}
+break_secs = {}
+long_break_secs = {}
+quick_timers = "{}"
 "#,
         escape_toml_string(&config.ai_provider),
         escape_toml_string(&config.ollama_model),
@@ -203,6 +268,10 @@ user_learning_style = "{}"
         escape_toml_string(&config.user_role),
         escape_toml_string(&config.user_hobbies),
         escape_toml_string(&config.user_learning_style),
+        config.pomodoro_study_secs,
+        config.pomodoro_break_secs,
+        config.pomodoro_long_break_secs,
+        config.quick_timers.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","),
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
@@ -235,6 +304,8 @@ fn delete_subject(state: tauri::State<'_, AppState>, slug: String) -> Result<(),
     if let Some(name) = subject_name {
         state.db.delete_quiz_history_by_subject(&name)?;
     }
+    // Clean up study sessions by slug
+    state.db.delete_study_sessions_by_subject(&slug)?;
     Ok(())
 }
 
@@ -320,6 +391,20 @@ fn update_card_schedule(
 }
 
 #[tauri::command]
+fn get_at_risk_cards(state: tauri::State<'_, AppState>) -> Result<Vec<DueCard>, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    state.db.get_at_risk_cards(&today, 3)
+}
+
+#[tauri::command]
+fn delete_card_schedule(
+    state: tauri::State<'_, AppState>,
+    card_id: String,
+) -> Result<(), String> {
+    state.db.delete_card_schedule(&card_id)
+}
+
+#[tauri::command]
 fn rename_vault_file(
     state: tauri::State<'_, AppState>,
     old_path: String,
@@ -395,6 +480,124 @@ async fn test_ai_connection(
         10,
     ).await?;
     Ok(result.text)
+}
+
+// === Subject Mastery ===
+
+#[tauri::command]
+fn get_subject_mastery(
+    state: tauri::State<'_, AppState>,
+    subject: String,
+) -> Result<SubjectMastery, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    state.db.get_subject_mastery(&subject, &today)
+}
+
+// === Quiz Analytics ===
+
+#[tauri::command]
+fn get_quiz_history_timeline(
+    state: tauri::State<'_, AppState>,
+    subject: Option<String>,
+) -> Result<Vec<QuizHistoryPoint>, String> {
+    state.db.get_quiz_history_timeline(subject.as_deref())
+}
+
+#[tauri::command]
+fn get_weak_topics(
+    state: tauri::State<'_, AppState>,
+    subject: Option<String>,
+) -> Result<Vec<WeakTopic>, String> {
+    state.db.get_weak_topics(subject.as_deref())
+}
+
+// === SQL Sandbox ===
+
+#[tauri::command]
+fn create_sandbox(
+    state: tauri::State<'_, AppState>,
+    setup_sql: String,
+) -> Result<String, String> {
+    let sandbox = db::SandboxDb::new()?;
+    sandbox.execute_setup(&setup_sql)?;
+    let id = format!("sandbox-{}", chrono::Utc::now().timestamp_millis());
+    let mut sandboxes = state.sandboxes.lock().map_err(|e| e.to_string())?;
+    sandboxes.insert(id.clone(), sandbox);
+    Ok(id)
+}
+
+#[tauri::command]
+fn execute_sandbox_query(
+    state: tauri::State<'_, AppState>,
+    sandbox_id: String,
+    query: String,
+) -> Result<QueryResult, String> {
+    let sandboxes = state.sandboxes.lock().map_err(|e| e.to_string())?;
+    let sandbox = sandboxes.get(&sandbox_id)
+        .ok_or_else(|| "Sandbox not found. It may have been cleaned up.".to_string())?;
+    sandbox.execute_query(&query)
+}
+
+#[tauri::command]
+fn destroy_sandbox(
+    state: tauri::State<'_, AppState>,
+    sandbox_id: String,
+) -> Result<(), String> {
+    let mut sandboxes = state.sandboxes.lock().map_err(|e| e.to_string())?;
+    sandboxes.remove(&sandbox_id);
+    Ok(())
+}
+
+// === Study Session Tracking ===
+
+#[tauri::command]
+fn record_pomodoro_session(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    subject_name: String,
+    subject_slug: String,
+    duration_secs: i64,
+    started_at: String,
+    completed_at: String,
+) -> Result<(), String> {
+    // Build the tracking markdown file for today
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let tracking_path = format!("tracking/{}.md", today);
+
+    let session_block = format!(
+        "\n> [!session] id: {}\n> **Subject:** {}\n> **Subject Slug:** {}\n> **Duration:** {}\n> **Started:** {}\n> **Completed:** {}\n",
+        id, subject_name, subject_slug, duration_secs, started_at, completed_at
+    );
+
+    // Read existing file or create new with frontmatter
+    let full_path = state.vault_path.join(&tracking_path);
+    let content = if full_path.exists() {
+        let existing = std::fs::read_to_string(&full_path)
+            .map_err(|e| format!("Failed to read tracking file: {}", e))?;
+        format!("{}{}", existing, session_block)
+    } else {
+        format!(
+            "---\ntype: tracking\ndate: {}\n---\n\n# Study Sessions: {}\n{}",
+            today, today, session_block
+        )
+    };
+
+    vault::write_file(&state.vault_path, &tracking_path, &content)?;
+
+    // Also insert into SQLite for fast aggregation
+    state.db.record_study_session(&id, &subject_name, &subject_slug, duration_secs, &started_at, &completed_at)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_study_time_by_subject(state: tauri::State<'_, AppState>) -> Result<Vec<SubjectStudyTime>, String> {
+    state.db.get_study_time_by_subject()
+}
+
+#[tauri::command]
+fn get_todays_study_time(state: tauri::State<'_, AppState>) -> Result<u32, String> {
+    state.db.get_todays_study_time()
 }
 
 // === Helpers ===
@@ -481,11 +684,20 @@ pub fn run() {
             Ok(count) => println!("Indexed {} files", count),
             Err(e) => eprintln!("Initial scan failed: {}", e),
         }
-        // Clean up quiz_history for deleted subjects
+        // Clean up orphaned sr_schedule entries
+        match db_clone.cleanup_orphaned_sr_schedules(&vault_clone) {
+            Ok(removed) => if removed > 0 { println!("Cleaned up {} orphaned sr_schedule entries", removed) },
+            Err(e) => eprintln!("SR schedule cleanup failed: {}", e),
+        }
+        // Clean up quiz_history and study_sessions for deleted subjects
         if let Ok(subjects) = vault::list_subjects(&vault_clone) {
-            let names: Vec<String> = subjects.into_iter().map(|s| s.name).collect();
+            let names: Vec<String> = subjects.iter().map(|s| s.name.clone()).collect();
+            let slugs: Vec<String> = subjects.iter().map(|s| s.slug.clone()).collect();
             if let Err(e) = db_clone.cleanup_orphaned_quiz_history(&names) {
                 eprintln!("Quiz history cleanup failed: {}", e);
+            }
+            if let Err(e) = db_clone.cleanup_orphaned_study_sessions(&slugs) {
+                eprintln!("Study session cleanup failed: {}", e);
             }
         }
     });
@@ -511,6 +723,7 @@ pub fn run() {
             vault_path,
             db,
             _watcher: watcher,
+            sandboxes: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             init_vault,
@@ -520,6 +733,9 @@ pub fn run() {
             read_vault_file,
             write_vault_file,
             delete_vault_file,
+            create_vault_directory,
+            delete_vault_directory,
+            rename_vault_directory,
             search_vault,
             get_daily_commitment,
             save_daily_commitment,
@@ -536,10 +752,21 @@ pub fn run() {
             test_ai_connection,
             get_due_cards,
             get_due_count,
+            get_at_risk_cards,
             update_card_schedule,
+            delete_card_schedule,
             rename_vault_file,
+            get_subject_mastery,
             record_quiz_result,
             get_subject_grades,
+            get_quiz_history_timeline,
+            get_weak_topics,
+            create_sandbox,
+            execute_sandbox_query,
+            destroy_sandbox,
+            record_pomodoro_session,
+            get_study_time_by_subject,
+            get_todays_study_time,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,12 +1,33 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import mermaid from "mermaid";
 
 marked.setOptions({ gfm: true, breaks: true });
+
+// Initialize mermaid once with Encode dark theme
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "dark",
+  themeVariables: {
+    primaryColor: "#7F77DD",
+    primaryTextColor: "#e5e5e5",
+    primaryBorderColor: "#333",
+    lineColor: "#888880",
+    secondaryColor: "#1D9E75",
+    tertiaryColor: "#252525",
+    mainBkg: "#1a1a1a",
+    nodeBorder: "#333",
+    clusterBkg: "#252525",
+    titleColor: "#e5e5e5",
+    edgeLabelBackground: "#1a1a1a",
+  },
+});
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  onWikilinkClick?: (name: string) => void;
 }
 
 /** Map callout types to colors */
@@ -28,6 +49,48 @@ const CALLOUT_COLORS: Record<string, { border: string; bg: string; label: string
   question: { border: "#BA7517", bg: "rgba(186,117,23,0.08)", label: "Question" },
   todo: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Todo" },
 };
+
+/** Pre-process wiki-links: [[Page Name]] → clickable anchor */
+function preprocessWikilinks(md: string): string {
+  // Handle ![[embed]] syntax — render as regular wikilink for now
+  return md.replace(/!?\[\[([^\]]+)\]\]/g, (_match, name: string) => {
+    return `<a class="wikilink" data-wikilink="${name}">${name}</a>`;
+  });
+}
+
+/** Pre-process mermaid fenced code blocks before marked parses them */
+function preprocessMermaid(md: string): { processed: string; hasMermaid: boolean } {
+  let counter = 0;
+  let hasMermaid = false;
+  const lines = md.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    if (trimmed === "```mermaid") {
+      hasMermaid = true;
+      const mermaidLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== "```") {
+        mermaidLines.push(lines[i]);
+        i++;
+      }
+      // Skip closing ```
+      if (i < lines.length) i++;
+      const code = mermaidLines.join("\n");
+      result.push(
+        `<div class="mermaid" data-mermaid-id="mermaid-${counter}">${code}</div>`,
+      );
+      counter++;
+      continue;
+    }
+    result.push(lines[i]);
+    i++;
+  }
+
+  return { processed: result.join("\n"), hasMermaid };
+}
 
 /** Pre-process markdown to handle callouts (including flashcards) */
 function preprocessCallouts(md: string): string {
@@ -304,36 +367,88 @@ const PROSE_STYLES = `
     color: var(--color-text, #e5e5e5);
     line-height: 1.6;
   }
+
+  /* Wiki-links */
+  .wikilink {
+    color: #7F77DD !important;
+    border-bottom: 1px dotted #7F77DD !important;
+    cursor: pointer;
+    text-decoration: none !important;
+  }
+  .wikilink:hover {
+    border-bottom-style: solid !important;
+  }
+
+  /* Mermaid diagrams */
+  .mermaid {
+    text-align: center;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .mermaid svg {
+    max-width: 100%;
+  }
 `;
 
 export default function MarkdownRenderer({
   content,
   className = "",
+  onWikilinkClick,
 }: MarkdownRendererProps) {
-  const html = useMemo(() => {
-    const processed = preprocessCallouts(content);
-    return DOMPurify.sanitize(marked.parse(processed) as string, {
+  const proseRef = useRef<HTMLDivElement>(null);
+
+  const { html, hasMermaid } = useMemo(() => {
+    // Pipeline: wikilinks → mermaid → callouts → marked → sanitize
+    const withWikilinks = preprocessWikilinks(content);
+    const { processed: withMermaid, hasMermaid: mermaidFound } = preprocessMermaid(withWikilinks);
+    const withCallouts = preprocessCallouts(withMermaid);
+    const rawHtml = DOMPurify.sanitize(marked.parse(withCallouts) as string, {
       ADD_TAGS: ["div", "span"],
-      ADD_ATTR: ["class"],
+      ADD_ATTR: ["class", "data-wikilink", "data-mermaid-id"],
     });
+    return { html: rawHtml, hasMermaid: mermaidFound };
   }, [content]);
 
-  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const anchor = target.closest("a");
-    if (!anchor) return;
-    const href = anchor.getAttribute("href");
-    if (!href) return;
-    e.preventDefault();
-    if (href.startsWith("http://") || href.startsWith("https://")) {
-      window.open(href, "_blank");
+  // Render mermaid diagrams after DOM update
+  useEffect(() => {
+    if (!hasMermaid || !proseRef.current) return;
+    const nodes = proseRef.current.querySelectorAll(".mermaid[data-mermaid-id]");
+    if (nodes.length > 0) {
+      mermaid.run({ nodes: Array.from(nodes) as HTMLElement[] }).catch(() => {
+        // Silently handle invalid mermaid syntax — the raw text stays visible
+      });
     }
-  }, []);
+  }, [html, hasMermaid]);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      const anchor = target.closest("a");
+      if (!anchor) return;
+
+      // Wiki-link click
+      const wikilink = anchor.getAttribute("data-wikilink");
+      if (wikilink) {
+        e.preventDefault();
+        onWikilinkClick?.(wikilink);
+        return;
+      }
+
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      e.preventDefault();
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        window.open(href, "_blank");
+      }
+    },
+    [onWikilinkClick],
+  );
 
   return (
     <>
       <style>{PROSE_STYLES}</style>
       <div
+        ref={proseRef}
         className={`prose ${className}`}
         dangerouslySetInnerHTML={{ __html: html }}
         onClick={handleClick}

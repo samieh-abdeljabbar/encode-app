@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../stores/app";
-import { listSubjects, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
+import { listSubjects, getSubjectGrades, getAtRiskCards, getWeakTopics, type SubjectGrade } from "../lib/tauri";
+import type { WeakTopic } from "../lib/types";
 import { useFlashcardStore } from "../stores/flashcard";
+import { useTrackingStore } from "../stores/tracking";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -20,8 +22,11 @@ export default function Home() {
   const [reflection, setReflection] = useState("");
   const [saving, setSaving] = useState(false);
   const { allCards, loadAllCards } = useFlashcardStore();
+  const { todayTotal, loadTodayTotal } = useTrackingStore();
   const [subjectCount, setSubjectCount] = useState(0);
   const [grades, setGrades] = useState<SubjectGrade[]>([]);
+  const [atRiskCount, setAtRiskCount] = useState(0);
+  const [weakTopics, setWeakTopics] = useState<WeakTopic[]>([]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const dueCount = allCards.filter((c) => c.nextReview <= todayStr).length;
@@ -34,10 +39,13 @@ export default function Home() {
     loadToday();
     loadStreak();
     loadAllCards();
+    loadTodayTotal();
     listSubjects()
       .then((s) => setSubjectCount(s.length))
       .catch(() => setSubjectCount(0));
     getSubjectGrades().then(setGrades);
+    getAtRiskCards().then((cards) => setAtRiskCount(cards.length));
+    getWeakTopics().then((wt) => setWeakTopics(wt.slice(0, 3)));
   }, [loadToday, loadStreak]);
 
   useEffect(() => {
@@ -83,7 +91,10 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-text-muted">Loading...</p>
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-purple/30 border-t-purple rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-text-muted text-sm">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -95,7 +106,7 @@ export default function Home() {
         <p className="text-xs text-text-muted uppercase tracking-wider mb-4">
           Today&apos;s Study
         </p>
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div className="bg-surface rounded border border-border p-4 text-center">
             <p className={`text-3xl font-bold ${dueCount > 0 ? "text-coral" : "text-text-muted"}`}>
               {dueCount}
@@ -112,6 +123,16 @@ export default function Home() {
             </p>
             <p className="text-xs text-text-muted mt-1">Day Streak</p>
           </div>
+          <div className="bg-surface rounded border border-border p-4 text-center">
+            <p className="text-3xl font-bold text-teal">
+              {todayTotal >= 3600
+                ? `${Math.floor(todayTotal / 3600)}h`
+                : todayTotal >= 60
+                  ? `${Math.floor(todayTotal / 60)}m`
+                  : `${todayTotal || 0}s`}
+            </p>
+            <p className="text-xs text-text-muted mt-1">Study Time</p>
+          </div>
         </div>
         {dueCount > 0 && (
           <button
@@ -120,6 +141,50 @@ export default function Home() {
           >
             Start Review ({dueCount} cards)
           </button>
+        )}
+
+        {/* Lapse prevention alert */}
+        {atRiskCount > 0 && (
+          <button
+            onClick={() => navigate("/flashcards")}
+            className="w-full mt-3 py-2.5 px-4 bg-amber/10 border border-amber/30 rounded text-left hover:bg-amber/15 transition-colors"
+          >
+            <p className="text-xs font-medium text-amber">
+              {atRiskCount} card{atRiskCount !== 1 ? "s" : ""} at risk of being forgotten
+            </p>
+            <p className="text-[10px] text-text-muted mt-0.5">
+              Review early to prevent lapses — these have long intervals coming due soon
+            </p>
+          </button>
+        )}
+
+        {/* Up Next: Smart Study Recommendations */}
+        {(dueCount > 0 || weakTopics.length > 0) && (
+          <div className="mt-4">
+            <p className="text-xs text-text-muted uppercase tracking-wider mb-2">Up Next</p>
+            <div className="space-y-1.5">
+              {dueCount > 0 && (
+                <button onClick={() => navigate("/flashcards")}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface border border-border rounded-lg text-left hover:border-purple/50 transition-colors">
+                  <span className="w-6 h-6 flex items-center justify-center bg-coral/15 text-coral rounded text-xs font-bold shrink-0">{dueCount}</span>
+                  <div>
+                    <p className="text-xs text-text font-medium">Review flashcards</p>
+                    <p className="text-[10px] text-text-muted">Prevent forgetting — highest priority</p>
+                  </div>
+                </button>
+              )}
+              {weakTopics.map((wt, i) => (
+                <button key={i} onClick={() => navigate("/quiz")}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface border border-border rounded-lg text-left hover:border-purple/50 transition-colors">
+                  <span className="w-6 h-6 flex items-center justify-center bg-amber/15 text-amber rounded text-xs font-bold shrink-0">{Math.round(wt.accuracy_pct)}%</span>
+                  <div>
+                    <p className="text-xs text-text font-medium">Quiz: {wt.topic}</p>
+                    <p className="text-[10px] text-text-muted">{wt.subject} — strengthen this weak area</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Subject Grades */}
@@ -133,7 +198,14 @@ export default function Home() {
                     <p className="text-sm text-text">{g.subject}</p>
                     <p className="text-[10px] text-text-muted">
                       {g.total_quizzes} quizzes
-                      {g.last_quiz_date && ` · Last: ${g.last_quiz_date.split("T")[0]}`}
+                      {g.last_quiz_date && (() => {
+                        const d = g.last_quiz_date.split("T")[0];
+                        if (d === todayStr) return " · Today";
+                        const diff = Math.round((Date.now() - new Date(d).getTime()) / 86400000);
+                        if (diff === 1) return " · Yesterday";
+                        if (diff < 7) return ` · ${diff}d ago`;
+                        return ` · ${d}`;
+                      })()}
                     </p>
                   </div>
                   <span className={`text-lg font-bold ${

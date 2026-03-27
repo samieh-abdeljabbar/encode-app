@@ -48,6 +48,7 @@ pub fn init_vault(vault_path: &Path) -> Result<(), String> {
         vault_path.join("subjects"),
         vault_path.join("daily"),
         vault_path.join("captures"),
+        vault_path.join("tracking"),
         vault_path.join(".encode"),
     ];
 
@@ -237,6 +238,49 @@ pub fn delete_file(vault_path: &Path, relative_path: &str) -> Result<(), String>
     let full_path = validate_vault_path(vault_path, relative_path)?;
     fs::remove_file(&full_path)
         .map_err(|e| format!("Failed to delete {:?}: {}", full_path, e))
+}
+
+/// Create a directory in the vault.
+pub fn create_directory(vault_path: &Path, relative_path: &str) -> Result<(), String> {
+    if relative_path.split('/').any(|c| c == "..") {
+        return Err("Path must not contain '..' components".to_string());
+    }
+    let full_path = vault_path.join(relative_path);
+    fs::create_dir_all(&full_path)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    // Validate it stays in vault
+    let dir_canonical = full_path.canonicalize()
+        .map_err(|e| format!("Invalid directory path: {}", e))?;
+    let vault_canonical = vault_path.canonicalize()
+        .map_err(|e| format!("Invalid vault path: {}", e))?;
+    if !dir_canonical.starts_with(&vault_canonical) {
+        return Err("Path escapes vault boundary".to_string());
+    }
+    Ok(())
+}
+
+/// Delete an empty directory from the vault.
+pub fn delete_directory(vault_path: &Path, relative_path: &str) -> Result<(), String> {
+    let full_path = validate_vault_path(vault_path, relative_path)?;
+    if !full_path.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+    fs::remove_dir(&full_path)
+        .map_err(|e| format!("Failed to delete directory (is it empty?): {}", e))
+}
+
+/// Rename a directory in the vault.
+pub fn rename_directory(vault_path: &Path, old_path: &str, new_path: &str) -> Result<(), String> {
+    if new_path.contains("..") {
+        return Err("Path must not contain '..' components".to_string());
+    }
+    let old_full = validate_vault_path(vault_path, old_path)?;
+    if !old_full.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+    let new_full = vault_path.join(new_path);
+    fs::rename(&old_full, &new_full)
+        .map_err(|e| format!("Failed to rename directory: {}", e))
 }
 
 /// List markdown files in a subject folder, optionally filtered by type subdirectory

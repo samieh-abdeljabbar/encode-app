@@ -41,6 +41,10 @@ interface ReaderState {
   lastMastery: number | null;                // Mastery from previous sub-question
   gateSkipped: boolean;                      // True if remaining Qs were skipped (adaptive)
 
+  // Pre-reading schema activation
+  showSchemaActivation: boolean;
+  schemaActivationTopic: string;
+
   loadFile: (path: string) => Promise<void>;
   advanceSection: () => void;
   goToSection: (index: number) => void;
@@ -48,6 +52,7 @@ interface ReaderState {
   clearError: () => void;
   dismissSuggestions: () => void;
   closeReader: () => void;
+  dismissSchemaActivation: () => void;
 }
 
 /** Generate 2-3 content-specific questions from a section using AI */
@@ -66,27 +71,37 @@ async function generateGateQuestions(
       ? `\nStudent context: ${profileContext} Use their background for relevant examples.`
       : "";
 
+    // Scale question count to section length
+    const wordCount = sectionContent.split(/\s+/).length;
+    const questionCount = wordCount < 500 ? 2 : wordCount < 1500 ? 3 : wordCount < 3000 ? 4 : 5;
+
     const { text } = await aiRequest(
-      `Read the study section below and generate 2-3 questions that test the student's understanding. Output ONLY JSON array.${profileLine}
+      `Read the ENTIRE section below carefully. Generate exactly ${questionCount} questions that collectively cover ALL key concepts in the section, not just the beginning. Output ONLY a JSON array.${profileLine}
 
 Format: [{"type":"recall","q":"..."},{"type":"explain","q":"..."},{"type":"apply","q":"..."}]
 
-- recall: Ask about a specific fact, term, or detail from the section.
-- explain: Ask the student to explain a concept, relationship, or why something works.
-- apply: Give a scenario and ask how to use the knowledge.
+Question types:
+- recall: Ask about a specific fact, term, definition, or detail from the section.
+- explain: Ask the student to explain WHY something works, how concepts relate, or cause/effect relationships.
+- apply: Give a real-world scenario and ask how to use the knowledge. Be specific and practical.
+- analyze: Ask the student to compare/contrast concepts, identify patterns, or evaluate approaches.
 
-Questions must reference actual content, terms, and examples from the section. Be specific. Each question 1-2 sentences.`,
-      `Section: ${sectionHeading || "Introduction"}\n\n${sectionContent.slice(0, 2000)}`,
-      400,
+CRITICAL RULES:
+- Questions MUST reference specific content from THROUGHOUT the section, including the middle and end.
+- Do NOT cluster questions around the opening paragraph.
+- Each question should test a DIFFERENT concept from the section.
+- Questions should be 1-2 sentences and demand genuine thought, not yes/no answers.`,
+      `Section: ${sectionHeading || "Introduction"}\n\n${sectionContent.slice(0, 6000)}`,
+      1500,
     );
 
     const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
     const match = cleaned.match(/\[[\s\S]*\]/);
     if (match) {
       const parsed = JSON.parse(match[0]) as { type?: string; q: string }[];
-      const types: GatePromptType[] = ["recall", "explain", "apply"];
-      return parsed.slice(0, 3).map((p, i) => ({
-        type: (types.includes(p.type as GatePromptType) ? p.type : types[i]) as GatePromptType,
+      const validTypes: GatePromptType[] = ["recall", "explain", "apply"];
+      return parsed.slice(0, questionCount).map((p, i) => ({
+        type: (validTypes.includes(p.type as GatePromptType) ? p.type : validTypes[i % 3]) as GatePromptType,
         question: p.q,
       }));
     }
@@ -110,10 +125,19 @@ async function evaluateResponse(
 ): Promise<{ feedback: string | null; mastery: number | null }> {
   try {
     const result = await aiRequest(
-      `Evaluate the student's answer. Reply ONLY JSON: {"right":"1 sentence","gap":"1 sentence","mastery":1}
-mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
-      `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 800)}\nQuestion: ${question}\nStudent's answer: ${response}`,
-      200,
+      `You are evaluating a student's understanding of a study section. Reply ONLY with JSON:
+{"right":"what they got correct (1-2 sentences)","gap":"what they missed or got wrong (1-2 sentences)","deeper":"one follow-up question to deepen understanding","mastery":1}
+
+Mastery scale (1-5):
+1 = Wrong or confused — fundamental misunderstanding
+2 = Vague — only surface-level, missing key details
+3 = Partially correct — got the gist but missed important specifics
+4 = Solid understanding — minor gaps only
+5 = Excellent — demonstrates deep comprehension, could teach this
+
+Be specific: reference actual terms and concepts from the section content. Do not give mastery 4-5 unless the answer demonstrates genuine understanding beyond surface recall.`,
+      `Section: ${sectionHeading}\nContent: ${sectionContent.slice(0, 3000)}\nQuestion: ${question}\nStudent's answer: ${response}`,
+      500,
     );
 
     const cleaned = result.text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
@@ -122,9 +146,12 @@ mastery: 1=weak/vague, 2=partial, 3=solid. Be specific to the content.`,
       const parsed = JSON.parse(jsonMatch[0]) as {
         right?: string;
         gap?: string;
+        deeper?: string;
         mastery?: number;
       };
-      const feedback = [parsed.right, parsed.gap].filter(Boolean).join(" ");
+      const parts = [parsed.right, parsed.gap];
+      if (parsed.deeper) parts.push(`Think deeper: ${parsed.deeper}`);
+      const feedback = parts.filter(Boolean).join(" ");
       return { feedback: feedback || null, mastery: parsed.mastery ?? null };
     }
     return { feedback: result.text, mastery: null };
@@ -142,6 +169,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   gateResponses: [],
   suggestedCards: [],
   loading: false,
+  showSchemaActivation: false,
+  schemaActivationTopic: "",
   error: null,
   gateGenerating: false,
   gatePhase: 0,
@@ -155,8 +184,12 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     set({ loading: true });
     try {
       const raw = await readFile(path);
-      const { content } = parseFrontmatter(raw);
+      const { content, frontmatter } = parseFrontmatter(raw);
       const sections = splitSections(content);
+      // Show schema activation for chapter files that haven't been read yet
+      const isChapter = path.includes("/chapters/");
+      const isUnread = frontmatter.status === "unread" || !frontmatter.status;
+      const topic = (frontmatter.topic as string) || path.split("/").pop()?.replace(".md", "") || "this topic";
       set({
         filePath: path,
         rawContent: raw,
@@ -172,6 +205,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         lastFeedback: null,
         lastMastery: null,
         gateSkipped: false,
+        showSchemaActivation: isChapter && isUnread,
+        schemaActivationTopic: topic,
       });
     } catch (e) {
       console.error("Failed to load file for reader:", e);
@@ -300,6 +335,8 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
   dismissSuggestions: () => set({ suggestedCards: [] }),
 
+  dismissSchemaActivation: () => set({ showSchemaActivation: false }),
+
   closeReader: () => {
     set({
       filePath: null,
@@ -340,13 +377,20 @@ async function saveAndAdvance(
     const digestionMd = formatDigestionMarkdown(updatedResponses);
     const updatedContent = baseContent + digestionMd;
 
-    await writeFile(filePath, updatedContent);
+    // If this is the last section gate, mark chapter as digested
+    const isLastGate = newResponse.sectionIndex >= sections.length - 1;
+    let finalContent = updatedContent;
+    if (isLastGate && filePath.includes("/chapters/")) {
+      finalContent = finalContent.replace(/^status:\s*\w+/m, "status: digested");
+    }
+
+    await writeFile(filePath, finalContent);
 
     useReaderStore.setState({
       currentSectionIndex: newResponse.sectionIndex,
       gateOpen: false,
       gateResponses: updatedResponses,
-      rawContent: updatedContent,
+      rawContent: finalContent,
       suggestedCards: [],
       gatePhase: 0,
       gateQuestions: [],

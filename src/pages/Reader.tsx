@@ -186,6 +186,7 @@ Bloom: 1=Remember, 2=Understand, 3=Apply. Target levels 1-3.`,
 export default function ReaderPage() {
   const navigate = useNavigate();
   const selectedFile = useVaultStore((s) => s.selectedFile);
+  const selectFile = useVaultStore((s) => s.selectFile);
   const config = useAppStore((s) => s.config);
   const aiEnabled = config?.ai_provider !== "none";
   const contentRef = useRef<HTMLDivElement>(null);
@@ -213,6 +214,9 @@ export default function ReaderPage() {
     lastFeedback,
     lastMastery,
     gateSkipped,
+    showSchemaActivation,
+    schemaActivationTopic,
+    dismissSchemaActivation,
   } = useReaderStore();
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -233,6 +237,22 @@ export default function ReaderPage() {
     closeReader();
     navigate("/vault");
   }, [closeReader, navigate]);
+
+  // Wiki-link navigation: search vault for matching file and open in Vault editor
+  const handleWikilinkClick = useCallback(
+    async (name: string) => {
+      try {
+        const results = await import("../lib/tauri").then((t) => t.searchVault(name));
+        if (results.length > 0) {
+          selectFile(results[0].file_path);
+          navigate("/vault");
+        }
+      } catch {
+        // Silently ignore — file not found
+      }
+    },
+    [selectFile, navigate],
+  );
 
   // Keyboard navigation
   useEffect(() => {
@@ -298,6 +318,45 @@ export default function ReaderPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-text-muted">Loading...</p>
+      </div>
+    );
+  }
+
+  // Pre-reading schema activation
+  if (showSchemaActivation) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="max-w-lg w-full px-8">
+          <div className="text-center mb-6">
+            <p className="text-xs text-purple uppercase tracking-wider mb-2">Before You Read</p>
+            <h2 className="text-xl font-semibold text-text mb-2">What do you already know?</h2>
+            <p className="text-sm text-text-muted">
+              Take 30 seconds to write what you already know about <span className="text-text font-medium">{schemaActivationTopic}</span>.
+              This activates your existing knowledge and helps new information stick.
+            </p>
+          </div>
+          <textarea
+            autoFocus
+            placeholder="I know that..."
+            rows={4}
+            className="w-full p-4 bg-surface border border-border rounded-lg text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-purple resize-none"
+            style={{ fontFamily: "Georgia, serif" }}
+          />
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={dismissSchemaActivation}
+              className="flex-1 py-3 text-sm text-text-muted border border-border rounded-lg hover:text-text hover:border-purple/50 transition-colors"
+            >
+              Skip
+            </button>
+            <button
+              onClick={dismissSchemaActivation}
+              className="flex-1 py-3 text-sm bg-purple text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+            >
+              I'm Ready to Read
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -376,10 +435,11 @@ export default function ReaderPage() {
                 {section.heading && (
                   <MarkdownRenderer
                     content={`${"#".repeat(section.level)} ${section.heading}`}
+                    onWikilinkClick={handleWikilinkClick}
                   />
                 )}
                 {section.content && (
-                  <MarkdownRenderer content={section.content} />
+                  <MarkdownRenderer content={section.content} onWikilinkClick={handleWikilinkClick} />
                 )}
               </div>
               {/* Show gate response for this section (if completed) */}

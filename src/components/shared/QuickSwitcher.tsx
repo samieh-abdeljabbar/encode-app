@@ -16,13 +16,13 @@ interface FileResult {
   type: string;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  chapters: "B",
-  flashcards: "F",
-  quizzes: "Q",
-  "teach-backs": "T",
-  maps: "M",
-  daily: "D",
+const TYPE_ICONS: Record<string, { letter: string; tooltip: string }> = {
+  chapters: { letter: "C", tooltip: "Chapter" },
+  flashcards: { letter: "F", tooltip: "Flashcard" },
+  quizzes: { letter: "Q", tooltip: "Quiz" },
+  "teach-backs": { letter: "T", tooltip: "Teach-Back" },
+  maps: { letter: "M", tooltip: "Map" },
+  daily: { letter: "D", tooltip: "Daily" },
 };
 
 export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
@@ -152,6 +152,7 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
               >
                 {/* Type badge */}
                 <span
+                  title={TYPE_ICONS[f.type]?.tooltip || f.type}
                   className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-bold shrink-0 ${
                     f.type === "chapters"
                       ? "bg-purple/20 text-purple"
@@ -162,7 +163,7 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
                           : "bg-border text-text-muted"
                   }`}
                 >
-                  {TYPE_ICONS[f.type] || "?"}
+                  {TYPE_ICONS[f.type]?.letter || "?"}
                 </span>
 
                 {/* File name */}

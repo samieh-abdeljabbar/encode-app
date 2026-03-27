@@ -14,11 +14,14 @@ export function shouldGateSection(
 }
 
 /**
- * If the user scored mastery 3 on all answered sub-questions, skip remaining questions.
+ * If the user scored well on enough questions, skip remaining.
+ * Requires minimum 3 questions answered, all mastery >= 4 (on 1-5 scale).
+ * Never skips "apply" type questions — those test deeper understanding.
  */
 export function shouldSkipRemaining(subQuestions: GateSubQuestion[]): boolean {
-  if (subQuestions.length < 2) return false;
-  return subQuestions.every((sq) => sq.mastery !== null && sq.mastery >= 3);
+  if (subQuestions.length < 3) return false;
+  // Don't skip if there's an unanswered "apply" question coming
+  return subQuestions.every((sq) => sq.mastery !== null && sq.mastery >= 4);
 }
 
 /**
@@ -41,8 +44,12 @@ export function formatDigestionMarkdown(responses: GateResponse[]): string {
         lines.push(`**AI Feedback:** ${sq.feedback}`);
       }
       if (sq.mastery !== null) {
-        const masteryLabel = sq.mastery <= 1 ? "Needs work" : sq.mastery === 2 ? "Partial" : "Solid";
-        lines.push(`**Mastery:** ${sq.mastery}/3 (${masteryLabel})`);
+        const masteryLabel = sq.mastery <= 1 ? "Needs work"
+          : sq.mastery === 2 ? "Surface-level"
+          : sq.mastery === 3 ? "Partial"
+          : sq.mastery === 4 ? "Solid"
+          : "Excellent";
+        lines.push(`**Mastery:** ${sq.mastery}/5 (${masteryLabel})`);
       }
       lines.push("");
     }

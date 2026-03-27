@@ -4,6 +4,7 @@ import { useFlashcardStore } from "../stores/flashcard";
 import type { ReviewRating, Subject } from "../lib/types";
 import { fsrs, fsrsRatingFromButton, type FSRSCard } from "../lib/sr";
 import { listSubjects } from "../lib/tauri";
+import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 
 const RATING_BUTTONS: { label: string; rating: ReviewRating; color: string }[] =
   [
@@ -149,7 +150,7 @@ function NewCardForm() {
             <button
               key={b}
               onClick={() => setBloom(b)}
-              className={`w-6 h-6 text-xs rounded ${bloom === b ? "bg-purple text-white" : "bg-surface-2 text-text-muted border border-border hover:border-purple"}`}
+              className={`w-8 h-8 text-xs rounded-md ${bloom === b ? "bg-purple text-white" : "bg-surface-2 text-text-muted border border-border hover:border-purple"}`}
             >
               {b}
             </button>
@@ -272,9 +273,65 @@ function SubjectDashboard({ onStartReview, onStudyAll }: {
   );
 }
 
+function CardEditForm({ card, onSave, onCancel }: {
+  card: { id: string; filePath: string; question: string; answer: string; bloom: number };
+  onSave: (q: string, a: string, b: number) => void;
+  onCancel: () => void;
+}) {
+  const [q, setQ] = useState(card.question);
+  const [a, setA] = useState(card.answer);
+  const [b, setB] = useState(card.bloom);
+
+  return (
+    <div className="p-3 bg-surface-2 rounded space-y-2">
+      <textarea
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        rows={2}
+        className="w-full px-3 py-2 bg-bg border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+        placeholder="Question..."
+      />
+      <textarea
+        value={a}
+        onChange={(e) => setA(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-2 bg-bg border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+        placeholder="Answer..."
+      />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1">
+          <span className="text-xs text-text-muted mr-1">Bloom:</span>
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <button
+              key={n}
+              onClick={() => setB(n)}
+              className={`w-5 h-5 text-[10px] rounded ${b === n ? "bg-purple text-white" : "bg-surface text-text-muted border border-border"}`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onCancel} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
+          <button
+            onClick={() => onSave(q.trim(), a.trim(), b)}
+            disabled={!q.trim() || !a.trim()}
+            className="px-3 py-1 text-xs bg-purple text-white rounded hover:opacity-90 disabled:opacity-30"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AllCardsView() {
-  const { allCards, loading, loadAllCards } = useFlashcardStore();
+  const { allCards, loading, loadAllCards, deleteCard, editCard } = useFlashcardStore();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [statsId, setStatsId] = useState<string | null>(null);
 
   useEffect(() => {
     loadAllCards();
@@ -323,22 +380,110 @@ function AllCardsView() {
             <div className="border-t border-border">
               {groupCards.map((c) => (
                 <div key={c.id} className="px-4 py-3 border-b border-border last:border-0">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-text font-medium">{c.question}</p>
-                      <p className="text-xs text-text-muted mt-1">{c.answer}</p>
+                  {editingId === c.id ? (
+                    <CardEditForm
+                      card={c}
+                      onSave={async (q, a, b) => {
+                        await editCard(c.id, c.filePath, q, a, b);
+                        setEditingId(null);
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  ) : confirmDeleteId === c.id ? (
+                    <div className="flex items-center justify-between py-2">
+                      <p className="text-sm text-coral">Delete this card?</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setConfirmDeleteId(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
+                        <button
+                          onClick={async () => {
+                            await deleteCard(c.id, c.filePath);
+                            setConfirmDeleteId(null);
+                          }}
+                          className="px-3 py-1 text-xs bg-coral text-white rounded hover:opacity-90"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <span className="text-xs px-1.5 py-0.5 bg-purple/20 text-purple rounded">B{c.bloom}</span>
-                      <p className="text-xs text-text-muted mt-1">
-                        {c.nextReview <= new Date().toISOString().split("T")[0] ? (
-                          <span className="text-coral">Due</span>
-                        ) : (
-                          `Next: ${c.nextReview}`
-                        )}
-                      </p>
+                  ) : (
+                    <>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-text font-medium">{c.question}</p>
+                        <div className="text-xs text-text-muted mt-1"><MarkdownRenderer content={c.answer} /></div>
+                      </div>
+                      <div className="shrink-0 flex items-start gap-2">
+                        <div className="text-right">
+                          <span className="text-xs px-1.5 py-0.5 bg-purple/20 text-purple rounded">B{c.bloom}</span>
+                          <p className="text-xs text-text-muted mt-1">
+                            {(() => {
+                              const today = new Date().toISOString().split("T")[0];
+                              if (c.nextReview <= today) return <span className="text-coral">Due now</span>;
+                              const diff = Math.round((new Date(c.nextReview).getTime() - Date.now()) / 86400000);
+                              if (diff === 1) return "Tomorrow";
+                              if (diff < 7) return `In ${diff}d`;
+                              return c.nextReview;
+                            })()}
+                          </p>
+                        </div>
+                        <div className="flex gap-0.5 ml-2">
+                          <button
+                            onClick={() => setStatsId(statsId === c.id ? null : c.id)}
+                            className={`p-2 rounded-md transition-colors ${statsId === c.id ? "text-purple bg-purple/10" : "text-text-muted hover:text-purple hover:bg-purple/10"}`}
+                            title="Card stats"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg>
+                          </button>
+                          <button
+                            onClick={() => setEditingId(c.id)}
+                            className="p-2 rounded-md text-text-muted hover:text-purple hover:bg-purple/10 transition-colors"
+                            title="Edit card"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(c.id)}
+                            className="p-2 rounded-md text-text-muted hover:text-coral hover:bg-coral/10 transition-colors"
+                            title="Delete card"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                    {/* Card statistics */}
+                    {statsId === c.id && (
+                      <div className="mt-2 pt-2 border-t border-border grid grid-cols-3 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-text-muted">Success</span>
+                          <p className="text-text font-medium">{c.reps ? `${Math.round(((c.reps - (c.lapses ?? 0)) / c.reps) * 100)}%` : "—"}</p>
+                        </div>
+                        <div>
+                          <span className="text-text-muted">Stability</span>
+                          <p className="text-text font-medium">{c.stability ? `${Math.round(c.stability)}d` : "New"}</p>
+                        </div>
+                        <div>
+                          <span className="text-text-muted">Reviews</span>
+                          <p className="text-text font-medium">{c.reps ?? 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-text-muted">Lapses</span>
+                          <p className="text-text font-medium">{c.lapses ?? 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-text-muted">Interval</span>
+                          <p className="text-text font-medium">{c.interval ? `${c.interval}d` : "—"}</p>
+                        </div>
+                        <div>
+                          <span className="text-text-muted">Status</span>
+                          <p className={`font-medium ${(c.stability ?? 0) > 30 ? "text-teal" : (c.stability ?? 0) > 7 ? "text-amber" : "text-purple"}`}>
+                            {(c.stability ?? 0) > 30 ? "Strong" : (c.stability ?? 0) > 7 ? "Learning" : "New"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -353,6 +498,8 @@ function AllCardsView() {
 export default function FlashcardsPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"dashboard" | "review" | "browse">("dashboard");
+  const [reviewEditingId, setReviewEditingId] = useState<string | null>(null);
+  const [reviewConfirmDeleteId, setReviewConfirmDeleteId] = useState<string | null>(null);
   const {
     cards,
     currentIndex,
@@ -365,6 +512,8 @@ export default function FlashcardsPage() {
     loadAllCardsForReview,
     revealAnswer,
     rateCard,
+    deleteCard,
+    editCard,
     resetSession,
   } = useFlashcardStore();
 
@@ -553,65 +702,108 @@ export default function FlashcardsPage() {
             )}
           </div>
 
-          {/* Question display — varies by card type */}
-          <div className="mb-8">
-            {card.cardType === "cloze" ? (
-              <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
-                {card.question.replace(/\{\{.+?\}\}/g, "___")}
-              </p>
-            ) : card.cardType === "reversed" ? (
-              <>
-                <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
-                <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
-                  {card.question}
-                </p>
-              </>
-            ) : (
-              <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
-                {card.question}
-              </p>
-            )}
-          </div>
-
-          {/* Answer area */}
-          {!showAnswer ? (
-            <button
-              onClick={revealAnswer}
-              className="w-full py-3 bg-purple text-white rounded font-medium hover:opacity-90 transition-opacity"
-            >
-              {card.cardType === "cloze" ? "Reveal Answer" : "Show Answer"}
-            </button>
-          ) : (
-            <div>
-              {/* Answer */}
-              <div className="p-4 bg-surface rounded border border-border mb-6">
-                <p
-                  className="text-base leading-relaxed text-text"
-                  style={{ fontFamily: "Georgia, serif" }}
+          {/* Edit/Delete inline form */}
+          {reviewEditingId === card.id ? (
+            <CardEditForm
+              card={card}
+              onSave={async (q, a, b) => {
+                await editCard(card.id, card.filePath, q, a, b);
+                setReviewEditingId(null);
+              }}
+              onCancel={() => setReviewEditingId(null)}
+            />
+          ) : reviewConfirmDeleteId === card.id ? (
+            <div className="flex items-center justify-between py-4 px-4 bg-surface rounded border border-coral/30 mb-4">
+              <p className="text-sm text-coral">Delete this card permanently?</p>
+              <div className="flex gap-2">
+                <button onClick={() => setReviewConfirmDeleteId(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
+                <button
+                  onClick={async () => {
+                    await deleteCard(card.id, card.filePath);
+                    setReviewConfirmDeleteId(null);
+                  }}
+                  className="px-3 py-1 text-xs bg-coral text-white rounded hover:opacity-90"
                 >
-                  {card.answer}
-                </p>
-              </div>
-
-              {/* Rating buttons */}
-              <p className="text-xs text-text-muted mb-3 text-center">
-                How well did you recall this?
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                {RATING_BUTTONS.map((b, i) => (
-                  <button
-                    key={b.rating}
-                    onClick={() => rateCard(b.rating)}
-                    className={`${b.color} text-white py-3 rounded text-sm font-medium hover:opacity-90 transition-opacity`}
-                  >
-                    <div>{b.label}</div>
-                    <div className="text-xs opacity-75 mt-1">
-                      {intervals[i]}
-                    </div>
-                  </button>
-                ))}
+                  Delete
+                </button>
               </div>
             </div>
+          ) : (
+            <>
+              {/* Question display — varies by card type */}
+              <div className="mb-8">
+                {card.cardType === "cloze" ? (
+                  <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                    {card.question.replace(/\{\{.+?\}\}/g, "___")}
+                  </p>
+                ) : card.cardType === "reversed" ? (
+                  <>
+                    <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
+                    <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                      {card.question}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                    {card.question}
+                  </p>
+                )}
+              </div>
+
+              {/* Card actions toolbar */}
+              <div className="flex justify-end gap-1 mb-4">
+                <button
+                  onClick={() => setReviewEditingId(card.id)}
+                  className="p-2 rounded-md text-text-muted hover:text-purple hover:bg-purple/10 transition-colors"
+                  title="Edit card"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                </button>
+                <button
+                  onClick={() => setReviewConfirmDeleteId(card.id)}
+                  className="p-2 rounded-md text-text-muted hover:text-coral hover:bg-coral/10 transition-colors"
+                  title="Delete card"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                </button>
+              </div>
+
+              {/* Answer area */}
+              {!showAnswer ? (
+                <button
+                  onClick={revealAnswer}
+                  className="w-full py-3 bg-purple text-white rounded font-medium hover:opacity-90 transition-opacity"
+                >
+                  {card.cardType === "cloze" ? "Reveal Answer" : "Show Answer"}
+                </button>
+              ) : (
+                <div>
+                  {/* Answer */}
+                  <div className="p-4 bg-surface rounded border border-border mb-6" style={{ fontFamily: "Georgia, serif" }}>
+                    <MarkdownRenderer content={card.answer} />
+                  </div>
+
+                  {/* Rating buttons */}
+                  <p className="text-xs text-text-muted mb-3 text-center">
+                    How well did you recall this?
+                  </p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {RATING_BUTTONS.map((b, i) => (
+                      <button
+                        key={b.rating}
+                        onClick={() => rateCard(b.rating)}
+                        className={`${b.color} text-white py-3 rounded text-sm font-medium hover:opacity-90 transition-opacity`}
+                      >
+                        <div>{b.label}</div>
+                        <div className="text-xs opacity-75 mt-1">
+                          {intervals[i]}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { aiRequest, writeFile, recordQuizResult, listFiles, readFile } from "../lib/tauri";
+import { aiRequest, writeFile, recordQuizResult, listFiles, readFile, createSandbox, executeSandboxQuery, destroySandbox, getSubjectGrades } from "../lib/tauri";
+import type { QueryResult } from "../lib/types";
+import { runPython, type PythonResult } from "../lib/pyodide";
 import { parseFrontmatter } from "../lib/markdown";
 import { useFlashcardStore } from "./flashcard";
 
@@ -31,6 +33,9 @@ export interface QuizQuestion {
   options?: string[];         // For multiple choice
   correctAnswer?: string;     // For MC, fill-blank, code
   language?: string;          // For code questions (sql, python, pseudocode)
+  setupSql?: string;          // For SQL: CREATE/INSERT statements
+  setupCode?: string;         // For Python: setup/test data code
+  expectedOutput?: string;    // For code: expected stdout
   userAnswer: string | null;
   feedback: string | null;
   correct: boolean | null;
@@ -57,9 +62,18 @@ interface QuizState {
   configContent: string | null;
   showConfig: boolean;
 
+  // SQL sandbox state
+  activeSandboxId: string | null;
+  sandboxResult: QueryResult | null;
+  sandboxError: string | null;
+  // Python execution state
+  pythonResult: PythonResult | null;
+  pythonRunning: boolean;
+
   setConfig: (config: Partial<QuizConfig>) => void;
   prepareQuiz: (subject: string, topic: string, content: string) => void;
   prepareSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
+  prepareMultiChapterQuiz: (subjectSlug: string, subjectName: string, chapterPaths: string[]) => Promise<void>;
   startQuiz: () => Promise<void>;
   generateQuiz: (subject: string, topic: string, chapterContent: string, config?: QuizConfig) => Promise<void>;
   generateSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
@@ -67,6 +81,9 @@ interface QuizState {
   flagQuestion: (index: number) => void;
   nextQuestion: () => void;
   retakeQuiz: (filePath: string) => Promise<void>;
+  runSandboxQuery: (query: string) => Promise<void>;
+  runPythonCode: (code: string) => Promise<void>;
+  setupSandbox: (setupSql: string) => Promise<void>;
   resetQuiz: () => void;
 }
 
@@ -98,6 +115,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   configTopic: null,
   configContent: null,
   showConfig: false,
+  activeSandboxId: null,
+  sandboxResult: null,
+  sandboxError: null,
+  pythonResult: null,
+  pythonRunning: false,
 
   setConfig: (partial) => {
     set((s) => ({ config: { ...s.config, ...partial } }));
@@ -141,11 +163,59 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     }
   },
 
+  prepareMultiChapterQuiz: async (_subjectSlug, subjectName, chapterPaths) => {
+    set({ generating: true, error: null });
+    try {
+      let combinedContent = "";
+      for (const path of chapterPaths) {
+        try {
+          const raw = await readFile(path);
+          const { content } = parseFrontmatter(raw);
+          const name = path.split("/").pop()?.replace(".md", "") || "";
+          combinedContent += `\n\n--- Chapter: ${name} ---\n\n${content}`;
+        } catch { /* skip */ }
+      }
+      if (!combinedContent.trim()) {
+        set({ generating: false, error: "No content found in selected chapters." });
+        return;
+      }
+      set({
+        generating: false,
+        configSubject: subjectName,
+        configTopic: `${chapterPaths.length} Chapters`,
+        configContent: combinedContent,
+        showConfig: true,
+      });
+    } catch (e) {
+      set({ generating: false, error: `Failed: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  },
+
   startQuiz: async () => {
     const { configSubject, configTopic, configContent, config } = get();
     if (!configSubject || !configTopic || !configContent) return;
+
+    // Adaptive difficulty: auto-adjust bloom range based on recent scores
+    let finalConfig = config;
+    if (config.bloomRange[0] === 0 && config.bloomRange[1] === 0) {
+      // "Auto" mode: bloom range [0,0] signals auto-detect
+      try {
+        const grades = await getSubjectGrades();
+        const subjectGrade = grades.find((g) => g.subject === configSubject);
+        if (subjectGrade && subjectGrade.total_quizzes >= 2) {
+          const avg = subjectGrade.avg_score;
+          const range: [number, number] = avg > 85 ? [3, 6] : avg > 65 ? [2, 5] : [1, 3];
+          finalConfig = { ...config, bloomRange: range };
+        } else {
+          finalConfig = { ...config, bloomRange: [1, 3] }; // Default for new subjects
+        }
+      } catch {
+        finalConfig = { ...config, bloomRange: [1, 3] };
+      }
+    }
+
     set({ showConfig: false });
-    await get().generateQuiz(configSubject, configTopic, configContent, config);
+    await get().generateQuiz(configSubject, configTopic, configContent, finalConfig);
   },
 
   generateQuiz: async (subject, topic, chapterContent, config) => {
@@ -159,7 +229,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       const { text } = await aiRequest(
         `Generate exactly ${cfg.questionCount} quiz questions. Types: ${typeNames}. Bloom ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Output ONLY a JSON array:
 [{"question":"...","bloomLevel":2,"type":"free-recall"},{"question":"...","bloomLevel":1,"type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"B"}]
-${typeList}${cfg.types.includes("code") ? "\nCode questions: include table schemas for SQL, function signatures for Python." : ""}`,
+${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a "setupSql" field with CREATE TABLE and INSERT INTO statements so the user can run their query against real data. Include "correctAnswer" with the expected SQL query. For Python, include a "setupCode" field with any imports or test data, an "expectedOutput" field with the expected stdout, and "correctAnswer" with the solution code. For pseudocode, include "correctAnswer".' : ""}`,
         `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, contentLimit)}`,
         cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000,
       );
@@ -186,6 +256,9 @@ ${typeList}${cfg.types.includes("code") ? "\nCode questions: include table schem
         options: q.options,
         correctAnswer: q.correctAnswer,
         language: q.language,
+        setupSql: (q as Record<string, unknown>).setupSql as string | undefined,
+        setupCode: (q as Record<string, unknown>).setupCode as string | undefined,
+        expectedOutput: (q as Record<string, unknown>).expectedOutput as string | undefined,
         userAnswer: null,
         feedback: null,
         correct: null,
@@ -469,12 +542,64 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
     }
   },
 
-  resetQuiz: () =>
+  runPythonCode: async (code) => {
+    const { questions, currentIndex } = get();
+    const question = questions[currentIndex];
+    set({ pythonRunning: true, pythonResult: null });
+    try {
+      const result = await runPython(code, question?.setupCode);
+      set({ pythonResult: result, pythonRunning: false });
+    } catch (e) {
+      set({
+        pythonResult: { stdout: "", stderr: e instanceof Error ? e.message : String(e), error: String(e) },
+        pythonRunning: false,
+      });
+    }
+  },
+
+  runSandboxQuery: async (query) => {
+    const { activeSandboxId } = get();
+    if (!activeSandboxId) {
+      set({ sandboxError: "No sandbox active. Schema may not have loaded." });
+      return;
+    }
+    set({ sandboxError: null, sandboxResult: null });
+    try {
+      const result = await executeSandboxQuery(activeSandboxId, query);
+      set({ sandboxResult: result });
+    } catch (e) {
+      set({ sandboxError: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  setupSandbox: async (setupSql) => {
+    // Destroy existing sandbox if any
+    const { activeSandboxId } = get();
+    if (activeSandboxId) {
+      try { await destroySandbox(activeSandboxId); } catch { /* */ }
+    }
+    try {
+      const id = await createSandbox(setupSql);
+      set({ activeSandboxId: id, sandboxResult: null, sandboxError: null });
+    } catch (e) {
+      set({ sandboxError: `Failed to create sandbox: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  },
+
+  resetQuiz: () => {
+    // Clean up sandbox if active
+    const { activeSandboxId } = get();
+    if (activeSandboxId) {
+      destroySandbox(activeSandboxId).catch(() => {});
+    }
     set({
       subject: null, topic: null, questions: [],
       currentIndex: 0, loading: false, generating: false,
       showFeedback: false, sessionComplete: false, error: null,
       summary: null, generatedCards: 0,
       configSubject: null, configTopic: null, configContent: null, showConfig: false,
-    }),
+      activeSandboxId: null, sandboxResult: null, sandboxError: null,
+      pythonResult: null, pythonRunning: false,
+    });
+  },
 }));

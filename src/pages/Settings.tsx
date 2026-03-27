@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
 import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection } from "../lib/tauri";
+import type { AppConfig } from "../lib/types";
 import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
 
 const POPULAR_MODELS = [
@@ -56,6 +57,7 @@ export default function Settings() {
   const [indexCount, setIndexCount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("encode-font-size") || "16");
   const [fontFamily, setFontFamily] = useState(() => localStorage.getItem("encode-font-family") || "georgia");
@@ -98,13 +100,17 @@ export default function Settings() {
     setSaving(true);
     await saveConfig({
       vault_path: vaultPath,
-      ai_provider: provider as "ollama" | "claude" | "gemini" | "none",
+      ai_provider: provider as AppConfig["ai_provider"],
       ollama_model: ollamaModel,
       ollama_url: ollamaUrl,
       api_key: apiKey,
       user_role: userRole,
       user_hobbies: userHobbies,
       user_learning_style: userLearningStyle,
+      pomodoro_study_secs: config?.pomodoro_study_secs ?? 1500,
+      pomodoro_break_secs: config?.pomodoro_break_secs ?? 300,
+      pomodoro_long_break_secs: config?.pomodoro_long_break_secs ?? 900,
+      quick_timers: config?.quick_timers ?? [1500, 1800, 2700, 3600],
     });
     setSaving(false);
   };
@@ -371,13 +377,22 @@ export default function Settings() {
               <label className="block text-xs text-text-muted mb-2">
                 {provider === "claude" ? "Claude (Anthropic)" : provider === "gemini" ? "Gemini (Google)" : provider === "openai" ? "OpenAI" : "DeepSeek"} API Key
               </label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter API key..."
-                className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
-              />
+              <div className="relative">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter API key..."
+                  className="w-full px-3 py-2 pr-16 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-text-muted hover:text-text px-1.5 py-0.5 rounded bg-surface hover:bg-surface-2 transition-colors"
+                >
+                  {showApiKey ? "Hide" : "Show"}
+                </button>
+              </div>
               <p className="text-xs text-text-muted mt-2">
                 {provider === "claude" && "Get your key at console.anthropic.com"}
                 {provider === "gemini" && "Get your key at aistudio.google.com"}

@@ -9,6 +9,7 @@ import FlashcardsPage from "./pages/Flashcards";
 import QuizPage from "./pages/Quiz";
 import TeachBackPage from "./pages/TeachBack";
 import Settings from "./pages/Settings";
+import ProgressPage from "./pages/Progress";
 
 interface UpdateHandle {
   downloadAndInstall: () => Promise<void>;
@@ -107,6 +108,7 @@ function App() {
           <Route path="/flashcards" element={<FlashcardsPage />} />
           <Route path="/quiz" element={<QuizPage />} />
           <Route path="/teach-back" element={<TeachBackPage />} />
+          <Route path="/progress" element={<ProgressPage />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         {/* Reader is outside Shell — no sidebar, full-screen reading */}

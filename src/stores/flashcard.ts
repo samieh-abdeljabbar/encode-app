@@ -5,7 +5,9 @@ import {
   getDueCount,
   readFile,
   writeFile,
+  deleteFile,
   updateCardSchedule,
+  deleteCardSchedule,
   listSubjects,
   listFiles,
 } from "../lib/tauri";
@@ -51,6 +53,8 @@ interface FlashcardState {
     cardType?: string,
   ) => Promise<void>;
   loadAllCardsForReview: (subjectFilter?: string) => Promise<void>;
+  deleteCard: (cardId: string, filePath: string) => Promise<void>;
+  editCard: (cardId: string, filePath: string, newQuestion: string, newAnswer: string, newBloom?: number) => Promise<void>;
   resetSession: () => void;
 }
 
@@ -452,6 +456,98 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     } catch {
       set({ loading: false });
     }
+  },
+
+  deleteCard: async (cardId, filePath) => {
+    const content = await readFile(filePath);
+    const lines = content.split("\n");
+    const result: string[] = [];
+    let i = 0;
+    let foundCard = false;
+
+    while (i < lines.length) {
+      const cardMatch = lines[i].match(/^>\s*\[!card\]\s*id:\s*(.+)/);
+      if (cardMatch && cardMatch[1].trim() === cardId) {
+        foundCard = true;
+        // Skip the entire card block
+        i++;
+        while (i < lines.length && lines[i].startsWith(">")) i++;
+        // Skip trailing blank line after block
+        if (i < lines.length && lines[i].trim() === "") i++;
+        continue;
+      }
+      result.push(lines[i]);
+      i++;
+    }
+
+    if (!foundCard) return;
+
+    // Check if any cards remain in the file
+    const hasCards = result.some((l) => /^>\s*\[!card\]/.test(l));
+    if (!hasCards) {
+      await deleteFile(filePath);
+    } else {
+      await writeFile(filePath, result.join("\n"));
+    }
+
+    await deleteCardSchedule(cardId);
+
+    // Refresh state
+    const { cards, currentIndex, allCards } = get();
+    // Remove from review session if active
+    const updatedCards = cards.filter((c) => c.id !== cardId);
+    const newIndex = Math.min(currentIndex, Math.max(0, updatedCards.length - 1));
+    set({
+      cards: updatedCards,
+      currentIndex: updatedCards.length === 0 ? 0 : newIndex,
+      sessionComplete: updatedCards.length === 0 && cards.length > 0 ? true : undefined as unknown as boolean,
+      allCards: allCards.filter((c) => c.id !== cardId),
+    });
+
+    const count = await getDueCount();
+    set({ dueCount: count });
+  },
+
+  editCard: async (cardId, filePath, newQuestion, newAnswer, newBloom) => {
+    const content = await readFile(filePath);
+    const lines = content.split("\n");
+    const result: string[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const cardMatch = lines[i].match(/^>\s*\[!card\]\s*id:\s*(.+)/);
+      if (cardMatch && cardMatch[1].trim() === cardId) {
+        result.push(lines[i]);
+        i++;
+        while (i < lines.length && lines[i].startsWith(">")) {
+          const l = lines[i];
+          if (l.includes("**Q:**")) {
+            result.push(`> **Q:** ${newQuestion}`);
+          } else if (l.includes("**A:**")) {
+            result.push(`> **A:** ${newAnswer}`);
+          } else if (newBloom !== undefined && l.includes("**Bloom:**")) {
+            result.push(`> **Bloom:** ${newBloom}`);
+          } else {
+            result.push(l);
+          }
+          i++;
+        }
+        continue;
+      }
+      result.push(lines[i]);
+      i++;
+    }
+
+    await writeFile(filePath, result.join("\n"));
+
+    // Refresh allCards and current session cards
+    const { cards, allCards } = get();
+    const updateCard = (c: Flashcard) =>
+      c.id === cardId ? { ...c, question: newQuestion, answer: newAnswer, bloom: newBloom ?? c.bloom } : c;
+    set({
+      cards: cards.map(updateCard),
+      allCards: allCards.map(updateCard),
+    });
   },
 
   resetSession: () =>

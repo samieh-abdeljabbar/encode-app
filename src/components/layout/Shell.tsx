@@ -3,15 +3,22 @@ import { Outlet, useLocation } from "react-router-dom";
 import Ribbon from "./Ribbon";
 import Sidebar from "./Sidebar";
 import QuickSwitcher from "../shared/QuickSwitcher";
+import ShortcutsOverlay from "../shared/ShortcutsOverlay";
 
 export default function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
 
   // Sidebar only shows on vault page, controlled by toggle
   const onVault = location.pathname === "/vault";
   const showSidebar = onVault && sidebarOpen;
+
+  // Auto-open sidebar when navigating to Vault
+  useEffect(() => {
+    if (onVault) setSidebarOpen(true);
+  }, [onVault]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "o") {
@@ -26,6 +33,10 @@ export default function Shell() {
     if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
       e.preventDefault();
       setSidebarOpen((v) => !v);
+    }
+    if (e.key === "?" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+      e.preventDefault();
+      setShortcutsOpen(true);
     }
   }, []);
 
@@ -44,6 +55,10 @@ export default function Shell() {
       <QuickSwitcher
         open={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
+      />
+      <ShortcutsOverlay
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
       />
     </div>
   );

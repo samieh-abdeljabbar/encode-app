@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useQuizStore, type QuestionType } from "../stores/quiz";
-import { listSubjects, listFiles, readFile, getSubjectGrades, type SubjectGrade } from "../lib/tauri";
+import { useQuizStore, type QuestionType, type QuizQuestion } from "../stores/quiz";
+import { listSubjects, listFiles, readFile, getSubjectGrades, getQuizHistoryTimeline, getWeakTopics, type SubjectGrade } from "../lib/tauri";
+import type { QuizHistoryPoint, WeakTopic } from "../lib/types";
 import { parseFrontmatter } from "../lib/markdown";
 import type { Subject, FileEntry } from "../lib/types";
 import { Flag, ChevronDown, ChevronRight, BookOpen, Brain, RotateCcw, Sparkles, CreditCard } from "lucide-react";
@@ -30,7 +31,7 @@ function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel
     { id: "true-false", label: "True / False", desc: "Binary choice" },
     { id: "fill-blank", label: "Fill in the Blank", desc: "Type the missing word" },
     { id: "free-recall", label: "Free Recall", desc: "Open-ended, AI-evaluated" },
-    { id: "code", label: "Code Problem", desc: "SQL, Python, or pseudocode" },
+    { id: "code", label: "Code Problem", desc: "SQL + Python run live, pseudocode" },
   ];
 
   const toggleType = (type: QuestionType) => {
@@ -98,6 +99,7 @@ function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel
         <p className="text-xs font-medium text-text mb-2">Difficulty</p>
         <div className="flex gap-2">
           {([
+            { label: "Auto", range: [0, 0] as [number, number] },
             { label: "Beginner", range: [1, 3] as [number, number] },
             { label: "Intermediate", range: [2, 4] as [number, number] },
             { label: "Advanced", range: [3, 6] as [number, number] },
@@ -116,7 +118,7 @@ function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel
           ))}
         </div>
         <p className="text-[10px] text-text-muted mt-1.5">
-          Bloom {config.bloomRange[0]}-{config.bloomRange[1]}: {config.bloomRange[0] <= 2 ? "Remember → Apply" : config.bloomRange[0] <= 3 ? "Understand → Analyze" : "Apply → Create"}
+          {config.bloomRange[0] === 0 ? "Auto: adjusts based on your recent scores" : `Bloom ${config.bloomRange[0]}-${config.bloomRange[1]}: ${config.bloomRange[0] <= 2 ? "Remember → Apply" : config.bloomRange[0] <= 3 ? "Understand → Analyze" : "Apply → Create"}`}
         </p>
       </div>
 
@@ -138,7 +140,22 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   const [subjects, setSubjects] = useState<SubjectWithChapters[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { prepareQuiz, prepareSubjectQuiz } = useQuizStore();
+  const [selectedChapters, setSelectedChapters] = useState<Record<string, string[]>>({});
+  const { prepareQuiz, prepareSubjectQuiz, prepareMultiChapterQuiz } = useQuizStore();
+
+  const toggleChapter = (slug: string, path: string) => {
+    setSelectedChapters((prev) => {
+      const current = prev[slug] || [];
+      return { ...prev, [slug]: current.includes(path) ? current.filter((p) => p !== path) : [...current, path] };
+    });
+  };
+
+  const selectAllChapters = (slug: string, chapters: FileEntry[]) => {
+    const current = selectedChapters[slug] || [];
+    const allPaths = chapters.map((c) => c.file_path);
+    const allSelected = allPaths.every((p) => current.includes(p));
+    setSelectedChapters((prev) => ({ ...prev, [slug]: allSelected ? [] : allPaths }));
+  };
 
   useEffect(() => {
     (async () => {
@@ -246,26 +263,67 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                 </div>
               </div>
 
-              {isExpanded && chapters.length > 0 && (
-                <div className="border-t border-border bg-bg">
-                  {chapters.map((ch) => {
-                    const name = ch.file_path.split("/").pop()?.replace(".md", "") || "";
-                    return (
-                      <button
-                        key={ch.file_path}
-                        onClick={() => handleChapterQuiz(ch, subject.name)}
-                        className="w-full flex items-center justify-between px-5 py-2.5 border-b border-border/50 last:border-0 hover:bg-surface-2/50 transition-colors text-left"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <BookOpen size={14} className="text-purple shrink-0" />
-                          <span className="text-xs text-text truncate">{name}</span>
+              {isExpanded && chapters.length > 0 && (() => {
+                const selected = selectedChapters[subject.slug] || [];
+                const allSelected = chapters.every((c) => selected.includes(c.file_path));
+                return (
+                  <div className="border-t border-border bg-bg">
+                    {/* Select all + Quiz Selected bar */}
+                    {chapters.length > 1 && (
+                      <div className="flex items-center justify-between px-5 py-2 border-b border-border/50 bg-surface-2/30">
+                        <button
+                          onClick={() => selectAllChapters(subject.slug, chapters)}
+                          className="text-[10px] text-text-muted hover:text-purple transition-colors"
+                        >
+                          {allSelected ? "Deselect All" : "Select All"}
+                        </button>
+                        {selected.length >= 2 && (
+                          <button
+                            onClick={async () => {
+                              await prepareMultiChapterQuiz(subject.slug, subject.name, selected);
+                              onStartQuiz();
+                            }}
+                            className="text-[10px] px-2.5 py-1 bg-purple text-white rounded hover:opacity-90"
+                          >
+                            Quiz Selected ({selected.length})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {chapters.map((ch) => {
+                      const name = ch.file_path.split("/").pop()?.replace(".md", "") || "";
+                      const isChecked = selected.includes(ch.file_path);
+                      return (
+                        <div
+                          key={ch.file_path}
+                          className="flex items-center gap-0 border-b border-border/50 last:border-0"
+                        >
+                          <button
+                            onClick={() => toggleChapter(subject.slug, ch.file_path)}
+                            className="px-3 py-2.5 hover:bg-surface-2/50 transition-colors"
+                          >
+                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${
+                              isChecked ? "bg-purple border-purple" : "border-border"
+                            }`}>
+                              {isChecked && <span className="text-white text-[8px]">✓</span>}
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => handleChapterQuiz(ch, subject.name)}
+                            className="flex-1 flex items-center justify-between py-2.5 pr-5 hover:bg-surface-2/50 transition-colors text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <BookOpen size={14} className="text-purple shrink-0" />
+                              <span className="text-xs text-text truncate">{name}</span>
+                            </div>
+                            <span className="text-[10px] text-purple shrink-0">Quiz →</span>
+                          </button>
                         </div>
-                        <span className="text-[10px] text-purple shrink-0">Quiz →</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -274,47 +332,106 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
   );
 }
 
-// ─── History Tab ────────────────────────────────────────
+// ─── Score Trend Chart (SVG) ─────────────────────────────
+function ScoreTrendChart({ timeline }: { timeline: QuizHistoryPoint[] }) {
+  if (timeline.length === 0) return null;
+
+  const W = 600, H = 200, PAD = 40;
+  const plotW = W - PAD * 2, plotH = H - PAD * 2;
+
+  const points = timeline.map((p, i) => {
+    const x = PAD + (timeline.length === 1 ? plotW / 2 : (i / (timeline.length - 1)) * plotW);
+    const y = PAD + plotH - (p.score_pct / 100) * plotH;
+    return { x, y, ...p };
+  });
+
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const dotColor = (s: number) => s >= 80 ? "#1D9E75" : s >= 60 ? "#BA7517" : "#D85A30";
+
+  return (
+    <div className="bg-surface rounded-lg border border-border p-4 mb-4">
+      <p className="text-xs font-medium text-text mb-3">Score Trend</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 200 }}>
+        {/* Grid lines */}
+        {[0, 25, 50, 75, 100].map((pct) => {
+          const y = PAD + plotH - (pct / 100) * plotH;
+          return (
+            <g key={pct}>
+              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#333" strokeDasharray="2,4" />
+              <text x={PAD - 6} y={y + 3} fill="#888880" fontSize="9" textAnchor="end">{pct}%</text>
+            </g>
+          );
+        })}
+        {/* Line */}
+        <path d={pathD} fill="none" stroke="#7F77DD" strokeWidth="2" strokeLinejoin="round" />
+        {/* Dots */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="4" fill={dotColor(p.score_pct)} />
+            <title>{p.date}: {p.score_pct}% ({p.subject})</title>
+          </g>
+        ))}
+        {/* Date labels (first, last) */}
+        {points.length > 0 && (
+          <>
+            <text x={points[0].x} y={H - 8} fill="#888880" fontSize="9" textAnchor="middle">{points[0].date}</text>
+            {points.length > 1 && (
+              <text x={points[points.length - 1].x} y={H - 8} fill="#888880" fontSize="9" textAnchor="middle">{points[points.length - 1].date}</text>
+            )}
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+// ─── History Tab (Analytics Dashboard) ──────────────────
 function QuizHistory({ onRetake }: { onRetake: () => void }) {
+  const [timeline, setTimeline] = useState<QuizHistoryPoint[]>([]);
+  const [weakTopics, setWeakTopics] = useState<WeakTopic[]>([]);
+  const [grades, setGrades] = useState<SubjectGrade[]>([]);
   const [quizzes, setQuizzes] = useState<PastQuiz[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [showAllQuizzes, setShowAllQuizzes] = useState(false);
+  const [filterSubject, setFilterSubject] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const { retakeQuiz } = useQuizStore();
+  const { retakeQuiz, prepareQuiz } = useQuizStore();
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const subs = await listSubjects();
-      const all: PastQuiz[] = [];
+      const [tl, wt, gr, subs] = await Promise.all([
+        getQuizHistoryTimeline(filterSubject ?? undefined),
+        getWeakTopics(filterSubject ?? undefined),
+        getSubjectGrades(),
+        listSubjects(),
+      ]);
+      setTimeline(tl);
+      setWeakTopics(wt);
+      setGrades(gr);
 
+      // Load past quizzes from files
+      const all: PastQuiz[] = [];
       for (const s of subs) {
         try {
           const files = await listFiles(s.slug, "quizzes");
           for (const f of files) {
             const name = f.file_path.split("/").pop()?.replace(".md", "") || "";
             all.push({
-              path: f.file_path,
-              name,
-              subject: s.name,
-              score: "",
-              date: name.match(/\d{4}-\d{2}-\d{2}/)?.[0] || "",
-              content: null,
+              path: f.file_path, name, subject: s.name,
+              score: "", date: name.match(/\d{4}-\d{2}-\d{2}/)?.[0] || "", content: null,
             });
           }
         } catch { /* */ }
       }
-
       all.sort((a, b) => b.date.localeCompare(a.date));
       setQuizzes(all);
       setLoading(false);
     })();
-  }, []);
+  }, [filterSubject]);
 
   const handleExpand = async (quiz: PastQuiz) => {
-    if (expanded === quiz.path) {
-      setExpanded(null);
-      return;
-    }
+    if (expanded === quiz.path) { setExpanded(null); return; }
     if (!quiz.content) {
       try {
         const raw = await readFile(quiz.path);
@@ -332,72 +449,438 @@ function QuizHistory({ onRetake }: { onRetake: () => void }) {
     onRetake();
   };
 
-  if (loading) return <p className="text-text-muted text-center py-12">Loading history...</p>;
+  const handleQuizWeakTopic = async (wt: WeakTopic) => {
+    // Find the chapter for this topic and start a quiz on it
+    const subs = await listSubjects();
+    for (const s of subs) {
+      if (s.name !== wt.subject) continue;
+      const files = await listFiles(s.slug, "chapters");
+      for (const f of files) {
+        const name = f.file_path.split("/").pop()?.replace(".md", "") || "";
+        if (name.toLowerCase().includes(wt.topic.toLowerCase())) {
+          try {
+            const raw = await readFile(f.file_path);
+            const { content } = parseFrontmatter(raw);
+            prepareQuiz(wt.subject, wt.topic, content);
+            onRetake();
+            return;
+          } catch { /* */ }
+        }
+      }
+    }
+  };
 
-  if (quizzes.length === 0) {
+  if (loading) return <p className="text-text-muted text-center py-12">Loading analytics...</p>;
+
+  const hasData = timeline.length > 0 || grades.length > 0;
+
+  if (!hasData) {
     return (
       <div className="text-center py-12">
-        <p className="text-text-muted">No quizzes taken yet.</p>
-        <p className="text-text-muted text-sm mt-1">Generate a quiz from the Dashboard tab.</p>
+        <p className="text-text-muted">No quiz data yet.</p>
+        <p className="text-text-muted text-sm mt-1">Take a quiz from the Dashboard to see trends.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2 pb-8">
-      {quizzes.map((q) => (
-        <div key={q.path} className="bg-surface rounded border border-border overflow-hidden">
-          <div className="flex items-center">
+    <div className="max-w-2xl mx-auto pb-8">
+      {/* Subject filter */}
+      {grades.length > 1 && (
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-text-muted">Filter:</span>
+          <button
+            onClick={() => setFilterSubject(null)}
+            className={`px-2.5 py-1 text-xs rounded transition-colors ${
+              !filterSubject ? "bg-purple text-white" : "bg-surface border border-border text-text-muted hover:border-purple/50"
+            }`}
+          >
+            All
+          </button>
+          {grades.map((g) => (
             <button
-              onClick={() => handleExpand(q)}
-              className="flex-1 flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors text-left"
+              key={g.subject}
+              onClick={() => setFilterSubject(filterSubject === g.subject ? null : g.subject)}
+              className={`px-2.5 py-1 text-xs rounded transition-colors ${
+                filterSubject === g.subject ? "bg-purple text-white" : "bg-surface border border-border text-text-muted hover:border-purple/50"
+              }`}
             >
-              <div>
-                <p className="text-sm text-text">{q.name}</p>
-                <p className="text-[10px] text-text-muted">{q.subject} · {q.date}</p>
-              </div>
-              {q.score && (
-                <span className={`text-sm font-bold ${
-                  Number(q.score) >= 80 ? "text-teal" : Number(q.score) >= 60 ? "text-amber" : "text-coral"
-                }`}>
-                  {q.score}%
-                </span>
-              )}
+              {g.subject}
             </button>
-            <button
-              onClick={() => handleRetake(q.path)}
-              className="flex items-center gap-1.5 px-3 py-3 text-xs text-text-muted hover:text-purple transition-colors border-l border-border"
+          ))}
+        </div>
+      )}
+
+      {/* Score Trend Chart */}
+      <ScoreTrendChart timeline={timeline} />
+
+      {/* Per-Subject Breakdown */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        {grades.filter((g) => !filterSubject || g.subject === filterSubject).map((g) => {
+          const score = Math.round(g.avg_score);
+          const color = score >= 80 ? "var(--color-teal)" : score >= 60 ? "var(--color-amber)" : "var(--color-coral)";
+          return (
+            <div
+              key={g.subject}
+              onClick={() => setFilterSubject(filterSubject === g.subject ? null : g.subject)}
+              className={`bg-surface rounded-lg border p-4 cursor-pointer transition-colors ${
+                filterSubject === g.subject ? "border-purple" : "border-border hover:border-purple/50"
+              }`}
             >
-              <RotateCcw size={13} />
-              <span>Retake</span>
-            </button>
-          </div>
-
-          {expanded === q.path && q.content && (
-            <div className="border-t border-border px-4 py-3 space-y-3 text-xs">
-              {q.content.split("\n## ").filter((s) => s.startsWith("[")).map((block, i) => {
-                const lines = block.split("\n");
-                const questionLine = lines[0] || "";
-                const answerLine = lines.find((l) => l.startsWith("**Answer:**"))?.replace("**Answer:**", "").trim() || "";
-                const correctLine = lines.find((l) => l.startsWith("**Correct Answer:**"))?.replace("**Correct Answer:**", "").trim() || "";
-                const resultLine = lines.find((l) => l.startsWith("**Result:**"))?.replace("**Result:**", "").trim() || "";
-                const feedbackLine = lines.find((l) => l.startsWith("**Feedback:**"))?.replace("**Feedback:**", "").trim() || "";
-                const isCorrect = resultLine.toLowerCase().includes("correct") && !resultLine.toLowerCase().includes("incorrect");
-
-                return (
-                  <div key={i} className={`p-3 rounded border ${isCorrect ? "border-teal/30 bg-teal/5" : "border-coral/30 bg-coral/5"}`}>
-                    <p className="text-text font-medium mb-1">Q{i + 1}: {questionLine.replace(/^\[.*?\]\s*/, "")}</p>
-                    <p className="text-text-muted">Your answer: {answerLine}</p>
-                    {correctLine && <p className="text-text-muted">Correct: {correctLine}</p>}
-                    <p className={`font-medium mt-1 ${isCorrect ? "text-teal" : "text-coral"}`}>{resultLine}</p>
-                    {feedbackLine && <p className="text-text-muted mt-1 italic">{feedbackLine}</p>}
+              <div className="flex items-center gap-3">
+                <div className="relative w-12 h-12 shrink-0">
+                  <svg viewBox="0 0 36 36" className="w-12 h-12 -rotate-90">
+                    <circle cx="18" cy="18" r="15" fill="none" stroke="var(--color-surface-2)" strokeWidth="3" />
+                    <circle cx="18" cy="18" r="15" fill="none" stroke={color} strokeWidth="3"
+                      strokeDasharray={`${score * 0.942} 94.2`} strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xs font-bold" style={{ color }}>{score}%</span>
                   </div>
-                );
-              })}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-text">{g.subject}</p>
+                  <p className="text-[10px] text-text-muted">
+                    {g.total_quizzes} quiz{g.total_quizzes !== 1 ? "zes" : ""}
+                    {g.last_quiz_date && ` · Last: ${g.last_quiz_date.split("T")[0]}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Weak Topics */}
+      {weakTopics.length > 0 && (
+        <div className="bg-surface rounded-lg border border-border p-4 mb-4">
+          <p className="text-xs font-medium text-text mb-3">Weak Topics (lowest accuracy)</p>
+          <div className="space-y-2">
+            {weakTopics.map((wt, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs text-text truncate">{wt.topic}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-text-muted rounded shrink-0">{wt.subject}</span>
+                  </div>
+                  <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${wt.accuracy_pct}%`,
+                        backgroundColor: wt.accuracy_pct >= 80 ? "#1D9E75" : wt.accuracy_pct >= 60 ? "#BA7517" : "#D85A30",
+                      }}
+                    />
+                  </div>
+                </div>
+                <span className="text-xs text-text-muted shrink-0 w-12 text-right">{Math.round(wt.accuracy_pct)}%</span>
+                <button
+                  onClick={() => handleQuizWeakTopic(wt)}
+                  className="text-[10px] text-purple hover:underline shrink-0"
+                >
+                  Quiz
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* All Quizzes (collapsible) */}
+      {quizzes.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowAllQuizzes(!showAllQuizzes)}
+            className="flex items-center gap-2 text-xs text-text-muted hover:text-text mb-2"
+          >
+            {showAllQuizzes ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            All Quizzes ({quizzes.length})
+          </button>
+          {showAllQuizzes && (
+            <div className="space-y-2">
+              {quizzes.map((q) => (
+                <div key={q.path} className="bg-surface rounded border border-border overflow-hidden">
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => handleExpand(q)}
+                      className="flex-1 flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors text-left"
+                    >
+                      <div>
+                        <p className="text-sm text-text">{q.name}</p>
+                        <p className="text-[10px] text-text-muted">{q.subject} · {q.date}</p>
+                      </div>
+                      {q.score && (
+                        <span className={`text-sm font-bold ${
+                          Number(q.score) >= 80 ? "text-teal" : Number(q.score) >= 60 ? "text-amber" : "text-coral"
+                        }`}>
+                          {q.score}%
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleRetake(q.path)}
+                      className="flex items-center gap-1.5 px-3 py-3 text-xs text-text-muted hover:text-purple transition-colors border-l border-border"
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+                  </div>
+
+                  {expanded === q.path && q.content && (
+                    <div className="border-t border-border px-4 py-3 space-y-3 text-xs">
+                      {q.content.split("\n## ").filter((s) => s.startsWith("[")).map((block, i) => {
+                        const lines = block.split("\n");
+                        const questionLine = lines[0] || "";
+                        const answerLine = lines.find((l) => l.startsWith("**Answer:**"))?.replace("**Answer:**", "").trim() || "";
+                        const correctLine = lines.find((l) => l.startsWith("**Correct Answer:**"))?.replace("**Correct Answer:**", "").trim() || "";
+                        const resultLine = lines.find((l) => l.startsWith("**Result:**"))?.replace("**Result:**", "").trim() || "";
+                        const feedbackLine = lines.find((l) => l.startsWith("**Feedback:**"))?.replace("**Feedback:**", "").trim() || "";
+                        const isCorrect = resultLine.toLowerCase().includes("correct") && !resultLine.toLowerCase().includes("incorrect");
+                        return (
+                          <div key={i} className={`p-3 rounded border ${isCorrect ? "border-teal/30 bg-teal/5" : "border-coral/30 bg-coral/5"}`}>
+                            <p className="text-text font-medium mb-1">Q{i + 1}: {questionLine.replace(/^\[.*?\]\s*/, "")}</p>
+                            <p className="text-text-muted">Your answer: {answerLine}</p>
+                            {correctLine && <p className="text-text-muted">Correct: {correctLine}</p>}
+                            <p className={`font-medium mt-1 ${isCorrect ? "text-teal" : "text-coral"}`}>{resultLine}</p>
+                            {feedbackLine && <p className="text-text-muted mt-1 italic">{feedbackLine}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
-      ))}
+      )}
+    </div>
+  );
+}
+
+// ─── SQL Quiz Editor ────────────────────────────────────
+function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSandbox, sandboxResult, sandboxError, activeSandboxId, loading }: {
+  question: QuizQuestion;
+  answer: string;
+  setAnswer: (a: string) => void;
+  onSubmit: () => void;
+  onRun: () => void;
+  onSetupSandbox: () => void;
+  sandboxResult: import("../lib/types").QueryResult | null;
+  sandboxError: string | null;
+  activeSandboxId: string | null;
+  loading: boolean;
+}) {
+  const [showSchema, setShowSchema] = useState(false);
+
+  // Auto-setup sandbox when this component mounts
+  useEffect(() => {
+    if (question.setupSql && !activeSandboxId) {
+      onSetupSandbox();
+    }
+  }, [question.setupSql, activeSandboxId, onSetupSandbox]);
+
+  return (
+    <div>
+      {/* Schema toggle */}
+      {question.setupSql && (
+        <div className="mb-3">
+          <button
+            onClick={() => setShowSchema(!showSchema)}
+            className="text-xs text-purple hover:underline flex items-center gap-1"
+          >
+            {showSchema ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {showSchema ? "Hide Schema" : "Show Table Schema"}
+          </button>
+          {showSchema && (
+            <pre className="mt-2 p-3 bg-bg border border-border rounded text-xs text-text-muted font-mono overflow-x-auto max-h-48 overflow-y-auto">
+              {question.setupSql}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* SQL Editor */}
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="Write your SQL query here..."
+        rows={6}
+        className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
+        spellCheck={false}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && e.metaKey) onRun();
+          if (e.key === "Enter" && e.shiftKey && e.metaKey) onSubmit();
+        }}
+      />
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-between mt-3 mb-3">
+        <div className="flex gap-2">
+          <button
+            onClick={onRun}
+            disabled={!answer.trim() || !activeSandboxId}
+            className="flex items-center gap-1.5 px-4 py-2 bg-teal text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Run Query
+          </button>
+          <span className="text-[10px] text-text-muted self-center">Cmd+Enter to run</span>
+        </div>
+        <button
+          onClick={onSubmit}
+          disabled={!answer.trim() || loading}
+          className="px-6 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+        >
+          {loading ? "Evaluating..." : "Submit Answer"}
+        </button>
+      </div>
+
+      {/* Sandbox error */}
+      {sandboxError && (
+        <div className="p-3 bg-coral/10 border border-coral/30 rounded mb-3">
+          <p className="text-xs text-coral font-mono">{sandboxError}</p>
+        </div>
+      )}
+
+      {/* Results table */}
+      {sandboxResult && (
+        <div className="bg-surface border border-border rounded overflow-hidden mb-3">
+          <div className="px-3 py-2 border-b border-border bg-surface-2">
+            <p className="text-[10px] text-text-muted">{sandboxResult.row_count} row{sandboxResult.row_count !== 1 ? "s" : ""} returned</p>
+          </div>
+          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  {sandboxResult.columns.map((col, i) => (
+                    <th key={i} className="text-left px-3 py-2 text-text-muted font-medium bg-surface-2">{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sandboxResult.rows.map((row, ri) => (
+                  <tr key={ri} className="border-b border-border/50 last:border-0">
+                    {row.map((val, ci) => (
+                      <td key={ci} className="px-3 py-1.5 text-text font-mono">{val}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!activeSandboxId && question.setupSql && (
+        <p className="text-xs text-text-muted animate-pulse">Setting up database...</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Python Quiz Editor ─────────────────────────────────
+function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, pythonResult, pythonRunning, loading }: {
+  question: QuizQuestion;
+  answer: string;
+  setAnswer: (a: string) => void;
+  onSubmit: () => void;
+  onRun: () => void;
+  pythonResult: import("../lib/pyodide").PythonResult | null;
+  pythonRunning: boolean;
+  loading: boolean;
+}) {
+  const [showSetup, setShowSetup] = useState(false);
+
+  return (
+    <div>
+      {/* Setup code toggle */}
+      {question.setupCode && (
+        <div className="mb-3">
+          <button
+            onClick={() => setShowSetup(!showSetup)}
+            className="text-xs text-purple hover:underline flex items-center gap-1"
+          >
+            {showSetup ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {showSetup ? "Hide Setup Code" : "Show Setup Code"}
+          </button>
+          {showSetup && (
+            <pre className="mt-2 p-3 bg-bg border border-border rounded text-xs text-text-muted font-mono overflow-x-auto max-h-48 overflow-y-auto">
+              {question.setupCode}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Python Editor */}
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder="Write your Python code here..."
+        rows={8}
+        className="w-full p-3 bg-bg border border-border rounded text-text text-sm resize-none focus:outline-none focus:border-purple font-mono"
+        spellCheck={false}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && e.metaKey) onRun();
+        }}
+      />
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-between mt-3 mb-3">
+        <div className="flex gap-2">
+          <button
+            onClick={onRun}
+            disabled={!answer.trim() || pythonRunning}
+            className="flex items-center gap-1.5 px-4 py-2 bg-teal text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+          >
+            {pythonRunning ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Code
+              </>
+            )}
+          </button>
+          <span className="text-[10px] text-text-muted self-center">Cmd+Enter to run</span>
+        </div>
+        <button
+          onClick={onSubmit}
+          disabled={!answer.trim() || loading}
+          className="px-6 py-2 bg-purple text-white rounded text-xs font-medium hover:opacity-90 disabled:opacity-30"
+        >
+          {loading ? "Evaluating..." : "Submit Answer"}
+        </button>
+      </div>
+
+      {/* Output panel */}
+      {pythonRunning && !pythonResult && (
+        <div className="p-3 bg-bg border border-border rounded mb-3 text-center">
+          <div className="w-4 h-4 border-2 border-purple/30 border-t-purple rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-xs text-text-muted">Loading Python runtime...</p>
+        </div>
+      )}
+
+      {pythonResult && (
+        <div className="bg-[#0d0d0d] border border-border rounded overflow-hidden mb-3">
+          <div className="px-3 py-1.5 border-b border-border/50 bg-[#151515]">
+            <span className="text-[10px] text-text-muted font-mono">Output</span>
+          </div>
+          <div className="p-3 font-mono text-xs max-h-48 overflow-y-auto">
+            {pythonResult.stdout && (
+              <pre className="text-teal whitespace-pre-wrap">{pythonResult.stdout}</pre>
+            )}
+            {pythonResult.error && (
+              <pre className="text-coral whitespace-pre-wrap">{pythonResult.stderr || pythonResult.error}</pre>
+            )}
+            {!pythonResult.stdout && !pythonResult.error && (
+              <span className="text-text-muted italic">No output</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -407,7 +890,10 @@ function ActiveQuiz() {
   const {
     subject, topic, questions, currentIndex, loading, generating,
     showFeedback, sessionComplete, error, summary, generatedCards,
+    activeSandboxId, sandboxResult, sandboxError,
+    pythonResult, pythonRunning,
     submitAnswer, flagQuestion, nextQuestion, resetQuiz,
+    runSandboxQuery, setupSandbox, runPythonCode,
   } = useQuizStore();
 
   const [answer, setAnswer] = useState("");
@@ -631,6 +1117,30 @@ function ActiveQuiz() {
               <button onClick={() => handleSubmit("false")} disabled={loading}
                 className="flex-1 py-3 bg-coral/10 border border-coral/30 rounded text-coral font-medium hover:bg-coral/20 disabled:opacity-50">False</button>
             </div>
+          ) : question.type === "code" && question.language?.toLowerCase() === "python" ? (
+            <PythonQuizEditor
+              question={question}
+              answer={answer}
+              setAnswer={setAnswer}
+              onSubmit={() => handleSubmit()}
+              onRun={() => { if (answer.trim()) runPythonCode(answer.trim()); }}
+              pythonResult={pythonResult}
+              pythonRunning={pythonRunning}
+              loading={loading}
+            />
+          ) : question.type === "code" && question.language?.toLowerCase() === "sql" ? (
+            <SqlQuizEditor
+              question={question}
+              answer={answer}
+              setAnswer={setAnswer}
+              onSubmit={() => handleSubmit()}
+              onRun={() => { if (answer.trim()) runSandboxQuery(answer.trim()); }}
+              onSetupSandbox={() => { if (question.setupSql) setupSandbox(question.setupSql); }}
+              sandboxResult={sandboxResult}
+              sandboxError={sandboxError}
+              activeSandboxId={activeSandboxId}
+              loading={loading}
+            />
           ) : question.type === "code" ? (
             <div>
               <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}

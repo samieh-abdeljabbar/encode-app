@@ -9,6 +9,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  TrendingUp,
 } from "lucide-react";
 
 interface RibbonItem {
@@ -18,15 +19,16 @@ interface RibbonItem {
 }
 
 const TOP_ITEMS: RibbonItem[] = [
-  { icon: <LayoutDashboard size={18} />, path: "/", label: "Dashboard" },
+  { icon: <LayoutDashboard size={18} />, path: "/", label: "Home" },
   { icon: <FolderOpen size={18} />, path: "/vault", label: "Vault" },
-  { icon: <Layers size={18} />, path: "/flashcards", label: "Flashcards" },
+  { icon: <Layers size={18} />, path: "/flashcards", label: "Cards" },
   { icon: <Brain size={18} />, path: "/quiz", label: "Quiz" },
-  { icon: <GraduationCap size={18} />, path: "/teach-back", label: "Teach Back" },
+  { icon: <GraduationCap size={18} />, path: "/teach-back", label: "Teach" },
+  { icon: <TrendingUp size={18} />, path: "/progress", label: "Progress" },
 ];
 
 const BOTTOM_ITEMS: RibbonItem[] = [
-  { icon: <Settings size={18} />, path: "/settings", label: "Settings" },
+  { icon: <Settings size={18} />, path: "/settings", label: "Config" },
 ];
 
 interface RibbonProps {
@@ -52,7 +54,7 @@ export default function Ribbon({ sidebarOpen, onToggleSidebar }: RibbonProps) {
         }`}
       >
         {item.icon}
-        <span className="text-[8px] leading-none">{item.label.length > 6 ? item.label.slice(0, 6) : item.label}</span>
+        <span className="text-[9px] leading-none">{item.label}</span>
       </button>
     );
   };
