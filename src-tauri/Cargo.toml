@@ -1,6 +1,6 @@
 [package]
 name = "encode"
-version = "0.9.0"
+version = "0.9.1"
 description = "Encode — Study Environment + Structured Knowledge Vault"
 authors = ["Samieh"]
 license = ""
