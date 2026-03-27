@@ -89,7 +89,7 @@ export default function TeachBackPage() {
           >
             <p
               className="text-base text-text leading-relaxed"
-              style={{ fontFamily: "Georgia, serif" }}
+              style={{ fontFamily: "var(--font-serif)" }}
             >
               Explain <strong>{topic}</strong> to a new employee at your store
               who has never heard of it. Use simple words and real examples. If
@@ -106,7 +106,7 @@ export default function TeachBackPage() {
                   placeholder="Start explaining in your own words..."
                   rows={12}
                   className="input-reset w-full resize-none bg-transparent px-4 py-4 text-base leading-relaxed text-text"
-                  style={{ fontFamily: "Georgia, serif" }}
+                  style={{ fontFamily: "var(--font-serif)" }}
                   disabled={loading}
                 />
               </InputShell>
@@ -127,7 +127,7 @@ export default function TeachBackPage() {
               <Panel title="Your Explanation">
                 <p
                   className="text-sm text-text leading-relaxed whitespace-pre-wrap"
-                  style={{ fontFamily: "Georgia, serif" }}
+                  style={{ fontFamily: "var(--font-serif)" }}
                 >
                   {text}
                 </p>

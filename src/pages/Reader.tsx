@@ -358,7 +358,7 @@ export default function ReaderPage() {
                 placeholder="I know that..."
                 rows={4}
                 className="input-reset w-full resize-none bg-transparent px-4 py-4 text-sm text-text placeholder:text-text-muted"
-                style={{ fontFamily: "Georgia, serif" }}
+                style={{ fontFamily: "var(--font-serif)" }}
               />
             </InputShell>
             <div className="mx-auto mt-5 flex max-w-xl gap-3">
@@ -589,7 +589,7 @@ export default function ReaderPage() {
                           placeholder="Connect the chapter in your own words..."
                           rows={7}
                           className="input-reset w-full resize-none bg-transparent px-4 py-4 text-sm leading-6 text-text placeholder:text-text-muted"
-                          style={{ fontFamily: "Georgia, serif" }}
+                          style={{ fontFamily: "var(--font-serif)" }}
                         />
                       </InputShell>
                     </Panel>

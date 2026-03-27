@@ -323,7 +323,7 @@ export default function VaultPage() {
                       const after = editContent.slice(ta.selectionEnd);
                       handleEditChange(before + md + after);
                     }}
-                    className="w-full h-full bg-panel px-10 py-10 text-text text-sm font-mono leading-relaxed resize-none focus:outline-none"
+                    className="app-font-mono w-full h-full bg-panel px-10 py-10 text-text text-sm leading-relaxed resize-none focus:outline-none"
                     spellCheck={false}
                   />
                   <SlashMenu

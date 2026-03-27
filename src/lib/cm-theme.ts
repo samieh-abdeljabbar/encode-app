@@ -7,7 +7,7 @@ export const encodeTheme = EditorView.theme(
   {
     "&": {
       backgroundColor: "transparent",
-      fontFamily: "var(--editor-font-family, Georgia, Merriweather, serif)",
+      fontFamily: "var(--font-serif, Georgia, Merriweather, serif)",
       fontSize: "var(--editor-font-size, 16px)",
       lineHeight: "1.75",
     },
@@ -74,7 +74,7 @@ export const encodeHighlighting = syntaxHighlighting(
       // Inline code
       {
         tag: tags.monospace,
-        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: "13px",
         color: "var(--color-coral)",
       },

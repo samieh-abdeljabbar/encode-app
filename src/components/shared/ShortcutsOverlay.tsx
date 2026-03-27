@@ -29,7 +29,7 @@ export default function ShortcutsOverlay({ open, onClose }: ShortcutsOverlayProp
           {SHORTCUTS.map((s) => (
             <div key={s.keys} className="flex items-center justify-between">
               <span className="text-xs text-text-muted">{s.action}</span>
-              <kbd className="text-[11px] font-mono bg-surface-2 border border-border px-2 py-0.5 rounded text-text">
+              <kbd className="app-font-mono text-[11px] bg-surface-2 border border-border px-2 py-0.5 rounded text-text">
                 {s.keys}
               </kbd>
             </div>

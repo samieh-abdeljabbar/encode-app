@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
 import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection } from "../lib/tauri";
+import { MONO_FONT_OPTIONS, READING_FONT_OPTIONS, UI_FONT_OPTIONS, getStoredFontId, persistFontPreference, type FontOption } from "../lib/fonts";
 import type { AppConfig } from "../lib/types";
 import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
 import { MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
@@ -17,6 +18,43 @@ const POPULAR_MODELS = [
   { id: "gemma2:9b", name: "Gemma 2 9B", size: "5.4 GB", desc: "Google's open model, strong at tasks" },
   { id: "qwen2.5:7b", name: "Qwen 2.5 7B", size: "4.4 GB", desc: "Excellent multilingual, good at math" },
 ];
+
+function FontSelector({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: FontOption[];
+  value: string;
+  onChange: (fontId: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-text-muted mb-2">{label}</label>
+      <div className="flex gap-2 flex-wrap">
+        {options.map((font) => {
+          const isActive = value === font.id;
+          return (
+            <button
+              key={font.id}
+              onClick={() => onChange(font.id)}
+              className={`px-3 py-2 text-xs rounded border transition-colors ${
+                isActive
+                  ? "border-accent/40 bg-accent-soft text-text"
+                  : "border-border bg-surface text-text-muted hover:border-border-strong"
+              }`}
+              style={{ fontFamily: font.css }}
+            >
+              {font.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function TestConnectionButton({
   provider,
@@ -88,7 +126,9 @@ export default function Settings() {
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [activeTheme, setActiveTheme] = useState(() => getCurrentTheme());
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("encode-font-size") || "16");
-  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem("encode-font-family") || "georgia");
+  const [uiFont, setUiFont] = useState(() => getStoredFontId("ui"));
+  const [readingFont, setReadingFont] = useState(() => getStoredFontId("reading"));
+  const [monoFont, setMonoFont] = useState(() => getStoredFontId("mono"));
   const [contentWidth, setContentWidth] = useState(() => localStorage.getItem("encode-content-width") || "medium");
   // User profile
   const [userRole, setUserRole] = useState("");
@@ -251,7 +291,7 @@ export default function Settings() {
       {/* Theme */}
       <Panel title="Theme">
         <h3 className="text-sm font-medium text-text mb-3">Theme</h3>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
           {themes.map((t) => {
             const isActive = activeTheme === t.id;
             return (
@@ -271,11 +311,10 @@ export default function Settings() {
                   className="w-8 h-8 rounded-full border-2 shrink-0"
                   style={{
                     backgroundColor: t.preview,
-                    borderColor: isActive ? "var(--color-purple)" : t.colors.border,
+                    borderColor: isActive ? "var(--color-accent)" : t.colors.border,
                   }}
                 />
                 <div>
-                  <p className={`text-sm font-medium ${isActive ? "text-purple" : "text-text"}`}>{t.name}</p>
                   <p className={`text-sm font-medium ${isActive ? "text-accent" : "text-text"}`}>{t.name}</p>
                   <div className="flex gap-1 mt-1">
                     {[t.colors.purple, t.colors.teal, t.colors.coral, t.colors.amber].map((c, i) => (
@@ -407,7 +446,7 @@ export default function Settings() {
                       <div className="space-y-1">
                         <p className="text-text-muted">Option A: Download the .dmg from <button onClick={() => window.open("https://ollama.com", "_blank")} className="text-purple hover:underline">ollama.com</button></p>
                         <p className="text-text-muted">Option B: Install via Homebrew:</p>
-                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">brew install ollama</code></div>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="app-font-mono text-coral text-[11px]">brew install ollama</code></div>
                         <p className="text-text-muted mt-1">Apple Silicon (M1/M2/M3/M4) is GPU-accelerated automatically.</p>
                       </div>
                     )}
@@ -421,9 +460,9 @@ export default function Settings() {
                     {!isMac && !isWin && (
                       <div className="space-y-1">
                         <p className="text-text-muted">Run this in your terminal:</p>
-                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">curl -fsSL https://ollama.com/install.sh | sh</code></div>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="app-font-mono text-coral text-[11px]">curl -fsSL https://ollama.com/install.sh | sh</code></div>
                         <p className="text-text-muted mt-1">Then start the service:</p>
-                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="text-coral font-mono text-[11px]">systemctl start ollama</code></div>
+                        <div className="bg-surface-2 rounded px-3 py-1.5"><code className="app-font-mono text-coral text-[11px]">systemctl start ollama</code></div>
                         <p className="text-text-muted mt-1">NVIDIA GPUs: Install CUDA drivers for GPU acceleration.</p>
                       </div>
                     )}
@@ -435,7 +474,7 @@ export default function Settings() {
                     <div className="space-y-1.5">
                       {POPULAR_MODELS.map((m) => (
                         <div key={m.id} className="flex items-center justify-between bg-surface-2 rounded px-3 py-1.5">
-                          <code className="text-coral font-mono text-[11px]">ollama pull {m.id}</code>
+                          <code className="app-font-mono text-coral text-[11px]">ollama pull {m.id}</code>
                           <span className="text-text-muted text-[10px]">{m.size}</span>
                         </div>
                       ))}
@@ -630,97 +669,95 @@ export default function Settings() {
       {/* Appearance */}
       <Panel title="Appearance">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted">Appearance</h3>
-        <div>
-          <label className="block text-xs text-text-muted mb-2">
-            Font Size <span className="text-text ml-1">{fontSize}px</span>
-          </label>
-          <div className="flex gap-2 items-center">
-            {(["small", "medium", "large"] as const).map((size) => {
-              const px = size === "small" ? "14" : size === "medium" ? "16" : "18";
-              const isActive = fontSize === px;
-              return (
-                <button
-                  key={size}
-                  onClick={() => {
-                    document.documentElement.style.setProperty("--editor-font-size", `${px}px`);
-                    localStorage.setItem("encode-font-size", px);
-                    setFontSize(px);
-                  }}
-                  className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
-                    isActive
-                      ? "border-purple bg-purple/10 text-text"
-                      : "border-border bg-surface text-text-muted hover:border-purple/50"
-                  }`}
-                >
-                  {size} ({px}px)
-                </button>
-              );
-            })}
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs text-text-muted mb-2">
+              Font Size <span className="text-text ml-1">{fontSize}px</span>
+            </label>
+            <div className="flex gap-2 items-center">
+              {(["small", "medium", "large"] as const).map((size) => {
+                const px = size === "small" ? "14" : size === "medium" ? "16" : "18";
+                const isActive = fontSize === px;
+                return (
+                  <button
+                    key={size}
+                    onClick={() => {
+                      document.documentElement.style.setProperty("--editor-font-size", `${px}px`);
+                      localStorage.setItem("encode-font-size", px);
+                      setFontSize(px);
+                    }}
+                    className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
+                      isActive
+                        ? "border-accent/40 bg-accent-soft text-text"
+                        : "border-border bg-surface text-text-muted hover:border-border-strong"
+                    }`}
+                  >
+                    {size} ({px}px)
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-text-muted mt-1">Use Cmd+= / Cmd+- for fine control (10-24px)</p>
           </div>
-          <p className="text-[10px] text-text-muted mt-1">Use Cmd+= / Cmd+- for fine control (10-24px)</p>
-        </div>
 
-        {/* Font Family */}
-        <div>
-          <label className="block text-xs text-text-muted mb-2">Font Family</label>
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { id: "inter", label: "Inter", css: "'Inter', system-ui, sans-serif" },
-              { id: "georgia", label: "Georgia", css: "Georgia, Merriweather, serif" },
-              { id: "system", label: "System", css: "system-ui, -apple-system, sans-serif" },
-              { id: "mono", label: "Monospace", css: "'JetBrains Mono', monospace" },
-            ].map((font) => {
-              const isActive = fontFamily === font.id;
-              return (
-                <button
-                  key={font.id}
-                  onClick={() => {
-                    document.documentElement.style.setProperty("--editor-font-family", font.css);
-                    localStorage.setItem("encode-font-family", font.id);
-                    setFontFamily(font.id);
-                  }}
-                  className={`px-3 py-2 text-xs rounded border transition-colors ${
-                    isActive
-                      ? "border-purple bg-purple/10 text-text"
-                      : "border-border bg-surface text-text-muted hover:border-purple/50"
-                  }`}
-                  style={{ fontFamily: font.css }}
-                >
-                  {font.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+          <FontSelector
+            label="UI Font"
+            options={UI_FONT_OPTIONS}
+            value={uiFont}
+            onChange={(fontId) => {
+              persistFontPreference("ui", fontId);
+              setUiFont(fontId);
+            }}
+          />
 
-        {/* Content Width */}
-        <div>
-          <label className="block text-xs text-text-muted mb-2">Content Width</label>
-          <div className="flex gap-2">
-            {[
-              { id: "narrow", label: "Narrow", px: "640px" },
-              { id: "medium", label: "Medium", px: "800px" },
-              { id: "wide", label: "Wide", px: "100%" },
-            ].map((w) => {
-              const isActive = contentWidth === w.id;
-              return (
-                <button
-                  key={w.id}
-                  onClick={() => {
-                    document.documentElement.style.setProperty("--editor-max-width", w.px);
-                    localStorage.setItem("encode-content-width", w.id);
-                    setContentWidth(w.id);
-                  }}
-                  className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
-                    isActive
-                      ? "border-purple bg-purple/10 text-text"
-                      : "border-border bg-surface text-text-muted hover:border-purple/50"
-                  }`}
-                >
-                  {w.label}
-                </button>
-              );
-            })}
+          <FontSelector
+            label="Reading Font"
+            options={READING_FONT_OPTIONS}
+            value={readingFont}
+            onChange={(fontId) => {
+              persistFontPreference("reading", fontId);
+              setReadingFont(fontId);
+            }}
+          />
+
+          <FontSelector
+            label="Mono Font"
+            options={MONO_FONT_OPTIONS}
+            value={monoFont}
+            onChange={(fontId) => {
+              persistFontPreference("mono", fontId);
+              setMonoFont(fontId);
+            }}
+          />
+
+          <div>
+            <label className="block text-xs text-text-muted mb-2">Content Width</label>
+            <div className="flex gap-2">
+              {[
+                { id: "narrow", label: "Narrow", px: "640px" },
+                { id: "medium", label: "Medium", px: "800px" },
+                { id: "wide", label: "Wide", px: "100%" },
+              ].map((w) => {
+                const isActive = contentWidth === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    onClick={() => {
+                      document.documentElement.style.setProperty("--editor-max-width", w.px);
+                      localStorage.setItem("encode-content-width", w.id);
+                      setContentWidth(w.id);
+                    }}
+                    className={`px-4 py-2 text-xs rounded border capitalize transition-colors ${
+                      isActive
+                        ? "border-accent/40 bg-accent-soft text-text"
+                        : "border-border bg-surface text-text-muted hover:border-border-strong"
+                    }`}
+                  >
+                    {w.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </Panel>
@@ -738,7 +775,7 @@ export default function Settings() {
       <Panel title="Vault">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted mb-3">Vault</h3>
         <div className="flex items-center gap-2">
-          <p className="flex-1 rounded-xl border border-border-subtle bg-panel-alt px-3 py-2 font-mono text-xs text-text-muted">
+          <p className="app-font-mono flex-1 rounded-xl border border-border-subtle bg-panel-alt px-3 py-2 text-xs text-text-muted">
             {vaultPath}
           </p>
           <SecondaryButton

@@ -178,7 +178,7 @@ export default function AiActivityButton() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text">{featureLabel(entry.feature)}</p>
                         <p className="truncate text-[11px] text-text-muted">
-                          {providerLabel(entry.provider)} · <span className="font-mono">{entry.model_or_command}</span>
+                          {providerLabel(entry.provider)} · <span className="app-font-mono">{entry.model_or_command}</span>
                         </p>
                       </div>
                       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${statusClasses(entry.status)}`}>

@@ -895,18 +895,18 @@ export default function FlashcardsPage() {
               {/* Question display — varies by card type */}
               <div className="mb-8">
                 {card.cardType === "cloze" ? (
-                  <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                  <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
                     {card.question.replace(/\{\{.+?\}\}/g, "___")}
                   </p>
                 ) : card.cardType === "reversed" ? (
                   <>
                     <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
-                    <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                    <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
                       {card.question}
                     </p>
                   </>
                 ) : (
-                  <p className="text-lg leading-relaxed" style={{ fontFamily: "Georgia, serif" }}>
+                  <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
                     {card.question}
                   </p>
                 )}
@@ -941,7 +941,7 @@ export default function FlashcardsPage() {
               ) : (
                 <Panel className="bg-panel" bodyClassName="space-y-6">
                   {/* Answer */}
-                  <div className="rounded-2xl border border-border-subtle bg-panel-alt p-5" style={{ fontFamily: "Georgia, serif" }}>
+                  <div className="rounded-2xl border border-border-subtle bg-panel-alt p-5" style={{ fontFamily: "var(--font-serif)" }}>
                     <MarkdownRenderer content={card.answer} />
                   </div>
 

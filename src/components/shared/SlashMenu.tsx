@@ -179,7 +179,7 @@ export default function SlashMenu({ textarea, onChange }: SlashMenuProps) {
               : "text-text-muted hover:bg-surface-2/50"
           }`}
         >
-          <span className="text-purple font-mono text-xs">/{item.command}</span>
+          <span className="app-font-mono text-purple text-xs">/{item.command}</span>
           <span className="text-xs">{item.label}</span>
         </button>
       ))}

@@ -551,7 +551,7 @@ export const livePreviewStyles = EditorView.baseTheme({
   },
   ".cm-code-mark": {
     color: "var(--color-text-muted)",
-    fontFamily: "'JetBrains Mono', monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: "0.8em",
   },
   ".cm-codeblock-line": {
@@ -603,7 +603,7 @@ export const livePreviewStyles = EditorView.baseTheme({
     borderCollapse: "collapse",
     width: "auto",
     minWidth: "40%",
-    fontFamily: "Inter, system-ui, sans-serif",
+    fontFamily: "var(--font-sans)",
     fontSize: "14px",
   },
   ".cm-table-widget th": {
@@ -656,7 +656,7 @@ export const livePreviewStyles = EditorView.baseTheme({
   },
   ".cm-task-marker": {
     color: "var(--color-text-muted)",
-    fontFamily: "monospace",
+    fontFamily: "var(--font-mono)",
   },
   // Flashcards
   ".cm-fc-card": {
@@ -685,7 +685,7 @@ export const livePreviewStyles = EditorView.baseTheme({
     borderRadius: "4px",
     fontSize: "11px",
     fontWeight: "700",
-    fontFamily: "monospace",
+    fontFamily: "var(--font-mono)",
     color: "white",
     marginRight: "8px",
     verticalAlign: "middle",

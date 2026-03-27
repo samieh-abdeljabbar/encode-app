@@ -259,6 +259,7 @@ function preprocessHighlights(md: string): string {
 /** Comprehensive prose styles — uses CSS variables from theme system */
 const PROSE_STYLES = `
   .prose {
+    font-family: var(--font-serif);
     color: var(--color-text);
     font-size: var(--editor-font-size, 16px);
     line-height: 1.75;
@@ -335,7 +336,7 @@ const PROSE_STYLES = `
     margin: 0;
   }
   .prose code {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     background: var(--color-panel-alt);
     color: var(--color-coral);

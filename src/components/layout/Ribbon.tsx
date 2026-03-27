@@ -104,7 +104,7 @@ export default function Ribbon({ sidebarOpen, sidebarVisible, onToggleSidebar }:
         {showTimerIndicator && (
           <div className="flex w-full flex-col items-center gap-1 rounded-xl border border-border-subtle bg-panel-alt px-1.5 py-2 text-[9px] text-text shadow-[var(--shadow-panel)]">
             <span className={`h-1.5 w-1.5 rounded-full ${timerTone}`} />
-            <span className="font-mono tabular-nums">{formatCompactTimer(timerRemaining)}</span>
+            <span className="app-font-mono tabular-nums">{formatCompactTimer(timerRemaining)}</span>
           </div>
         )}
         <AiActivityButton />

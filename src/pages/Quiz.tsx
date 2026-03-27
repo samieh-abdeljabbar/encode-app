@@ -784,7 +784,7 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
             {showSchema ? "Hide Schema" : "Show Table Schema"}
           </button>
           {showSchema && (
-            <pre className="mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 font-mono text-xs text-text-muted">
+            <pre className="app-font-mono mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 text-xs text-text-muted">
               {question.setupSql}
             </pre>
           )}
@@ -798,7 +798,7 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
           onChange={(e) => setAnswer(e.target.value)}
           placeholder="Write your SQL query here..."
           rows={6}
-          className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+          className="input-reset app-font-mono w-full resize-none bg-transparent px-4 py-3 text-sm text-text"
           spellCheck={false}
           onKeyDown={(e) => {
             if (e.key === "Enter" && e.metaKey) onRun();
@@ -832,7 +832,7 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
       {/* Sandbox error */}
       {sandboxError && (
         <div className="mb-3 rounded-xl border border-coral/30 bg-coral/10 p-3">
-          <p className="text-xs text-coral font-mono">{sandboxError}</p>
+          <p className="app-font-mono text-xs text-coral">{sandboxError}</p>
         </div>
       )}
 
@@ -855,7 +855,7 @@ function SqlQuizEditor({ question, answer, setAnswer, onSubmit, onRun, onSetupSa
                 {sandboxResult.rows.map((row, ri) => (
                   <tr key={ri} className="border-b border-border-subtle last:border-0">
                     {row.map((val, ci) => (
-                      <td key={ci} className="px-3 py-1.5 text-text font-mono">{val}</td>
+                      <td key={ci} className="app-font-mono px-3 py-1.5 text-text">{val}</td>
                     ))}
                   </tr>
                 ))}
@@ -898,7 +898,7 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
             {showSetup ? "Hide Setup Code" : "Show Setup Code"}
           </button>
           {showSetup && (
-            <pre className="mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 font-mono text-xs text-text-muted">
+            <pre className="app-font-mono mt-2 max-h-48 overflow-x-auto overflow-y-auto rounded-xl border border-border-subtle bg-panel-alt p-3 text-xs text-text-muted">
               {question.setupCode}
             </pre>
           )}
@@ -912,7 +912,7 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
           onChange={(e) => setAnswer(e.target.value)}
           placeholder="Write your Python code here..."
           rows={8}
-          className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+          className="input-reset app-font-mono w-full resize-none bg-transparent px-4 py-3 text-sm text-text"
           spellCheck={false}
           onKeyDown={(e) => {
             if (e.key === "Enter" && e.metaKey) onRun();
@@ -962,9 +962,9 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
       {pythonResult && (
         <div className="mb-3 overflow-hidden rounded-xl border border-border-subtle bg-panel">
           <div className="border-b border-border-subtle bg-panel-alt px-3 py-1.5">
-            <span className="text-[10px] text-text-muted font-mono">Output</span>
+            <span className="app-font-mono text-[10px] text-text-muted">Output</span>
           </div>
-          <div className="p-3 font-mono text-xs max-h-48 overflow-y-auto">
+          <div className="app-font-mono p-3 text-xs max-h-48 overflow-y-auto">
             {pythonResult.stdout && (
               <pre className="text-teal whitespace-pre-wrap">{pythonResult.stdout}</pre>
             )}
@@ -1170,7 +1170,7 @@ function ActiveQuiz() {
         </div>
       </div>
 
-      <p className="text-xl leading-relaxed text-text" style={{ fontFamily: "var(--editor-font-family, Georgia, serif)" }}>
+      <p className="text-xl leading-relaxed text-text" style={{ fontFamily: "var(--font-serif, Georgia, serif)" }}>
         {question.question}
       </p>
 
@@ -1178,7 +1178,7 @@ function ActiveQuiz() {
         <div>
           <Panel variant="alt" className="mb-4" title="Your Answer" bodyClassName="space-y-2">
             {question.type === "code" ? (
-              <pre className="overflow-x-auto rounded-xl border border-border-subtle bg-panel px-3 py-3 font-mono text-sm text-text">{question.userAnswer}</pre>
+              <pre className="app-font-mono overflow-x-auto rounded-xl border border-border-subtle bg-panel px-3 py-3 text-sm text-text">{question.userAnswer}</pre>
             ) : (
               <p className="text-sm text-text">{question.userAnswer}</p>
             )}
@@ -1204,7 +1204,7 @@ function ActiveQuiz() {
                 <div className="mt-3">
                   <p className="mb-1 text-xs font-medium text-teal">Correct answer</p>
                   {question.type === "code" ? (
-                    <pre className="overflow-x-auto rounded-xl bg-teal/10 p-3 font-mono text-xs text-teal">{question.correctAnswer}</pre>
+                    <pre className="app-font-mono overflow-x-auto rounded-xl bg-teal/10 p-3 text-xs text-teal">{question.correctAnswer}</pre>
                   ) : (
                     <p className="text-sm text-teal">{question.correctAnswer}</p>
                   )}
@@ -1265,7 +1265,7 @@ function ActiveQuiz() {
                 <textarea value={answer} onChange={(e) => setAnswer(e.target.value)}
                   placeholder={`Write your ${question.language || "code"} solution here...`}
                   rows={8}
-                  className="input-reset w-full resize-none bg-transparent px-4 py-3 font-mono text-sm text-text"
+                  className="input-reset app-font-mono w-full resize-none bg-transparent px-4 py-3 text-sm text-text"
                   spellCheck={false}
                   onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSubmit(); }} />
               </InputShell>

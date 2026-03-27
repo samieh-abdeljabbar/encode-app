@@ -148,7 +148,7 @@ export default function PomodoroTimer() {
                 <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Pomodoro</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="font-mono text-sm font-semibold tabular-nums text-text">{formatClock(remainingSecs)}</span>
+                    <span className="app-font-mono text-sm font-semibold tabular-nums text-text">{formatClock(remainingSecs)}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -219,7 +219,7 @@ export default function PomodoroTimer() {
               </div>
 
               <div className="mt-3 text-center">
-                <div className="text-[44px] font-mono font-semibold tabular-nums leading-none tracking-tight text-text">
+                <div className="app-font-mono text-[44px] font-semibold tabular-nums leading-none tracking-tight text-text">
                   {formatClock(remainingSecs)}
                 </div>
               </div>
