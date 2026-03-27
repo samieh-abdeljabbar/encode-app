@@ -212,77 +212,86 @@ function SubjectDashboard({ onStartReview, onStudyAll }: {
     subjects.set(key, existing);
   }
 
+  const subjectEntries = Array.from(subjects.entries()).filter(([, data]) => data.total > 0);
   const totalDue = allCards.filter((c) => c.nextReview <= todayStr).length;
 
   return (
-    <div className="space-y-4 pb-8">
-      {subjects.size === 0 && (
+    <div className="space-y-3 pb-6">
+      {subjectEntries.length === 0 && (
         <EmptyState
           title="No flashcards yet"
           description="Create your first card below, or cards will be auto-created from quiz misses."
         />
       )}
 
-      {subjects.size > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border-subtle bg-panel shadow-[var(--shadow-panel)]">
-          {Array.from(subjects.entries()).map(([subjectKey, data], index) => (
-            <div
-              key={subjectKey}
-              className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${index > 0 ? "border-t border-border-subtle" : ""}`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-text">{data.displayName}</p>
-                  {data.due > 0 && <MetaChip variant="danger" size="compact">{data.due} due</MetaChip>}
-                </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  {data.total} card{data.total !== 1 ? "s" : ""}
-                  <span className="mx-1.5 text-border-strong">·</span>
-                  Next {data.nextReview === "9999" ? "—" : data.nextReview}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <SecondaryButton
-                  onClick={() => onStudyAll(data.displayName)}
-                  className="px-3 py-1.5 text-[11px]"
-                >
-                  Study All
-                </SecondaryButton>
-                <PrimaryButton
-                  onClick={() => onStartReview(data.displayName)}
-                  className="px-3 py-1.5 text-[11px]"
-                  disabled={data.total === 0}
-                >
-                  {data.due > 0 ? `Review (${data.due})` : "Review"}
-                </PrimaryButton>
-              </div>
+      {subjectEntries.length > 0 && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border-subtle bg-panel-alt/70 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <MetaChip size="compact">{allCards.length} total</MetaChip>
+              {totalDue > 0 && <MetaChip variant="danger" size="compact">{totalDue} due</MetaChip>}
             </div>
-          ))}
-        </div>
+            {totalDue > 0 && (
+              <PrimaryButton
+                onClick={() => onStartReview()}
+                className="px-3 py-1.5 text-[11px]"
+              >
+                Review Due
+              </PrimaryButton>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {subjectEntries.map(([subjectKey, data]) => (
+              <Panel
+                key={subjectKey}
+                density="compact"
+                className="overflow-hidden"
+                title={
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-base font-semibold text-text">{data.displayName}</h3>
+                      <p className="mt-1 text-xs text-text-muted">
+                        {data.total} card{data.total !== 1 ? "s" : ""}
+                        <span className="mx-1.5 text-border-strong">·</span>
+                        {data.due > 0 ? `${data.due} due` : `Next ${data.nextReview === "9999" ? "—" : data.nextReview}`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 rounded-xl border border-border-subtle bg-panel-alt px-3 py-2 text-right">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Due</p>
+                      <p className={`text-sm font-semibold ${data.due > 0 ? "text-coral" : "text-text"}`}>{data.due}</p>
+                    </div>
+                  </div>
+                }
+                footer={
+                  <div className="flex gap-2">
+                    <SecondaryButton
+                      onClick={() => onStudyAll(data.displayName)}
+                      className="flex-1 px-3 py-1.5 text-[11px]"
+                    >
+                      Study All
+                    </SecondaryButton>
+                    <PrimaryButton
+                      onClick={() => onStartReview(data.displayName)}
+                      className="flex-1 px-3 py-1.5 text-[11px]"
+                      disabled={data.total === 0}
+                    >
+                      {data.due > 0 ? `Review (${data.due})` : "Review"}
+                    </PrimaryButton>
+                  </div>
+                }
+              >
+                <div className="flex flex-wrap gap-2">
+                  <MetaChip size="compact">{data.total} total</MetaChip>
+                  {data.due > 0
+                    ? <MetaChip variant="danger" size="compact">{data.due} due now</MetaChip>
+                    : <MetaChip size="compact">Next {data.nextReview === "9999" ? "—" : data.nextReview}</MetaChip>}
+                </div>
+              </Panel>
+            ))}
+          </div>
+        </>
       )}
-
-      {/* Action buttons */}
-      <div className="flex gap-2">
-        {totalDue > 0 && (
-          <PrimaryButton
-            onClick={() => onStartReview()}
-            className="flex-1 py-3"
-          >
-            Review Due ({totalDue})
-          </PrimaryButton>
-        )}
-        {allCards.length > 0 && (
-          <SecondaryButton
-            onClick={() => onStudyAll()}
-            className="flex-1 py-3"
-          >
-            Study All ({allCards.length})
-          </SecondaryButton>
-        )}
-      </div>
-
-      {/* New Card form */}
-      <NewCardForm />
     </div>
   );
 }
@@ -376,6 +385,7 @@ function AllCardsView() {
 
   return (
     <div className="space-y-4 pb-8">
+      <NewCardForm />
       <div className="flex items-center justify-between">
         <p className="text-xs text-text-muted">{allCards.length} cards total</p>
       </div>
@@ -383,15 +393,15 @@ function AllCardsView() {
         <Panel key={group} className="overflow-hidden" bodyClassName="p-0" density="compact">
           <button
             onClick={() => setExpanded(expanded === group ? null : group)}
-            className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-panel-active"
+            className="w-full flex items-center justify-between px-4 py-3 text-left transition-colors hover:bg-panel-active"
           >
             <span className="text-sm font-medium text-text">{group}</span>
-            <MetaChip>{groupCards.length} cards</MetaChip>
+            <MetaChip size="compact">{groupCards.length} cards</MetaChip>
           </button>
           {expanded === group && (
             <div className="border-t border-border-subtle">
               {groupCards.map((c) => (
-                <div key={c.id} className="border-b border-border-subtle px-5 py-4 last:border-0">
+                <div key={c.id} className="border-b border-border-subtle px-4 py-3 last:border-0">
                   {editingId === c.id ? (
                     <CardEditForm
                       card={c}
@@ -426,7 +436,7 @@ function AllCardsView() {
                       </div>
                       <div className="shrink-0 flex items-start gap-2">
                         <div className="text-right">
-                          <span className="text-xs px-1.5 py-0.5 bg-purple/20 text-purple rounded">B{c.bloom}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-purple/20 text-purple rounded">B{c.bloom}</span>
                           <p className="text-xs text-text-muted mt-1">
                             {(() => {
                               const today = localDateString();
@@ -441,21 +451,21 @@ function AllCardsView() {
                         <div className="flex gap-0.5 ml-2">
                           <button
                             onClick={() => setStatsId(statsId === c.id ? null : c.id)}
-                            className={`p-2 rounded-md transition-colors ${statsId === c.id ? "text-purple bg-purple/10" : "text-text-muted hover:text-purple hover:bg-purple/10"}`}
+                            className={`p-1.5 rounded-md transition-colors ${statsId === c.id ? "text-purple bg-purple/10" : "text-text-muted hover:text-purple hover:bg-purple/10"}`}
                             title="Card stats"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg>
                           </button>
                           <button
                             onClick={() => setEditingId(c.id)}
-                            className="p-2 rounded-md text-text-muted hover:text-purple hover:bg-purple/10 transition-colors"
+                            className="p-1.5 rounded-md text-text-muted hover:text-purple hover:bg-purple/10 transition-colors"
                             title="Edit card"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(c.id)}
-                            className="p-2 rounded-md text-text-muted hover:text-coral hover:bg-coral/10 transition-colors"
+                            className="p-1.5 rounded-md text-text-muted hover:text-coral hover:bg-coral/10 transition-colors"
                             title="Delete card"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -502,7 +512,6 @@ function AllCardsView() {
           )}
         </Panel>
       ))}
-      <NewCardForm />
     </div>
   );
 }
@@ -616,7 +625,8 @@ function FlipStudyView() {
 
 export default function FlashcardsPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"dashboard" | "review" | "flip" | "browse">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "review" | "browse">("dashboard");
+  const [reviewMode, setReviewMode] = useState<"standard" | "flip">("standard");
   const [reviewEditingId, setReviewEditingId] = useState<string | null>(null);
   const [reviewConfirmDeleteId, setReviewConfirmDeleteId] = useState<string | null>(null);
   const {
@@ -645,8 +655,12 @@ export default function FlashcardsPage() {
   const tabs = [
     { value: "dashboard" as const, label: "Dashboard" },
     { value: "review" as const, label: `Review${dueCount > 0 ? ` (${dueCount})` : ""}` },
-    { value: "flip" as const, label: "Flip View" },
-    { value: "browse" as const, label: "All Cards" },
+    { value: "browse" as const, label: "Browse" },
+  ];
+
+  const reviewModes = [
+    { value: "standard" as const, label: "Review" },
+    { value: "flip" as const, label: "Flip" },
   ];
 
   // Browse tab
@@ -657,23 +671,23 @@ export default function FlashcardsPage() {
         <PageHeader
           density="compact"
           title="Flashcards"
-          subtitle="Build durable recall with a quieter review workflow."
+          subtitle="Review due cards and keep recall current."
           actions={(
             <SegmentedTabs
               items={tabs}
               value={tab}
+              size="compact"
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
-                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}
         />
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           <SubjectDashboard
-            onStartReview={() => { setTab("review"); loadDueCards(); }}
-            onStudyAll={(subject) => { setTab("review"); loadAllCardsForReview(subject); }}
+            onStartReview={() => { setTab("review"); setReviewMode("standard"); loadDueCards(); }}
+            onStudyAll={(subject) => { setTab("review"); setReviewMode("standard"); loadAllCardsForReview(subject); }}
           />
         </div>
       </div>
@@ -691,10 +705,10 @@ export default function FlashcardsPage() {
             <SegmentedTabs
               items={tabs}
               value={tab}
+              size="compact"
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
-                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}
@@ -706,23 +720,38 @@ export default function FlashcardsPage() {
     );
   }
 
-  if (tab === "flip") {
+  if (tab === "review" && reviewMode === "flip") {
     return (
       <div className="flex flex-col h-full">
         <PageHeader
           density="compact"
-          title="Flashcards"
+          title="Flashcard Review"
           subtitle="Flip through cards quickly without changing your FSRS schedule."
           actions={(
-            <SegmentedTabs
-              items={tabs}
-              value={tab}
-              onChange={(next) => {
-                setTab(next);
-                if (next === "review") loadDueCards();
-                if (next === "flip") useFlashcardStore.getState().loadAllCards();
-              }}
-            />
+            <div className="flex items-center gap-2">
+              <SegmentedTabs
+                items={reviewModes}
+                value={reviewMode}
+                size="compact"
+                onChange={(next) => {
+                  setReviewMode(next);
+                  if (next === "flip") {
+                    void useFlashcardStore.getState().loadAllCards();
+                  } else {
+                    void loadDueCards();
+                  }
+                }}
+              />
+              <SegmentedTabs
+                items={tabs}
+                value={tab}
+                size="compact"
+                onChange={(next) => {
+                  setTab(next);
+                  if (next === "review") loadDueCards();
+                }}
+              />
+            </div>
           )}
         />
         <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -732,7 +761,7 @@ export default function FlashcardsPage() {
     );
   }
 
-  if (loading && tab === "review") {
+  if (loading && tab === "review" && reviewMode === "standard") {
     return (
       <div className="h-full px-6 py-6">
         <LoadingState label="Loading review session" detail="Preparing your due cards and review queue." />
@@ -740,7 +769,7 @@ export default function FlashcardsPage() {
     );
   }
 
-  if (sessionComplete) {
+  if (sessionComplete && reviewMode === "standard") {
     const stats = useFlashcardStore.getState().sessionStats;
     const hasStats = stats.total > 0;
 
@@ -754,10 +783,10 @@ export default function FlashcardsPage() {
             <SegmentedTabs
               items={tabs}
               value={tab}
+              size="compact"
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
-                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}
@@ -839,14 +868,30 @@ export default function FlashcardsPage() {
         title="Flashcard Review"
         subtitle={`Card ${currentIndex + 1} of ${cards.length}`}
         actions={(
-          <SegmentedTabs
-            items={tabs}
-            value={tab}
-            onChange={(next) => {
-              setTab(next);
-              if (next === "review") loadDueCards();
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <SegmentedTabs
+              items={reviewModes}
+              value={reviewMode}
+              size="compact"
+              onChange={(next) => {
+                setReviewMode(next);
+                if (next === "flip") {
+                  void useFlashcardStore.getState().loadAllCards();
+                } else {
+                  void loadDueCards();
+                }
+              }}
+            />
+            <SegmentedTabs
+              items={tabs}
+              value={tab}
+              size="compact"
+              onChange={(next) => {
+                setTab(next);
+                if (next === "review") loadDueCards();
+              }}
+            />
+          </div>
         )}
         meta={(
           <>
@@ -858,125 +903,128 @@ export default function FlashcardsPage() {
         )}
       />
 
-      {/* Progress bar */}
-      <div className="h-1 bg-panel-alt">
-        <div
-          className="h-full bg-accent transition-all duration-300"
-          style={{
-            width: `${((currentIndex + 1) / cards.length) * 100}%`,
-          }}
-        />
-      </div>
+      <>
 
-      {/* Card */}
-      <div className="flex-1 flex items-center justify-center overflow-y-auto">
-        <div className="max-w-[720px] w-full mx-auto px-8 py-8">
-
-          {/* Edit/Delete inline form */}
-          {reviewEditingId === card.id ? (
-            <CardEditForm
-              card={card}
-              onSave={async (q, a, b) => {
-                await editCard(card.id, card.filePath, q, a, b);
-                setReviewEditingId(null);
+          {/* Progress bar */}
+          <div className="h-1 bg-panel-alt">
+            <div
+              className="h-full bg-accent transition-all duration-300"
+              style={{
+                width: `${((currentIndex + 1) / cards.length) * 100}%`,
               }}
-              onCancel={() => setReviewEditingId(null)}
             />
-          ) : reviewConfirmDeleteId === card.id ? (
-            <div className="mb-4 flex items-center justify-between rounded-2xl border border-coral/30 bg-coral/10 px-4 py-4">
-              <p className="text-sm text-coral">Delete this card permanently?</p>
-              <div className="flex gap-2">
-                <button onClick={() => setReviewConfirmDeleteId(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
-                <button
-                  onClick={async () => {
-                    await deleteCard(card.id, card.filePath);
-                    setReviewConfirmDeleteId(null);
+          </div>
+
+          {/* Card */}
+          <div className="flex-1 flex items-center justify-center overflow-y-auto">
+            <div className="max-w-[720px] w-full mx-auto px-8 py-8">
+
+              {/* Edit/Delete inline form */}
+              {reviewEditingId === card.id ? (
+                <CardEditForm
+                  card={card}
+                  onSave={async (q, a, b) => {
+                    await editCard(card.id, card.filePath, q, a, b);
+                    setReviewEditingId(null);
                   }}
-                  className="px-3 py-1 text-xs bg-coral text-white rounded hover:opacity-90"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Question display — varies by card type */}
-              <div className="mb-8">
-                {card.cardType === "cloze" ? (
-                  <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
-                    {card.question.replace(/\{\{.+?\}\}/g, "___")}
-                  </p>
-                ) : card.cardType === "reversed" ? (
-                  <>
-                    <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
-                    <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
-                      {card.question}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
-                    {card.question}
-                  </p>
-                )}
-              </div>
-
-              {/* Card actions toolbar */}
-              <div className="flex justify-end gap-1 mb-4">
-                <button
-                  onClick={() => setReviewEditingId(card.id)}
-                  className="rounded-xl border border-transparent p-2 text-text-muted transition-colors hover:border-border-strong hover:bg-panel-active hover:text-text"
-                  title="Edit card"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                </button>
-                <button
-                  onClick={() => setReviewConfirmDeleteId(card.id)}
-                  className="rounded-xl border border-transparent p-2 text-text-muted transition-colors hover:border-coral/30 hover:bg-coral/10 hover:text-coral"
-                  title="Delete card"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                </button>
-              </div>
-
-              {/* Answer area */}
-              {!showAnswer ? (
-                <PrimaryButton
-                  onClick={revealAnswer}
-                  className="w-full py-3 text-sm"
-                >
-                  {card.cardType === "cloze" ? "Reveal Answer" : "Show Answer"}
-                </PrimaryButton>
+                  onCancel={() => setReviewEditingId(null)}
+                />
+              ) : reviewConfirmDeleteId === card.id ? (
+                <div className="mb-4 flex items-center justify-between rounded-2xl border border-coral/30 bg-coral/10 px-4 py-4">
+                  <p className="text-sm text-coral">Delete this card permanently?</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setReviewConfirmDeleteId(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text">Cancel</button>
+                    <button
+                      onClick={async () => {
+                        await deleteCard(card.id, card.filePath);
+                        setReviewConfirmDeleteId(null);
+                      }}
+                      className="px-3 py-1 text-xs bg-coral text-white rounded hover:opacity-90"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <Panel className="bg-panel" bodyClassName="space-y-6">
-                  {/* Answer */}
-                  <div className="rounded-2xl border border-border-subtle bg-panel-alt p-5" style={{ fontFamily: "var(--font-serif)" }}>
-                    <MarkdownRenderer content={card.answer} />
+                <>
+                  {/* Question display — varies by card type */}
+                  <div className="mb-8">
+                    {card.cardType === "cloze" ? (
+                      <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
+                        {card.question.replace(/\{\{.+?\}\}/g, "___")}
+                      </p>
+                    ) : card.cardType === "reversed" ? (
+                      <>
+                        <p className="text-xs text-text-muted mb-2">What term or concept matches this?</p>
+                        <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
+                          {card.question}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-lg leading-relaxed" style={{ fontFamily: "var(--font-serif)" }}>
+                        {card.question}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Rating buttons */}
-                  <p className="text-center text-xs text-text-muted">
-                    How well did you recall this?
-                  </p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {RATING_BUTTONS.map((b, i) => (
-                      <button
-                        key={b.rating}
-                        onClick={() => rateCard(b.rating)}
-                        className={`${b.color} rounded-xl py-3 text-sm font-medium text-white shadow-[var(--shadow-panel)] transition-all hover:translate-y-[-1px] hover:opacity-95`}
-                      >
-                        <div>{b.label}</div>
-                        <div className="text-xs opacity-75 mt-1">
-                          {intervals[i]}
-                        </div>
-                      </button>
-                    ))}
+                  {/* Card actions toolbar */}
+                  <div className="flex justify-end gap-1 mb-4">
+                    <button
+                      onClick={() => setReviewEditingId(card.id)}
+                      className="rounded-xl border border-transparent p-2 text-text-muted transition-colors hover:border-border-strong hover:bg-panel-active hover:text-text"
+                      title="Edit card"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </button>
+                    <button
+                      onClick={() => setReviewConfirmDeleteId(card.id)}
+                      className="rounded-xl border border-transparent p-2 text-text-muted transition-colors hover:border-coral/30 hover:bg-coral/10 hover:text-coral"
+                      title="Delete card"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    </button>
                   </div>
-                </Panel>
+
+                  {/* Answer area */}
+                  {!showAnswer ? (
+                    <PrimaryButton
+                      onClick={revealAnswer}
+                      className="w-full py-3 text-sm"
+                    >
+                      {card.cardType === "cloze" ? "Reveal Answer" : "Show Answer"}
+                    </PrimaryButton>
+                  ) : (
+                    <Panel className="bg-panel" bodyClassName="space-y-6">
+                      {/* Answer */}
+                      <div className="rounded-2xl border border-border-subtle bg-panel-alt p-5" style={{ fontFamily: "var(--font-serif)" }}>
+                        <MarkdownRenderer content={card.answer} />
+                      </div>
+
+                      {/* Rating buttons */}
+                      <p className="text-center text-xs text-text-muted">
+                        How well did you recall this?
+                      </p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {RATING_BUTTONS.map((b, i) => (
+                          <button
+                            key={b.rating}
+                            onClick={() => rateCard(b.rating)}
+                            className={`${b.color} rounded-xl py-3 text-sm font-medium text-white shadow-[var(--shadow-panel)] transition-all hover:translate-y-[-1px] hover:opacity-95`}
+                          >
+                            <div>{b.label}</div>
+                            <div className="text-xs opacity-75 mt-1">
+                              {intervals[i]}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </Panel>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+      </>
     </div>
   );
 }

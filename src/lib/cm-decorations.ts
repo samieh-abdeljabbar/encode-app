@@ -556,7 +556,7 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "0.8em",
   },
   ".cm-codeblock-line": {
-    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 54%, transparent)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 38%, transparent)",
     borderLeft: "1px solid color-mix(in srgb, var(--color-border-strong) 80%, transparent)",
     paddingLeft: "10px !important",
   },
@@ -567,10 +567,10 @@ export const livePreviewStyles = EditorView.baseTheme({
   ".cm-blockquote-line": {
     borderLeft: "2px solid color-mix(in srgb, var(--color-border-strong) 82%, transparent)",
     paddingLeft: "12px !important",
-    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 42%, transparent)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 30%, transparent)",
   },
   ".cm-list-mark": {
-    color: "color-mix(in srgb, var(--color-accent) 68%, var(--color-text-muted))",
+    color: "color-mix(in srgb, var(--color-accent) 50%, var(--color-text-muted))",
     fontWeight: "600",
   },
   ".cm-list-mark-active": {

@@ -146,12 +146,20 @@ interface SegmentedTabsProps<T extends string> {
   items: SegmentedTabItem<T>[];
   value: T;
   onChange: (value: T) => void;
+  size?: "default" | "compact";
   className?: string;
 }
 
-export function SegmentedTabs<T extends string>({ items, value, onChange, className }: SegmentedTabsProps<T>) {
+export function SegmentedTabs<T extends string>({ items, value, onChange, size = "default", className }: SegmentedTabsProps<T>) {
+  const shellClass = size === "compact"
+    ? "rounded-lg border border-border-subtle/70 bg-panel-alt/90 p-0.5"
+    : "rounded-xl border border-border-subtle bg-panel-alt p-1 shadow-[var(--shadow-panel)]";
+  const itemClass = size === "compact"
+    ? "rounded-md px-3 py-1.5 text-[13px]"
+    : "rounded-lg px-3.5 py-2 text-sm";
+
   return (
-    <div className={cx("inline-flex rounded-xl border border-border-subtle bg-panel-alt p-1 shadow-[var(--shadow-panel)]", className)}>
+    <div className={cx("inline-flex", shellClass, className)}>
       {items.map((item) => {
         const active = item.value === value;
         return (
@@ -160,7 +168,8 @@ export function SegmentedTabs<T extends string>({ items, value, onChange, classN
             type="button"
             onClick={() => onChange(item.value)}
             className={cx(
-              "rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
+              "font-medium transition-colors",
+              itemClass,
               active
                 ? "bg-panel-active text-text"
                 : "text-text-muted hover:text-text",

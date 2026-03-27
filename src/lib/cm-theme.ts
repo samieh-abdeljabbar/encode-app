@@ -9,12 +9,12 @@ export const encodeTheme = EditorView.theme(
       backgroundColor: "transparent",
       fontFamily: "var(--font-serif, Georgia, Merriweather, serif)",
       fontSize: "var(--editor-font-size, 16px)",
-      lineHeight: "1.62",
+      lineHeight: "1.55",
     },
     ".cm-content": {
       caretColor: "var(--color-accent)",
-      padding: "26px 28px 32px",
-      maxWidth: "var(--editor-max-width, 710px)",
+      padding: "18px 24px 28px",
+      maxWidth: "var(--editor-max-width, 680px)",
       color: "var(--color-text)",
     },
     ".cm-cursor, .cm-dropCursor": {
@@ -25,7 +25,7 @@ export const encodeTheme = EditorView.theme(
       backgroundColor: "color-mix(in srgb, var(--color-accent) 22%, transparent) !important",
     },
     ".cm-activeLine": {
-      backgroundColor: "color-mix(in srgb, var(--color-panel-active) 42%, transparent)",
+      backgroundColor: "color-mix(in srgb, var(--color-panel-active) 22%, transparent)",
     },
     ".cm-gutters": {
       display: "none",

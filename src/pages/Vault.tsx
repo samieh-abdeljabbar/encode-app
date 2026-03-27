@@ -319,7 +319,7 @@ export default function VaultPage() {
             {/* Content area */}
             <div className="flex-1 overflow-y-auto bg-panel">
               {sourceMode ? (
-                <>
+                <div className="h-full overflow-y-auto bg-panel px-6">
                   <textarea
                     ref={editorRef}
                     autoFocus
@@ -335,7 +335,7 @@ export default function VaultPage() {
                       const after = editContent.slice(ta.selectionEnd);
                       handleEditChange(before + md + after);
                     }}
-                    className="app-font-mono w-full h-full bg-panel px-10 py-10 text-text text-sm leading-relaxed resize-none focus:outline-none"
+                    className="app-font-mono mx-auto block h-full w-full max-w-[680px] resize-none bg-panel px-6 py-[18px] pb-7 text-sm leading-[1.55] text-text focus:outline-none"
                     spellCheck={false}
                   />
                   <SlashMenu
@@ -343,7 +343,7 @@ export default function VaultPage() {
                     value={editContent}
                     onChange={handleEditChange}
                   />
-                </>
+                </div>
               ) : (
                 <MarkdownEditor
                   value={editContent}
@@ -354,7 +354,7 @@ export default function VaultPage() {
             </div>
 
             {/* Status bar */}
-            <div className="flex items-center gap-4 border-t border-border-subtle bg-panel-alt px-8 py-2 text-[11px] text-text-muted shrink-0">
+            <div className="flex items-center gap-4 border-t border-border-subtle bg-panel-alt px-8 py-1.5 text-[11px] text-text-muted shrink-0">
               {(() => {
                 const fm = parseFrontmatter(fileContent).frontmatter;
                 const words = parseFrontmatter(fileContent).content.trim().split(/\s+/).length;

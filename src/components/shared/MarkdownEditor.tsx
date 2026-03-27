@@ -59,7 +59,7 @@ export default function MarkdownEditor({
         .cm-editor { background-color: transparent !important; }
         .cm-editor .cm-gutters { background-color: transparent !important; border-color: var(--color-border-subtle) !important; }
         .cm-editor .cm-activeLineGutter { background-color: var(--color-panel-active) !important; }
-        .cm-editor .cm-activeLine { background-color: color-mix(in srgb, var(--color-panel-active) 42%, transparent) !important; }
+        .cm-editor .cm-activeLine { background-color: color-mix(in srgb, var(--color-panel-active) 22%, transparent) !important; }
         .cm-editor .cm-cursor { border-color: var(--color-accent) !important; }
       `}</style>
       <CodeMirror
