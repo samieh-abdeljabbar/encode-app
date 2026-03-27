@@ -67,6 +67,7 @@ interface PanelProps {
   headerActions?: ReactNode;
   footer?: ReactNode;
   variant?: "default" | "alt" | "active";
+  density?: "default" | "compact";
   className?: string;
   bodyClassName?: string;
 }
@@ -77,6 +78,7 @@ export function Panel({
   headerActions,
   footer,
   variant = "default",
+  density = "default",
   className,
   bodyClassName,
 }: PanelProps) {
@@ -85,19 +87,23 @@ export function Panel({
     : variant === "active"
       ? "bg-panel-active"
       : "bg-panel";
+  const sectionRadius = density === "compact" ? "rounded-xl" : "rounded-2xl";
+  const headerPadding = density === "compact" ? "px-4 py-3" : "px-5 py-4";
+  const bodyPadding = density === "compact" ? "px-4 py-3" : "px-5 py-4";
+  const footerPadding = density === "compact" ? "px-4 py-3" : "px-5 py-4";
 
   return (
-    <section className={cx("overflow-hidden rounded-2xl border border-border-subtle shadow-[var(--shadow-panel)]", variantClass, className)}>
+    <section className={cx("overflow-hidden border border-border-subtle shadow-[var(--shadow-panel)]", sectionRadius, variantClass, className)}>
       {(title || headerActions) && (
-        <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-5 py-4">
+        <div className={cx("flex items-start justify-between gap-3 border-b border-border-subtle", headerPadding)}>
           <div className="min-w-0">
             {typeof title === "string" ? <h3 className="text-sm font-semibold text-text">{title}</h3> : title}
           </div>
           {headerActions && <div className="shrink-0">{headerActions}</div>}
         </div>
       )}
-      <div className={cx("px-5 py-4", bodyClassName)}>{children}</div>
-      {footer && <div className="border-t border-border-subtle px-5 py-4">{footer}</div>}
+      <div className={cx(bodyPadding, bodyClassName)}>{children}</div>
+      {footer && <div className={cx("border-t border-border-subtle", footerPadding)}>{footer}</div>}
     </section>
   );
 }
@@ -107,20 +113,26 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
+  density?: "default" | "compact";
   className?: string;
 }
 
-export function PageHeader({ title, subtitle, actions, meta, className }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, meta, density = "default", className }: PageHeaderProps) {
+  const headerPadding = density === "compact" ? "px-6 py-4" : "px-6 py-5";
+  const titleClass = density === "compact" ? "text-[1.75rem]" : "text-2xl";
+  const subtitleMargin = density === "compact" ? "mt-0.5" : "mt-1";
+  const metaMargin = density === "compact" ? "mt-3" : "mt-4";
+
   return (
-    <header className={cx("border-b border-border-subtle bg-panel/90 px-6 py-5 backdrop-blur", className)}>
+    <header className={cx("border-b border-border-subtle bg-panel/90 backdrop-blur", headerPadding, className)}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-2xl font-semibold tracking-tight text-text">{title}</div>
-          {subtitle && <p className="mt-1 text-sm text-text-muted">{subtitle}</p>}
+          <div className={cx("font-semibold tracking-tight text-text", titleClass)}>{title}</div>
+          {subtitle && <p className={cx("text-sm text-text-muted", subtitleMargin)}>{subtitle}</p>}
         </div>
         {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
       </div>
-      {meta && <div className="mt-4 flex flex-wrap items-center gap-2">{meta}</div>}
+      {meta && <div className={cx("flex flex-wrap items-center gap-2", metaMargin)}>{meta}</div>}
     </header>
   );
 }
@@ -178,7 +190,7 @@ export function ToolbarButton({ icon, label, active, disabled, onClick }: Toolba
       title={label}
       disabled={disabled}
       className={cx(
-        "inline-flex h-9 w-9 items-center justify-center rounded-xl border text-text-muted transition-colors",
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg border text-text-muted transition-colors",
         active
           ? "border-accent/50 bg-accent-soft text-text"
           : "border-transparent hover:border-border-strong hover:bg-panel-active hover:text-text",
@@ -206,10 +218,11 @@ export function InputShell({ children, className }: InputShellProps) {
 interface MetaChipProps {
   children: ReactNode;
   variant?: "default" | "accent" | "success" | "warning" | "danger";
+  size?: "default" | "compact";
   className?: string;
 }
 
-export function MetaChip({ children, variant = "default", className }: MetaChipProps) {
+export function MetaChip({ children, variant = "default", size = "default", className }: MetaChipProps) {
   const variantClass = variant === "accent"
     ? "border-accent/30 bg-accent-soft text-accent"
     : variant === "success"
@@ -219,9 +232,12 @@ export function MetaChip({ children, variant = "default", className }: MetaChipP
         : variant === "danger"
           ? "border-coral/30 bg-coral/10 text-coral"
           : "border-border-subtle bg-panel-alt text-text-muted";
+  const sizeClass = size === "compact"
+    ? "rounded-full px-2 py-0.5 text-[10px]"
+    : "rounded-full px-2.5 py-1 text-[11px]";
 
   return (
-    <span className={cx("inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium", variantClass, className)}>
+    <span className={cx("inline-flex items-center gap-1 border font-medium", sizeClass, variantClass, className)}>
       {children}
     </span>
   );

@@ -314,8 +314,8 @@ export default function VaultBrowser() {
           <button
             onClick={() => handleFileClick(node.path)}
             onContextMenu={(e) => handleContextMenu(e, node.path, "file", slug)}
-            className={`flex-1 text-left px-2 py-1 text-xs rounded truncate ${
-              selectedFile === node.path ? "bg-surface-2 text-purple" : "text-text-muted hover:text-text hover:bg-surface-2"
+            className={`flex-1 truncate rounded px-2 py-1 text-left text-xs ${
+              selectedFile === node.path ? "bg-panel-active text-text" : "text-text-muted hover:bg-surface-2 hover:text-text"
             }`}
             title={node.path}
           >
@@ -323,8 +323,8 @@ export default function VaultBrowser() {
           </button>
           <button
             onClick={(e) => handleDeleteFile(node.path, slug, e)}
-            className={`p-1 shrink-0 rounded transition-colors ${
-              confirmDeleteFile === node.path ? "block text-coral bg-coral/10" : "hidden group-hover:block text-text-muted hover:text-coral"
+            className={`shrink-0 rounded p-1 transition-colors ${
+              confirmDeleteFile === node.path ? "block bg-coral/10 text-coral" : "hidden text-text-muted/70 group-hover:block hover:text-coral"
             }`}
             title={confirmDeleteFile === node.path ? "Click again to confirm" : "Delete"}
           >
@@ -342,7 +342,7 @@ export default function VaultBrowser() {
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border mb-1">
         <button onClick={() => setCreatingSubject(true)} title="New subject"
-          className="p-1.5 text-text-muted hover:text-purple hover:bg-surface-2 rounded transition-colors">
+          className="rounded p-1.5 text-text-muted transition-colors hover:bg-surface-2 hover:text-text">
           <FolderPlus size={14} />
         </button>
         <div className="flex-1" />
@@ -377,7 +377,7 @@ export default function VaultBrowser() {
               <div className="ml-4 border-l border-border pl-1">
                 <div className="flex items-center gap-2 px-2 py-1">
                   <button onClick={(e) => { e.stopPropagation(); useQuizStore.getState().prepareSubjectQuiz(subject.slug, subject.name); navigate("/quiz"); }}
-                    className="text-[10px] text-amber hover:text-text transition-colors">Quiz All</button>
+                    className="text-[10px] text-text-muted transition-colors hover:text-text">Quiz All</button>
                   <button onClick={() => handleDeleteSubject(subject.slug)}
                     className={`text-[10px] transition-colors ${confirmDeleteSubject === subject.slug ? "text-coral font-medium animate-pulse" : "text-text-muted hover:text-coral"}`}>
                     {confirmDeleteSubject === subject.slug ? "Are you sure? Click to delete" : "Delete Subject"}
@@ -400,7 +400,7 @@ export default function VaultBrowser() {
                       >
                         {isCollapsed ? <ChevronRight size={11} className="text-text-muted" /> : <ChevronDown size={11} className="text-text-muted" />}
                         <SectionIcon size={12} className={section.color} />
-                        <span className="text-text-muted">{section.label}</span>
+                        <span className="text-text-muted/90">{section.label}</span>
                         <span className="text-[10px] text-text-muted ml-auto">{section.files.length}</span>
                       </button>
 
@@ -428,7 +428,7 @@ export default function VaultBrowser() {
                           {!creatingIn && section.key === "chapters" && (
                             <div className="flex gap-2 px-2 py-0.5">
                               <button onClick={() => setCreatingIn({ path: basePath, type: "file" })}
-                                className="text-[10px] text-purple hover:text-text transition-colors">+ Chapter</button>
+                                className="text-[10px] text-text-muted transition-colors hover:text-text">+ Chapter</button>
                               <button onClick={() => setCreatingIn({ path: basePath, type: "folder" })}
                                 className="text-[10px] text-text-muted hover:text-text transition-colors">+ Folder</button>
                             </div>

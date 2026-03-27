@@ -197,25 +197,30 @@ export default function VaultPage() {
               const props = [
                 fm.subject && { label: "Subject", value: fm.subject, variant: "accent" as const },
                 fm.topic && { label: "Topic", value: fm.topic, variant: "accent" as const },
-                fm.type && { label: "Type", value: fm.type, variant: fm.type === "flashcard" ? "success" as const : "default" as const },
-                fm.status && { label: "Status", value: fm.status, variant: fm.status === "digested" ? "success" as const : "default" as const },
-                fm.created_at && { label: "Created", value: String(fm.created_at).split("T")[0], variant: "default" as const },
+                fm.status === "digested" && { label: "Status", value: fm.status, variant: "success" as const },
               ].filter(Boolean) as { label: string; value: unknown; variant: "default" | "accent" | "success" }[];
+
+              const secondaryMeta = [
+                fm.type && `Type ${String(fm.type)}`,
+                fm.status && fm.status !== "digested" && `Status ${String(fm.status)}`,
+                fm.created_at && `Created ${String(fm.created_at).split("T")[0]}`,
+              ].filter(Boolean) as string[];
 
               return (
                 <PageHeader
+                  density="compact"
                   title={selectedFile.split("/").pop()?.replace(".md", "")}
                   subtitle={saved ? "Saved" : selectedFile}
                   actions={
                     <>
-                      <PrimaryButton onClick={() => navigate("/reader")} className="px-3 py-2 text-xs">Read</PrimaryButton>
+                      <PrimaryButton onClick={() => navigate("/reader")} className="px-3 py-1.5 text-[11px]">Read</PrimaryButton>
                       {selectedFile.includes("/quizzes/") ? (
                         <SecondaryButton
                           onClick={() => {
                             useQuizStore.getState().retakeQuiz(selectedFile);
                             navigate("/quiz");
                           }}
-                          className="px-3 py-2 text-xs"
+                          className="px-3 py-1.5 text-[11px]"
                         >
                           Retake Quiz
                         </SecondaryButton>
@@ -239,7 +244,7 @@ export default function VaultPage() {
                             );
                             navigate("/quiz");
                           }}
-                          className="px-3 py-2 text-xs"
+                          className="px-3 py-1.5 text-[11px]"
                         >
                           {selectedFile.includes("/chapters/") && fm.status !== "digested" && !hasCompletedSynthesis(fileContent)
                             ? "Read to Unlock Quiz"
@@ -259,19 +264,19 @@ export default function VaultPage() {
                           useTeachBackStore.getState().startTeachBack(current.subject ?? "", current.topic ?? "", selectedFile);
                           navigate("/teach-back");
                         }}
-                        className="px-3 py-2 text-xs"
+                        className="px-3 py-1.5 text-[11px]"
                       >
                         {selectedFile.includes("/chapters/") && fm.status !== "digested" && !hasCompletedSynthesis(fileContent)
                           ? "Read to Unlock Teach"
                           : "Teach"}
                       </SecondaryButton>
-                      <SecondaryButton onClick={handleToggleSource} className="px-3 py-2 text-xs">
+                      <SecondaryButton onClick={handleToggleSource} className="px-3 py-1.5 text-[11px]">
                         {sourceMode ? "Editor" : "Source"}
                       </SecondaryButton>
                       <button
                         onClick={handleDelete}
                         onBlur={() => setConfirmDelete(false)}
-                        className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+                        className={`inline-flex items-center justify-center rounded-xl border px-3 py-1.5 text-[11px] font-medium transition-colors ${
                           confirmDelete
                             ? "border-coral bg-coral text-white"
                             : "border-border-strong bg-panel-alt text-text-muted hover:border-coral/50 hover:text-coral"
@@ -281,12 +286,19 @@ export default function VaultPage() {
                       </button>
                     </>
                   }
-                  meta={props.map((p) => (
-                    <MetaChip key={p.label} variant={p.variant}>
-                      <span className="text-text-muted">{p.label}</span>
-                      <span>{String(p.value)}</span>
-                    </MetaChip>
-                  ))}
+                  meta={
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-text-muted">
+                      {props.map((p) => (
+                        <MetaChip key={p.label} variant={p.variant} size="compact">
+                          <span className="text-text-muted">{p.label}</span>
+                          <span>{String(p.value)}</span>
+                        </MetaChip>
+                      ))}
+                      {secondaryMeta.map((item) => (
+                        <span key={item}>{item}</span>
+                      ))}
+                    </div>
+                  }
                 />
               );
             })()}

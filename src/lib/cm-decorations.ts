@@ -538,7 +538,8 @@ export const flashcardDecoField = StateField.define<DecorationSet>({
 export const livePreviewStyles = EditorView.baseTheme({
   ".cm-heading-mark": {
     color: "var(--color-text-muted)",
-    fontSize: "0.75em",
+    fontSize: "0.72em",
+    opacity: "0.7",
   },
   ".cm-emphasis-mark": {
     color: "var(--color-text-muted)",
@@ -555,22 +556,22 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "0.8em",
   },
   ".cm-codeblock-line": {
-    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 78%, transparent)",
-    borderLeft: "2px solid var(--color-border-strong)",
-    paddingLeft: "12px !important",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 54%, transparent)",
+    borderLeft: "1px solid color-mix(in srgb, var(--color-border-strong) 80%, transparent)",
+    paddingLeft: "10px !important",
   },
   ".cm-quote-mark": {
     color: "var(--color-text-muted)",
     fontSize: "0.8em",
   },
   ".cm-blockquote-line": {
-    borderLeft: "3px solid var(--color-border-strong)",
-    paddingLeft: "14px !important",
-    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 68%, transparent)",
+    borderLeft: "2px solid color-mix(in srgb, var(--color-border-strong) 82%, transparent)",
+    paddingLeft: "12px !important",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 42%, transparent)",
   },
   ".cm-list-mark": {
-    color: "var(--color-accent)",
-    fontWeight: "700",
+    color: "color-mix(in srgb, var(--color-accent) 68%, var(--color-text-muted))",
+    fontWeight: "600",
   },
   ".cm-list-mark-active": {
     color: "var(--color-text-muted)",

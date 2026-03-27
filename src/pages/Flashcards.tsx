@@ -68,7 +68,12 @@ function NewCardForm() {
     : null;
 
   return (
-    <Panel title="New Flashcard" headerActions={<button onClick={() => setOpen(false)} className="text-xs text-text-muted hover:text-text">Close</button>} className="bg-panel">
+    <Panel
+      title="New Flashcard"
+      headerActions={<button onClick={() => setOpen(false)} className="text-xs text-text-muted hover:text-text">Close</button>}
+      className="bg-panel"
+      density="compact"
+    >
       {/* Card type picker */}
       <div className="mb-4 grid grid-cols-3 gap-2">
         {([
@@ -218,46 +223,43 @@ function SubjectDashboard({ onStartReview, onStudyAll }: {
         />
       )}
 
-      {Array.from(subjects.entries()).map(([subjectKey, data]) => (
-        <Panel
-          key={subjectKey}
-          title={
-            <div>
-              <p className="text-base font-semibold text-text">{data.displayName}</p>
-              <p className="mt-1 text-xs text-text-muted">
-                {data.total} card{data.total !== 1 ? "s" : ""}
-                {data.due > 0 && <span className="text-coral ml-2">{data.due} due</span>}
-                {data.due === 0 && data.nextReview !== "9999" && (
-                  <span className="ml-2">Next: {data.nextReview}</span>
-                )}
-              </p>
-            </div>
-          }
-          headerActions={
-            <div className="flex gap-2">
-              <SecondaryButton
-                onClick={() => onStudyAll(data.displayName)}
-                className="px-3 py-2 text-xs"
-              >
-                Study All
-              </SecondaryButton>
-              {data.due > 0 && (
+      {subjects.size > 0 && (
+        <div className="overflow-hidden rounded-xl border border-border-subtle bg-panel shadow-[var(--shadow-panel)]">
+          {Array.from(subjects.entries()).map(([subjectKey, data], index) => (
+            <div
+              key={subjectKey}
+              className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${index > 0 ? "border-t border-border-subtle" : ""}`}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-text">{data.displayName}</p>
+                  {data.due > 0 && <MetaChip variant="danger" size="compact">{data.due} due</MetaChip>}
+                </div>
+                <p className="mt-1 text-xs text-text-muted">
+                  {data.total} card{data.total !== 1 ? "s" : ""}
+                  <span className="mx-1.5 text-border-strong">·</span>
+                  Next {data.nextReview === "9999" ? "—" : data.nextReview}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <SecondaryButton
+                  onClick={() => onStudyAll(data.displayName)}
+                  className="px-3 py-1.5 text-[11px]"
+                >
+                  Study All
+                </SecondaryButton>
                 <PrimaryButton
                   onClick={() => onStartReview(data.displayName)}
-                  className="px-3 py-2 text-xs"
+                  className="px-3 py-1.5 text-[11px]"
+                  disabled={data.total === 0}
                 >
-                  Review ({data.due})
+                  {data.due > 0 ? `Review (${data.due})` : "Review"}
                 </PrimaryButton>
-              )}
+              </div>
             </div>
-          }
-        >
-          <div className="flex flex-wrap gap-2">
-            <MetaChip>{data.total} total</MetaChip>
-            {data.due > 0 ? <MetaChip variant="danger">{data.due} due now</MetaChip> : <MetaChip>Next {data.nextReview === "9999" ? "—" : data.nextReview}</MetaChip>}
-          </div>
-        </Panel>
-      ))}
+          ))}
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-2">
@@ -378,7 +380,7 @@ function AllCardsView() {
         <p className="text-xs text-text-muted">{allCards.length} cards total</p>
       </div>
       {Array.from(grouped.entries()).map(([group, groupCards]) => (
-        <Panel key={group} className="overflow-hidden" bodyClassName="p-0">
+        <Panel key={group} className="overflow-hidden" bodyClassName="p-0" density="compact">
           <button
             onClick={() => setExpanded(expanded === group ? null : group)}
             className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors hover:bg-panel-active"
@@ -558,6 +560,7 @@ function FlipStudyView() {
         title="Flip View"
         headerActions={<MetaChip>{index + 1} / {allCards.length}</MetaChip>}
         bodyClassName="space-y-5"
+        density="compact"
       >
         <div className="flex flex-wrap gap-2">
           <MetaChip>{card.subject}</MetaChip>
@@ -652,6 +655,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader
+          density="compact"
           title="Flashcards"
           subtitle="Build durable recall with a quieter review workflow."
           actions={(
@@ -680,6 +684,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader
+          density="compact"
           title="Flashcards"
           subtitle="Browse and tune the cards already in your vault."
           actions={(
@@ -705,6 +710,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader
+          density="compact"
           title="Flashcards"
           subtitle="Flip through cards quickly without changing your FSRS schedule."
           actions={(
@@ -741,6 +747,7 @@ export default function FlashcardsPage() {
     return (
       <div className="flex flex-col h-full">
         <PageHeader
+          density="compact"
           title="Flashcard Review"
           subtitle={hasStats ? "Session complete." : "No cards are due right now."}
           actions={(
@@ -757,7 +764,7 @@ export default function FlashcardsPage() {
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="max-w-2xl w-full px-8">
-            <Panel className="text-center">
+            <Panel className="text-center" density="compact">
               <div className="mb-2">
               <p className="text-teal text-lg font-medium mb-2">
                 {hasStats
@@ -828,6 +835,7 @@ export default function FlashcardsPage() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
+        density="compact"
         title="Flashcard Review"
         subtitle={`Card ${currentIndex + 1} of ${cards.length}`}
         actions={(
