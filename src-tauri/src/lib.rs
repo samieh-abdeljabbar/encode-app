@@ -74,6 +74,8 @@ pub struct AppConfig {
     pub pomodoro_long_break_secs: u32,
     // Quick timer presets (seconds, e.g. [1500, 1800, 2700, 3600])
     pub quick_timers: Vec<u32>,
+    pub pomodoro_sound_enabled: bool,
+    pub pomodoro_notifications_enabled: bool,
 }
 
 fn default_app_config(vault_path: &std::path::Path) -> AppConfig {
@@ -97,6 +99,8 @@ fn default_app_config(vault_path: &std::path::Path) -> AppConfig {
         pomodoro_break_secs: 300,
         pomodoro_long_break_secs: 900,
         quick_timers: vec![1500, 1800, 2700, 3600],
+        pomodoro_sound_enabled: true,
+        pomodoro_notifications_enabled: true,
     }
 }
 
@@ -179,6 +183,10 @@ fn read_app_config(vault_path: &std::path::Path) -> AppConfig {
             if !parsed.is_empty() {
                 config.quick_timers = parsed;
             }
+        } else if let Some(val) = line.strip_prefix("sound_enabled =") {
+            config.pomodoro_sound_enabled = matches!(val.trim(), "true" | "\"true\"");
+        } else if let Some(val) = line.strip_prefix("notifications_enabled =") {
+            config.pomodoro_notifications_enabled = matches!(val.trim(), "true" | "\"true\"");
         } else if let Some(val) = line.strip_prefix("study_minutes =") {
             config.pomodoro_study_secs =
                 val.trim().trim_matches('"').parse::<u32>().unwrap_or(25) * 60;
@@ -490,6 +498,8 @@ study_secs = {}
 break_secs = {}
 long_break_secs = {}
 quick_timers = "{}"
+sound_enabled = {}
+notifications_enabled = {}
 "#,
         escape_toml_string(&config.ai_provider),
         escape_toml_string(&config.ollama_model),
@@ -514,6 +524,8 @@ quick_timers = "{}"
             .map(|t| t.to_string())
             .collect::<Vec<_>>()
             .join(","),
+        config.pomodoro_sound_enabled,
+        config.pomodoro_notifications_enabled,
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");

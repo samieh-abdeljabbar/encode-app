@@ -97,6 +97,8 @@ export interface AppConfig {
   pomodoro_long_break_secs: number;
   // Quick timer presets (seconds)
   quick_timers: number[];
+  pomodoro_sound_enabled: boolean;
+  pomodoro_notifications_enabled: boolean;
 }
 
 /** Recent AI activity entry returned from the backend */

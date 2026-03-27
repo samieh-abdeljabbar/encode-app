@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 import QuickSwitcher from "../shared/QuickSwitcher";
 import ShortcutsOverlay from "../shared/ShortcutsOverlay";
 import { useAppStore } from "../../stores/app";
+import PomodoroRuntime from "./PomodoroRuntime";
 
 export default function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -76,7 +77,11 @@ export default function Shell() {
 
   return (
     <div className="flex h-screen bg-bg overflow-hidden">
-      <Ribbon sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
+      <Ribbon
+        sidebarOpen={sidebarOpen}
+        sidebarVisible={showSidebar}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
       {showSidebar && <Sidebar />}
       <main className="app-main-surface relative flex-1 overflow-y-auto">
         <Outlet />
@@ -89,6 +94,7 @@ export default function Shell() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+      <PomodoroRuntime />
     </div>
   );
 }

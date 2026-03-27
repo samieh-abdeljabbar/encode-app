@@ -12,6 +12,16 @@ import {
   TrendingUp,
 } from "lucide-react";
 import AiActivityButton from "./AiActivityButton";
+import { usePomodoroStore } from "../../stores/pomodoro";
+
+function formatCompactTimer(totalSecs: number): string {
+  const safe = Math.max(0, totalSecs);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}`;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
 
 interface RibbonItem {
   icon: React.ReactNode;
@@ -34,12 +44,19 @@ const BOTTOM_ITEMS: RibbonItem[] = [
 
 interface RibbonProps {
   sidebarOpen: boolean;
+  sidebarVisible: boolean;
   onToggleSidebar: () => void;
 }
 
-export default function Ribbon({ sidebarOpen, onToggleSidebar }: RibbonProps) {
+export default function Ribbon({ sidebarOpen, sidebarVisible, onToggleSidebar }: RibbonProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const timerStatus = usePomodoroStore((s) => s.status);
+  const timerPhase = usePomodoroStore((s) => s.phase);
+  const timerRemaining = usePomodoroStore((s) => s.remainingSecs);
+  const showTimerIndicator = !sidebarVisible && timerStatus === "running";
+  const timerTone =
+    timerPhase === "study" ? "bg-accent" : timerPhase === "break" ? "bg-teal" : "bg-amber";
 
   const renderItem = (item: RibbonItem) => {
     const isActive = location.pathname === item.path;
@@ -84,6 +101,12 @@ export default function Ribbon({ sidebarOpen, onToggleSidebar }: RibbonProps) {
 
       {/* Bottom icons */}
       <div className="flex flex-col items-center gap-1.5 pt-3">
+        {showTimerIndicator && (
+          <div className="flex w-full flex-col items-center gap-1 rounded-xl border border-border-subtle bg-panel-alt px-1.5 py-2 text-[9px] text-text shadow-[var(--shadow-panel)]">
+            <span className={`h-1.5 w-1.5 rounded-full ${timerTone}`} />
+            <span className="font-mono tabular-nums">{formatCompactTimer(timerRemaining)}</span>
+          </div>
+        )}
         <AiActivityButton />
         {BOTTOM_ITEMS.map(renderItem)}
       </div>

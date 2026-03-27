@@ -158,6 +158,8 @@ export default function Settings() {
       pomodoro_break_secs: config?.pomodoro_break_secs ?? 300,
       pomodoro_long_break_secs: config?.pomodoro_long_break_secs ?? 900,
       quick_timers: config?.quick_timers ?? [1500, 1800, 2700, 3600],
+      pomodoro_sound_enabled: config?.pomodoro_sound_enabled ?? true,
+      pomodoro_notifications_enabled: config?.pomodoro_notifications_enabled ?? true,
     });
     setSaving(false);
   };

@@ -53,7 +53,7 @@ Encode isn't a note-taking app. It's a structured learning system backed by cogn
 
 ## Download
 
-**Current version: v0.8.5**
+**Current version: v0.9.0**
 
 Grab the latest release for your platform from [Releases](https://github.com/samieh-abdeljabbar/encode-app/releases/latest).
 

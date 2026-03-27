@@ -5,7 +5,6 @@ import { useVaultStore } from "../../stores/vault";
 import VaultBrowser from "../vault/VaultBrowser";
 import ImportDialog from "../vault/ImportDialog";
 import PomodoroTimer from "./PomodoroTimer";
-import TrackingSection from "./TrackingSection";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -101,9 +100,6 @@ export default function Sidebar() {
           <VaultBrowser />
         )}
       </div>
-
-      {/* Study Time Tracking */}
-      <TrackingSection />
 
       {/* Pomodoro Timer */}
       <PomodoroTimer />
