@@ -5,6 +5,7 @@ import { listSubjects, getSubjectGrades, getAtRiskCards, getWeakTopics, type Sub
 import type { WeakTopic } from "../lib/types";
 import { useFlashcardStore } from "../stores/flashcard";
 import { useTrackingStore } from "../stores/tracking";
+import { localDateString } from "../lib/dates";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ export default function Home() {
   const [atRiskCount, setAtRiskCount] = useState(0);
   const [weakTopics, setWeakTopics] = useState<WeakTopic[]>([]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDateString();
   const dueCount = allCards.filter((c) => c.nextReview <= todayStr).length;
   const today = todayStr;
   const dayOfWeek = new Date().toLocaleDateString("en-US", {

@@ -76,6 +76,7 @@ async function generateGateQuestions(
     const questionCount = wordCount < 500 ? 2 : wordCount < 1500 ? 3 : wordCount < 3000 ? 4 : 5;
 
     const { text } = await aiRequest(
+      "reader_gate_generate",
       `Read the ENTIRE section below carefully. Generate exactly ${questionCount} questions that collectively cover ALL key concepts in the section, not just the beginning. Output ONLY a JSON array.${profileLine}
 
 Format: [{"type":"recall","q":"..."},{"type":"explain","q":"..."},{"type":"apply","q":"..."}]
@@ -125,6 +126,7 @@ async function evaluateResponse(
 ): Promise<{ feedback: string | null; mastery: number | null }> {
   try {
     const result = await aiRequest(
+      "reader_gate_evaluate",
       `You are evaluating a student's understanding of a study section. Reply ONLY with JSON:
 {"right":"what they got correct (1-2 sentences)","gap":"what they missed or got wrong (1-2 sentences)","deeper":"one follow-up question to deepen understanding","mastery":1}
 
@@ -158,6 +160,22 @@ Be specific: reference actual terms and concepts from the section content. Do no
   } catch {
     return { feedback: null, mastery: null };
   }
+}
+
+async function markChapterDigested(filePath: string, rawContent: string): Promise<string> {
+  if (!filePath.includes("/chapters/")) {
+    return rawContent;
+  }
+
+  const updatedContent = rawContent.match(/^status:\s*\w+/m)
+    ? rawContent.replace(/^status:\s*\w+/m, "status: digested")
+    : rawContent;
+
+  if (updatedContent !== rawContent) {
+    await writeFile(filePath, updatedContent);
+  }
+
+  return updatedContent;
 }
 
 export const useReaderStore = create<ReaderState>((set, get) => ({
@@ -215,10 +233,19 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   advanceSection: () => {
-    const { currentSectionIndex, sections } = get();
+    const { currentSectionIndex, sections, filePath, rawContent } = get();
     const nextIndex = currentSectionIndex + 1;
 
-    if (nextIndex >= sections.length) return;
+    if (nextIndex >= sections.length) {
+      if (filePath && rawContent) {
+        markChapterDigested(filePath, rawContent)
+          .then((updatedContent) => set({ rawContent: updatedContent }))
+          .catch(() => {
+            set({ error: "Failed to mark chapter complete. Please try again." });
+          });
+      }
+      return;
+    }
 
     const nextSection = sections[nextIndex];
     if (shouldGateSection(nextIndex, nextSection.content)) {
@@ -377,12 +404,7 @@ async function saveAndAdvance(
     const digestionMd = formatDigestionMarkdown(updatedResponses);
     const updatedContent = baseContent + digestionMd;
 
-    // If this is the last section gate, mark chapter as digested
-    const isLastGate = newResponse.sectionIndex >= sections.length - 1;
     let finalContent = updatedContent;
-    if (isLastGate && filePath.includes("/chapters/")) {
-      finalContent = finalContent.replace(/^status:\s*\w+/m, "status: digested");
-    }
 
     await writeFile(filePath, finalContent);
 
@@ -401,6 +423,7 @@ async function saveAndAdvance(
     const sectionContent = sections[currentSectionIndex]?.content || "";
     if (sectionContent.trim().split(/\s+/).length >= 20) {
       aiRequest(
+        "reader_flashcard_suggest",
         `Generate 1-2 flashcard Q/A pairs from this study content. Output ONLY JSON: [{"q":"...","a":"...","bloom":1-3}]`,
         sectionContent.slice(0, 1500),
         300,
