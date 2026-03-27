@@ -10,6 +10,7 @@ import { useQuizStore } from "../stores/quiz";
 import { useTeachBackStore } from "../stores/teachback";
 import { readFile, writeFile, deleteFile } from "../lib/tauri";
 import { parseFrontmatter } from "../lib/markdown";
+import { hasCompletedSynthesis } from "../lib/synthesis";
 import { convertHtmlToMarkdown } from "../lib/cm-paste-handler";
 import { MetaChip, PageHeader, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
 export default function VaultPage() {
@@ -222,26 +223,47 @@ export default function VaultPage() {
                         <SecondaryButton
                           onClick={() => {
                             if (!fileContent) return;
-                            const { content } = parseFrontmatter(fileContent);
-                            const current = parseFrontmatter(fileContent).frontmatter;
-                            useQuizStore.getState().generateQuiz(current.subject ?? "", current.topic ?? "", content);
+                            const { content, frontmatter: current } = parseFrontmatter(fileContent);
+                            const isChapter = selectedFile.includes("/chapters/");
+                            const quizReady = !isChapter || current.status === "digested" || hasCompletedSynthesis(fileContent);
+                            if (!quizReady) {
+                              navigate("/reader");
+                              return;
+                            }
+                            useQuizStore.getState().generateQuiz(
+                              String(current.subject ?? ""),
+                              String(current.topic ?? ""),
+                              content,
+                              undefined,
+                              selectedFile,
+                            );
                             navigate("/quiz");
                           }}
                           className="px-3 py-2 text-xs"
                         >
-                          Quiz
+                          {selectedFile.includes("/chapters/") && fm.status !== "digested" && !hasCompletedSynthesis(fileContent)
+                            ? "Read to Unlock Quiz"
+                            : "Quiz"}
                         </SecondaryButton>
                       )}
                       <SecondaryButton
                         onClick={() => {
                           if (!fileContent) return;
                           const current = parseFrontmatter(fileContent).frontmatter;
-                          useTeachBackStore.getState().startTeachBack(current.subject ?? "", current.topic ?? "");
+                          const isChapter = selectedFile.includes("/chapters/");
+                          const teachReady = !isChapter || current.status === "digested" || hasCompletedSynthesis(fileContent);
+                          if (!teachReady) {
+                            navigate("/reader");
+                            return;
+                          }
+                          useTeachBackStore.getState().startTeachBack(current.subject ?? "", current.topic ?? "", selectedFile);
                           navigate("/teach-back");
                         }}
                         className="px-3 py-2 text-xs"
                       >
-                        Teach
+                        {selectedFile.includes("/chapters/") && fm.status !== "digested" && !hasCompletedSynthesis(fileContent)
+                          ? "Read to Unlock Teach"
+                          : "Teach"}
                       </SecondaryButton>
                       <SecondaryButton onClick={handleToggleSource} className="px-3 py-2 text-xs">
                         {sourceMode ? "Editor" : "Source"}

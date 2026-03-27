@@ -177,7 +177,9 @@ export default function Home() {
               {weakTopics.map((wt, i) => (
                 <button key={i} onClick={() => navigate("/quiz")}
                   className="w-full flex items-center gap-3 px-3 py-2.5 bg-surface border border-border rounded-lg text-left hover:border-purple/50 transition-colors">
-                  <span className="w-6 h-6 flex items-center justify-center bg-amber/15 text-amber rounded text-xs font-bold shrink-0">{Math.round(wt.accuracy_pct)}%</span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-xl bg-amber/15 text-xs font-bold text-amber">
+                    {Math.round(wt.accuracy_pct)}%
+                  </span>
                   <div>
                     <p className="text-xs text-text font-medium">Quiz: {wt.topic}</p>
                     <p className="text-[10px] text-text-muted">{wt.subject} — strengthen this weak area</p>

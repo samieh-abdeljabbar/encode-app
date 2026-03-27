@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuizStore, type QuestionType, type QuizQuestion } from "../stores/quiz";
 import { listSubjects, listFiles, readFile, getSubjectGrades, getQuizHistoryTimeline, getWeakTopics, type SubjectGrade } from "../lib/tauri";
 import type { QuizHistoryPoint, WeakTopic } from "../lib/types";
 import { parseFrontmatter } from "../lib/markdown";
+import { hasCompletedSynthesis } from "../lib/synthesis";
 import type { Subject, FileEntry } from "../lib/types";
 import { Flag, ChevronDown, ChevronRight, BookOpen, Brain, RotateCcw, Sparkles, CreditCard } from "lucide-react";
 import { EmptyState, InputShell, LoadingState, MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton, SegmentedTabs } from "../components/ui/primitives";
+import { useVaultStore } from "../stores/vault";
 
 // ─── Types ──────────────────────────────────────────────
 interface SubjectWithChapters {
@@ -169,10 +172,13 @@ function QuizConfigScreen({ onStart, onCancel }: { onStart: () => void; onCancel
 
 // ─── Dashboard Tab ──────────────────────────────────────
 function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
+  const navigate = useNavigate();
+  const selectFile = useVaultStore((s) => s.selectFile);
   const [subjects, setSubjects] = useState<SubjectWithChapters[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedChapters, setSelectedChapters] = useState<Record<string, string[]>>({});
+  const [recentAttempts, setRecentAttempts] = useState<PastQuiz[]>([]);
   const { prepareQuiz, prepareSubjectQuiz, prepareMultiChapterQuiz } = useQuizStore();
 
   const toggleChapter = (slug: string, path: string) => {
@@ -197,9 +203,25 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
       const gradeMap = new Map(grades.map((g) => [g.subject, g]));
 
       const result: SubjectWithChapters[] = [];
+      const recent: PastQuiz[] = [];
       for (const s of subs) {
         try {
           const chapters = await listFiles(s.slug, "chapters");
+          const quizFiles = await listFiles(s.slug, "quizzes");
+          for (const f of quizFiles) {
+            try {
+              const raw = await readFile(f.file_path);
+              const { frontmatter } = parseFrontmatter(raw);
+              recent.push({
+                path: f.file_path,
+                name: f.file_path.split("/").pop()?.replace(".md", "") || "",
+                subject: s.name,
+                score: frontmatter.score ? String(frontmatter.score) : "",
+                date: String(frontmatter.created_at || "").split("T")[0],
+                content: null,
+              });
+            } catch { /* skip */ }
+          }
           result.push({
             subject: s,
             chapters,
@@ -210,6 +232,8 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
         }
       }
       setSubjects(result);
+      recent.sort((a, b) => b.date.localeCompare(a.date));
+      setRecentAttempts(recent.slice(0, 5));
       setLoading(false);
     })();
   }, []);
@@ -219,7 +243,13 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
       const raw = await readFile(chapter.file_path);
       const { content, frontmatter } = parseFrontmatter(raw);
       const topic = (frontmatter.topic as string) || chapter.file_path.split("/").pop()?.replace(".md", "") || "";
-      prepareQuiz(subjectName, topic, content);
+      const ready = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+      if (!ready) {
+        selectFile(chapter.file_path);
+        navigate("/reader");
+        return;
+      }
+      prepareQuiz(subjectName, topic, content, chapter.file_path);
       onStartQuiz();
     } catch { /* */ }
   };
@@ -244,6 +274,31 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
 
   return (
     <div className="pb-8">
+      {recentAttempts.length > 0 && (
+        <Panel title="Recent Attempts" className="mb-4">
+          <div className="space-y-2">
+            {recentAttempts.map((attempt) => (
+              <button
+                key={attempt.path}
+                onClick={async () => {
+                  await useQuizStore.getState().retakeQuiz(attempt.path);
+                  onStartQuiz();
+                }}
+                className="flex w-full items-center justify-between rounded-xl border border-border-subtle bg-panel-alt px-4 py-3 text-left transition-colors hover:border-border-strong hover:bg-panel-active"
+              >
+                <div>
+                  <p className="text-sm font-medium text-text">{attempt.name}</p>
+                  <p className="text-[10px] text-text-muted">{attempt.subject} · {attempt.date || "Recent"}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {attempt.score && <span className={`text-sm font-semibold ${getScoreTextClass(Number(attempt.score))}`}>{attempt.score}%</span>}
+                  <span className="text-[10px] text-accent">Retake →</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {subjects.map(({ subject, chapters, grade }) => {
           const score = grade ? Math.round(grade.avg_score) : null;
@@ -333,6 +388,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                     {chapters.map((ch) => {
                       const name = ch.file_path.split("/").pop()?.replace(".md", "") || "";
                       const isChecked = selected.includes(ch.file_path);
+                      const topic = ch.topic || name;
                       return (
                         <div
                           key={ch.file_path}
@@ -356,6 +412,7 @@ function QuizDashboard({ onStartQuiz }: { onStartQuiz: () => void }) {
                               <div className="flex min-w-0 items-center gap-2">
                                 <BookOpen size={14} className="shrink-0 text-accent" />
                                 <span className="truncate text-xs text-text">{name}</span>
+                                {topic && <span className="shrink-0 rounded-full border border-border-subtle bg-panel px-2 py-0.5 text-[10px] text-text-muted">{topic}</span>}
                               </div>
                               <span className="shrink-0 text-[10px] text-accent">Quiz →</span>
                             </div>

@@ -6,13 +6,14 @@ import { today } from "../lib/sr";
 interface TeachBackState {
   subject: string | null;
   topic: string | null;
+  chapterPath: string | null;
   explanation: string;
   evaluation: string | null;
   loading: boolean;
   evaluated: boolean;
   saved: boolean;
 
-  startTeachBack: (subject: string, topic: string) => void;
+  startTeachBack: (subject: string, topic: string, chapterPath?: string) => void;
   submitExplanation: (text: string) => Promise<void>;
   saveToVault: () => Promise<void>;
   reset: () => void;
@@ -28,16 +29,18 @@ function slugify(s: string): string {
 export const useTeachBackStore = create<TeachBackState>((set, get) => ({
   subject: null,
   topic: null,
+  chapterPath: null,
   explanation: "",
   evaluation: null,
   loading: false,
   evaluated: false,
   saved: false,
 
-  startTeachBack: (subject, topic) => {
+  startTeachBack: (subject, topic, chapterPath) => {
     set({
       subject,
       topic,
+      chapterPath: chapterPath ?? null,
       explanation: "",
       evaluation: null,
       loading: false,
@@ -77,7 +80,7 @@ Be specific. Reference what they actually wrote. Keep total response under 150 w
   },
 
   saveToVault: async () => {
-    const { subject, topic, explanation, evaluation } = get();
+    const { subject, topic, chapterPath, explanation, evaluation } = get();
     if (!subject || !topic) return;
 
     const subjectSlug = slugify(subject);
@@ -92,6 +95,7 @@ Be specific. Reference what they actually wrote. Keep total response under 150 w
       `topic: ${topic}`,
       "type: teach-back",
       `created_at: ${now}`,
+      ...(chapterPath ? [`source_chapter: ${chapterPath}`] : []),
       "---",
       "",
       `# Teach-Back: ${topic}`,
@@ -114,6 +118,7 @@ Be specific. Reference what they actually wrote. Keep total response under 150 w
     set({
       subject: null,
       topic: null,
+      chapterPath: null,
       explanation: "",
       evaluation: null,
       loading: false,

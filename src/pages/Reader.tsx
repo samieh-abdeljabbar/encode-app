@@ -198,6 +198,7 @@ export default function ReaderPage() {
   const aiEnabled = config?.ai_provider !== "none";
   const contentRef = useRef<HTMLDivElement>(null);
   const [selection, setSelection] = useState<{ text: string; rect: DOMRect } | null>(null);
+  const [synthesisDraft, setSynthesisDraft] = useState("");
   const {
     filePath,
     rawContent,
@@ -224,6 +225,11 @@ export default function ReaderPage() {
     showSchemaActivation,
     schemaActivationTopic,
     dismissSchemaActivation,
+    synthesisSaving,
+    synthesisResponse,
+    synthesisEvaluation,
+    synthesisComplete,
+    submitSynthesis,
   } = useReaderStore();
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -239,6 +245,10 @@ export default function ReaderPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentSectionIndex, gateOpen]);
+
+  useEffect(() => {
+    setSynthesisDraft(synthesisResponse);
+  }, [filePath, synthesisResponse]);
 
   const handleBack = useCallback(() => {
     closeReader();
@@ -329,18 +339,17 @@ export default function ReaderPage() {
   // Pre-reading schema activation
   if (showSchemaActivation) {
     return (
-      <div className="flex h-full items-center justify-center px-4">
-        <div className="w-full max-w-2xl">
+      <div className="flex h-full items-center justify-center px-6 py-10">
+        <div className="w-full max-w-3xl">
           <PageHeader
             title="What do you already know?"
             subtitle={
-              <span className="text-sm text-text-muted">
-              Take 30 seconds to write what you already know about <span className="text-text font-medium">{schemaActivationTopic}</span>.
-              This activates your existing knowledge and helps new information stick.
+              <span className="mx-auto block max-w-xl text-sm leading-6 text-text-muted">
+              Take 30 seconds to write what you already know about <span className="text-text font-medium">{schemaActivationTopic}</span>. A quick recall pass makes the chapter easier to organize once you start reading.
               </span>
             }
             meta={<MetaChip variant="accent">Before You Read</MetaChip>}
-            className="rounded-t-2xl border border-border-subtle"
+            className="rounded-t-2xl border border-border-subtle text-center"
           />
           <Panel className="rounded-t-none border-t-0">
             <InputShell className="px-0 py-0">
@@ -352,7 +361,7 @@ export default function ReaderPage() {
                 style={{ fontFamily: "Georgia, serif" }}
               />
             </InputShell>
-            <div className="mt-4 flex gap-3">
+            <div className="mx-auto mt-5 flex max-w-xl gap-3">
               <SecondaryButton
                 onClick={dismissSchemaActivation}
                 className="flex-1 py-3"
@@ -375,6 +384,8 @@ export default function ReaderPage() {
   const isLastSection = currentSectionIndex >= sections.length - 1;
   const currentSectionHeading = sections[currentSectionIndex]?.heading ?? null;
   const currentGateQ = gateQuestions[gatePhase];
+  const isChapter = Boolean(filePath?.includes("/chapters/"));
+  const showSynthesisStep = isChapter && isLastSection && !synthesisComplete;
 
   return (
     <div className="flex flex-col h-full">
@@ -432,8 +443,10 @@ export default function ReaderPage() {
           {sections.slice(0, currentSectionIndex + 1).map((section, i) => (
             <div key={i}>
               <div
-                className={`mb-4 ${
-                  i < currentSectionIndex ? "opacity-60" : ""
+                className={`mb-6 rounded-2xl border px-5 py-5 transition-colors ${
+                  i === currentSectionIndex
+                    ? "border-accent/30 bg-panel-active shadow-[var(--shadow-panel)]"
+                    : "border-border-subtle bg-panel/40 opacity-75"
                 }`}
               >
                 {section.heading && (
@@ -452,8 +465,8 @@ export default function ReaderPage() {
                 .map((r, j) => (
                   <div
                     key={`gate-${j}`}
-                    className={`mb-8 p-4 bg-surface-2 rounded border border-border space-y-3 ${
-                      i < currentSectionIndex ? "opacity-60" : ""
+                    className={`mb-8 rounded-2xl border border-border-subtle bg-panel-alt p-4 shadow-[var(--shadow-panel)] space-y-3 ${
+                      i < currentSectionIndex ? "opacity-75" : ""
                     }`}
                   >
                     {r.subQuestions.map((sq, k) => (
@@ -546,45 +559,96 @@ export default function ReaderPage() {
               />
 
               {isLastSection ? (
-                <div className="text-center">
-                  <p className="text-teal text-sm font-medium mb-2">
-                    Reading complete
-                  </p>
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    <button
-                      onClick={() => {
-                        if (!rawContent) return;
-                        const { content } = parseFrontmatter(rawContent);
-                        const fm = parseFrontmatter(rawContent).frontmatter;
-                        useQuizStore.getState().generateQuiz(
-                          fm.subject as string || "", fm.topic as string || "", content,
-                        );
-                        navigate("/quiz");
-                      }}
-                      className="px-4 py-2 text-sm bg-purple text-white rounded hover:opacity-90"
+                <div className="w-full">
+                  {showSynthesisStep ? (
+                    <Panel
+                      title="Chapter Synthesis"
+                      variant="active"
+                      className="mx-auto max-w-2xl border-accent/25"
+                      footer={
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-text-muted">
+                            Synthesis is required before Quiz and Teach Back unlock.
+                          </p>
+                          <PrimaryButton
+                            onClick={() => submitSynthesis(synthesisDraft)}
+                            disabled={synthesisSaving || !synthesisDraft.trim()}
+                          >
+                            {synthesisSaving ? "Saving..." : "Save Synthesis"}
+                          </PrimaryButton>
+                        </div>
+                      }
                     >
-                      Quiz This Chapter
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (!rawContent) return;
-                        const fm = parseFrontmatter(rawContent).frontmatter;
-                        useTeachBackStore.getState().startTeachBack(
-                          fm.subject as string || "", fm.topic as string || "",
-                        );
-                        navigate("/teach-back");
-                      }}
-                      className="px-4 py-2 text-sm text-teal border border-teal rounded hover:bg-teal/10"
-                    >
-                      Teach Back
-                    </button>
-                    <button
-                      onClick={handleBack}
-                      className="px-4 py-2 text-sm text-text-muted border border-border rounded hover:text-text"
-                    >
-                      Back to Vault
-                    </button>
-                  </div>
+                      <p className="mb-3 text-sm text-text">
+                        You&apos;ve reached the end of the chapter. Write the throughline in your own words: what mattered most, how the parts fit together, and what you should remember going forward.
+                      </p>
+                      <InputShell className="px-0 py-0">
+                        <textarea
+                          value={synthesisDraft}
+                          onChange={(e) => setSynthesisDraft(e.target.value)}
+                          placeholder="Connect the chapter in your own words..."
+                          rows={7}
+                          className="input-reset w-full resize-none bg-transparent px-4 py-4 text-sm leading-6 text-text placeholder:text-text-muted"
+                          style={{ fontFamily: "Georgia, serif" }}
+                        />
+                      </InputShell>
+                    </Panel>
+                  ) : (
+                    <div className="mx-auto max-w-2xl text-center">
+                      <Panel
+                        title={isChapter ? "Reading Complete" : "Reader Complete"}
+                        variant={isChapter ? "active" : "default"}
+                        className={isChapter ? "border-teal/25" : ""}
+                        bodyClassName="space-y-4"
+                      >
+                        <p className="text-sm text-text-muted">
+                          {isChapter
+                            ? "Chapter synthesis saved. The next step is to test and explain what you now understand."
+                            : "This document is fully revealed. Choose the next action that fits what you want to do with it."}
+                        </p>
+                        {synthesisEvaluation && (
+                          <div className="rounded-xl border border-border-subtle bg-panel-alt px-4 py-3 text-left text-sm text-text">
+                            {synthesisEvaluation}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap justify-center gap-2">
+                          <PrimaryButton
+                            onClick={() => {
+                              if (!rawContent) return;
+                              const { content, frontmatter } = parseFrontmatter(rawContent);
+                              useQuizStore.getState().generateQuiz(
+                                String(frontmatter.subject || ""),
+                                String(frontmatter.topic || ""),
+                                content,
+                                undefined,
+                                filePath || undefined,
+                              );
+                              navigate("/quiz");
+                            }}
+                          >
+                            Quiz This Chapter
+                          </PrimaryButton>
+                          <SecondaryButton
+                            onClick={() => {
+                              if (!rawContent) return;
+                              const fm = parseFrontmatter(rawContent).frontmatter;
+                              useTeachBackStore.getState().startTeachBack(
+                                String(fm.subject || ""),
+                                String(fm.topic || ""),
+                                filePath || undefined,
+                              );
+                              navigate("/teach-back");
+                            }}
+                          >
+                            Teach Back
+                          </SecondaryButton>
+                          <SecondaryButton onClick={handleBack}>
+                            Back to Vault
+                          </SecondaryButton>
+                        </div>
+                      </Panel>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button

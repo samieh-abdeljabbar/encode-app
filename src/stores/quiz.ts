@@ -4,6 +4,7 @@ import type { QueryResult } from "../lib/types";
 import { runPython, type PythonResult } from "../lib/pyodide";
 import { parseFrontmatter } from "../lib/markdown";
 import { localDateString, localDateTimeString } from "../lib/dates";
+import { hasCompletedSynthesis, stripStudyMetaSections } from "../lib/synthesis";
 import { useFlashcardStore } from "./flashcard";
 
 function slugify(s: string): string {
@@ -46,6 +47,7 @@ export interface QuizQuestion {
 interface QuizState {
   subject: string | null;
   topic: string | null;
+  sourceChapterPath: string | null;
   questions: QuizQuestion[];
   currentIndex: number;
   loading: boolean;
@@ -61,6 +63,7 @@ interface QuizState {
   configSubject: string | null;
   configTopic: string | null;
   configContent: string | null;
+  configChapterPath: string | null;
   showConfig: boolean;
 
   // SQL sandbox state
@@ -72,11 +75,11 @@ interface QuizState {
   pythonRunning: boolean;
 
   setConfig: (config: Partial<QuizConfig>) => void;
-  prepareQuiz: (subject: string, topic: string, content: string) => void;
+  prepareQuiz: (subject: string, topic: string, content: string, chapterPath?: string) => void;
   prepareSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
   prepareMultiChapterQuiz: (subjectSlug: string, subjectName: string, chapterPaths: string[]) => Promise<void>;
   startQuiz: () => Promise<void>;
-  generateQuiz: (subject: string, topic: string, chapterContent: string, config?: QuizConfig) => Promise<void>;
+  generateQuiz: (subject: string, topic: string, chapterContent: string, config?: QuizConfig, chapterPath?: string) => Promise<void>;
   generateSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
   submitAnswer: (answer: string) => Promise<void>;
   flagQuestion: (index: number) => void;
@@ -102,6 +105,7 @@ function buildTypePrompt(types: QuestionType[]): string {
 export const useQuizStore = create<QuizState>((set, get) => ({
   subject: null,
   topic: null,
+  sourceChapterPath: null,
   questions: [],
   currentIndex: 0,
   loading: false,
@@ -115,6 +119,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   configSubject: null,
   configTopic: null,
   configContent: null,
+  configChapterPath: null,
   showConfig: false,
   activeSandboxId: null,
   sandboxResult: null,
@@ -126,11 +131,12 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set((s) => ({ config: { ...s.config, ...partial } }));
   },
 
-  prepareQuiz: (subject, topic, content) => {
+  prepareQuiz: (subject, topic, content, chapterPath) => {
     set({
       configSubject: subject,
       configTopic: topic,
       configContent: content,
+      configChapterPath: chapterPath ?? null,
       showConfig: true,
       error: null,
     });
@@ -141,15 +147,19 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     try {
       const files = await listFiles(subjectSlug, "chapters");
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const f of files) {
         try {
           const raw = await readFile(f.file_path);
-          const { content } = parseFrontmatter(raw);
-          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${content}`;
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
+          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No chapter content found for this subject." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "No synthesized chapters are ready for a subject quiz yet. Finish reading and save chapter synthesis first." });
         return;
       }
       set({
@@ -157,6 +167,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         configSubject: subjectName,
         configTopic: "All Chapters",
         configContent: combinedContent,
+        configChapterPath: null,
         showConfig: true,
       });
     } catch (e) {
@@ -168,16 +179,20 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set({ generating: true, error: null });
     try {
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const path of chapterPaths) {
         try {
           const raw = await readFile(path);
-          const { content } = parseFrontmatter(raw);
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
           const name = path.split("/").pop()?.replace(".md", "") || "";
-          combinedContent += `\n\n--- Chapter: ${name} ---\n\n${content}`;
+          combinedContent += `\n\n--- Chapter: ${name} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No content found in selected chapters." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "Selected chapters are not ready yet. Finish chapter synthesis in Reader before quizzing them together." });
         return;
       }
       set({
@@ -185,6 +200,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         configSubject: subjectName,
         configTopic: `${chapterPaths.length} Chapters`,
         configContent: combinedContent,
+        configChapterPath: null,
         showConfig: true,
       });
     } catch (e) {
@@ -193,7 +209,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   },
 
   startQuiz: async () => {
-    const { configSubject, configTopic, configContent, config } = get();
+    const { configSubject, configTopic, configContent, config, configChapterPath } = get();
     if (!configSubject || !configTopic || !configContent) return;
 
     // Adaptive difficulty: auto-adjust bloom range based on recent scores
@@ -216,12 +232,13 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     }
 
     set({ showConfig: false });
-    await get().generateQuiz(configSubject, configTopic, configContent, finalConfig);
+    await get().generateQuiz(configSubject, configTopic, configContent, finalConfig, configChapterPath ?? undefined);
   },
 
-  generateQuiz: async (subject, topic, chapterContent, config) => {
+  generateQuiz: async (subject, topic, chapterContent, config, chapterPath) => {
     const cfg = config || get().config;
-    set({ generating: true, subject, topic, error: null, summary: null, generatedCards: 0 });
+    const cleanContent = stripStudyMetaSections(chapterContent);
+    set({ generating: true, subject, topic, sourceChapterPath: chapterPath ?? null, error: null, summary: null, generatedCards: 0 });
     try {
       const typeList = buildTypePrompt(cfg.types);
       const typeNames = cfg.types.map((t) => `"${t}"`).join(", ");
@@ -232,7 +249,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         `Generate exactly ${cfg.questionCount} quiz questions. Types: ${typeNames}. Bloom ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Output ONLY a JSON array:
 [{"question":"...","bloomLevel":2,"type":"free-recall"},{"question":"...","bloomLevel":1,"type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"B"}]
 ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a "setupSql" field with CREATE TABLE and INSERT INTO statements so the user can run their query against real data. Include "correctAnswer" with the expected SQL query. For Python, include a "setupCode" field with any imports or test data, an "expectedOutput" field with the expected stdout, and "correctAnswer" with the solution code. For pseudocode, include "correctAnswer".' : ""}`,
-        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, contentLimit)}`,
+        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${cleanContent.slice(0, contentLimit)}`,
         cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000,
       );
 
@@ -273,6 +290,7 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
         currentIndex: 0,
         sessionComplete: false,
         showFeedback: false,
+        configChapterPath: chapterPath ?? null,
       });
     } catch (e) {
       set({
@@ -287,15 +305,19 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     try {
       const files = await listFiles(subjectSlug, "chapters");
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const f of files) {
         try {
           const raw = await readFile(f.file_path);
-          const { content } = parseFrontmatter(raw);
-          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${content}`;
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
+          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No chapter content found for this subject." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "No synthesized chapters are ready for a subject quiz yet." });
         return;
       }
       await get().generateQuiz(subjectName, "All Chapters", combinedContent);
@@ -337,15 +359,15 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     if (question.type === "free-recall" || question.type === "code" || !feedback) {
       try {
         const codeContext = question.type === "code"
-          ? `\nLanguage: ${question.language || "unknown"}\nEvaluate the code for correctness of logic and approach, not exact syntax.`
+          ? `\nLanguage: ${question.language || "unknown"}\nIf the answer is wrong, explicitly classify the problem as conceptual misunderstanding, incomplete solution, or invalid syntax / malformed query.`
           : "";
         const evaluationGoal = correct === false
           ? "The student's answer is already known to be incorrect. Explain specifically why it is incorrect, what misconception or mismatch caused the mistake, and why the correct answer is right."
-          : "Decide whether the student's answer is correct, then explain what they got right or wrong.";
+          : "Decide whether the student's answer is correct, then explain what they got right or wrong. If wrong, explain the mismatch and why the correct answer is right.";
         const { text } = await aiRequest(
           "quiz_evaluate",
           `You are evaluating a student's quiz answer. Respond with ONLY JSON:
-{"correct": true, "feedback": "2-4 sentences explaining what was right or wrong and why", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+{"correct": true, "feedback": "3-5 sentences explaining what was right or wrong, the misconception or mismatch if wrong, and why the correct answer is right", "correctAnswer": "the actual correct answer to the question"}${codeContext}
 ${evaluationGoal}
 If the answer is incorrect, the feedback must say what was wrong about the student's answer, not just state the correct answer.
 Always include "correctAnswer" with the real, complete answer to the question.`,
@@ -367,7 +389,7 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
         }
       } catch {
         if (feedback === null && correct === false && question.correctAnswer) {
-          feedback = `Incorrect. Your answer does not match the expected answer. Correct answer: ${question.correctAnswer}`;
+          feedback = `Incorrect. Your answer does not match the expected answer. The mismatch is that you gave a different result than the chapter expects. Correct answer: ${question.correctAnswer}`;
         } else if (feedback === null) {
           feedback = "AI evaluation unavailable.";
         }
@@ -408,10 +430,13 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
         const filePath = `subjects/${subjectSlug}/quizzes/${topicSlug}-${d}-${ts}.md`;
         const correctCount = questions.filter((q) => q.correct === true).length;
         const pct = Math.round((correctCount / questions.length) * 100);
+        const { sourceChapterPath } = get();
 
         const lines = [
           "---", `subject: ${subject}`, `topic: ${topic}`, "type: quiz",
-          `created_at: ${now}`, `score: ${pct}`, "---", "",
+          `created_at: ${now}`, `score: ${pct}`,
+          ...(sourceChapterPath ? [`source_chapter: ${sourceChapterPath}`] : []),
+          "---", "",
           `# Quiz: ${topic} (${d})`, "",
           `Score: **${correctCount}/${questions.length}** (${pct}%)`, "",
         ];
@@ -543,6 +568,7 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
       set({
         subject,
         topic,
+        sourceChapterPath: typeof frontmatter.source_chapter === "string" ? frontmatter.source_chapter : null,
         questions,
         generating: false,
         currentIndex: 0,
@@ -607,10 +633,11 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
     }
     set({
       subject: null, topic: null, questions: [],
+      sourceChapterPath: null,
       currentIndex: 0, loading: false, generating: false,
       showFeedback: false, sessionComplete: false, error: null,
       summary: null, generatedCards: 0,
-      configSubject: null, configTopic: null, configContent: null, showConfig: false,
+      configSubject: null, configTopic: null, configContent: null, configChapterPath: null, showConfig: false,
       activeSandboxId: null, sandboxResult: null, sandboxError: null,
       pythonResult: null, pythonRunning: false,
     });

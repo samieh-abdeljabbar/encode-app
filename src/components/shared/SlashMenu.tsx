@@ -33,6 +33,11 @@ const SLASH_ITEMS: SlashMenuItem[] = [
     template: "> [!card] id: fc-\n> **Q:** \n> **A:** \n> **Bloom:** 2\n> **Ease:** 2.50\n> **Interval:** 0\n> **Next:** \n> **Last:**\n",
   },
   {
+    command: "synthesis",
+    label: "Chapter Synthesis",
+    template: "## Synthesis\n\n**Prompt:** Connect the key ideas from this chapter.\n**Response:** \n**AI Evaluation:** \n",
+  },
+  {
     command: "callout",
     label: "Callout (Note)",
     template: "> [!note] Title\n> Content here.\n",
@@ -53,7 +58,7 @@ const SLASH_ITEMS: SlashMenuItem[] = [
   { command: "checkbox", label: "Checkbox", template: "- [ ] " },
   { command: "numbered-list", label: "Numbered List", template: "1. " },
   { command: "quote", label: "Blockquote", template: "> " },
-  { command: "embed", label: "Embed Note", template: "![[filename]]" },
+  { command: "embed", label: "Linked Note", template: "![[filename]]" },
 ];
 
 interface SlashMenuProps {
@@ -178,6 +183,9 @@ export default function SlashMenu({ textarea, onChange }: SlashMenuProps) {
           <span className="text-xs">{item.label}</span>
         </button>
       ))}
+      <div className="border-t border-border px-3 py-2 text-[10px] text-text-muted">
+        Source mode template inserts
+      </div>
     </div>
   );
 }

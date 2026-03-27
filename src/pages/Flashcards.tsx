@@ -505,9 +505,115 @@ function AllCardsView() {
   );
 }
 
+function FlipStudyView() {
+  const { allCards, loading, loadAllCards } = useFlashcardStore();
+  const [index, setIndex] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+
+  useEffect(() => {
+    loadAllCards();
+  }, [loadAllCards]);
+
+  useEffect(() => {
+    setIndex(0);
+    setRevealed(false);
+  }, [allCards.length]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        setRevealed((current) => !current);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setIndex((current) => Math.min(current + 1, Math.max(0, allCards.length - 1)));
+        setRevealed(false);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setIndex((current) => Math.max(current - 1, 0));
+        setRevealed(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [allCards.length]);
+
+  if (loading) {
+    return <LoadingState label="Loading flip study" detail="Preparing your flashcards for quick rehearsal." />;
+  }
+
+  if (allCards.length === 0) {
+    return <EmptyState title="No flashcards yet" description="Create cards from Reader or in the browse tab to use Flip View." />;
+  }
+
+  const card = allCards[index];
+  if (!card) return null;
+
+  return (
+    <div className="mx-auto flex h-full max-w-3xl flex-col justify-center pb-8">
+      <Panel
+        variant="active"
+        className="border-accent/25"
+        title="Flip View"
+        headerActions={<MetaChip>{index + 1} / {allCards.length}</MetaChip>}
+        bodyClassName="space-y-5"
+      >
+        <div className="flex flex-wrap gap-2">
+          <MetaChip>{card.subject}</MetaChip>
+          {card.topic && <MetaChip>{card.topic}</MetaChip>}
+          <MetaChip variant="accent">Bloom {card.bloom}</MetaChip>
+        </div>
+        <button
+          type="button"
+          onClick={() => setRevealed((current) => !current)}
+          className="group block w-full rounded-2xl border border-border-subtle bg-panel-alt px-8 py-12 text-left shadow-[var(--shadow-panel)] transition-colors hover:border-accent/40 hover:bg-panel-active"
+        >
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+            {revealed ? "Back" : "Front"}
+          </p>
+          {revealed ? (
+            <div className="prose max-w-none text-sm">
+              <MarkdownRenderer content={card.answer} />
+            </div>
+          ) : (
+            <p className="text-2xl font-semibold leading-9 text-text">{card.question}</p>
+          )}
+          <p className="mt-6 text-xs text-text-muted">
+            Press Space or Enter to flip. Use Left and Right to move.
+          </p>
+        </button>
+        <div className="flex items-center justify-between gap-3">
+          <SecondaryButton
+            onClick={() => {
+              setIndex((current) => Math.max(current - 1, 0));
+              setRevealed(false);
+            }}
+            disabled={index === 0}
+          >
+            Previous
+          </SecondaryButton>
+          <PrimaryButton onClick={() => setRevealed((current) => !current)}>
+            {revealed ? "Show Question" : "Flip Card"}
+          </PrimaryButton>
+          <SecondaryButton
+            onClick={() => {
+              setIndex((current) => Math.min(current + 1, allCards.length - 1));
+              setRevealed(false);
+            }}
+            disabled={index >= allCards.length - 1}
+          >
+            Next
+          </SecondaryButton>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 export default function FlashcardsPage() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"dashboard" | "review" | "browse">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "review" | "flip" | "browse">("dashboard");
   const [reviewEditingId, setReviewEditingId] = useState<string | null>(null);
   const [reviewConfirmDeleteId, setReviewConfirmDeleteId] = useState<string | null>(null);
   const {
@@ -536,6 +642,7 @@ export default function FlashcardsPage() {
   const tabs = [
     { value: "dashboard" as const, label: "Dashboard" },
     { value: "review" as const, label: `Review${dueCount > 0 ? ` (${dueCount})` : ""}` },
+    { value: "flip" as const, label: "Flip View" },
     { value: "browse" as const, label: "All Cards" },
   ];
 
@@ -554,6 +661,7 @@ export default function FlashcardsPage() {
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
+                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}
@@ -581,12 +689,38 @@ export default function FlashcardsPage() {
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
+                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}
         />
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <AllCardsView />
+        </div>
+      </div>
+    );
+  }
+
+  if (tab === "flip") {
+    return (
+      <div className="flex flex-col h-full">
+        <PageHeader
+          title="Flashcards"
+          subtitle="Flip through cards quickly without changing your FSRS schedule."
+          actions={(
+            <SegmentedTabs
+              items={tabs}
+              value={tab}
+              onChange={(next) => {
+                setTab(next);
+                if (next === "review") loadDueCards();
+                if (next === "flip") useFlashcardStore.getState().loadAllCards();
+              }}
+            />
+          )}
+        />
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <FlipStudyView />
         </div>
       </div>
     );
@@ -616,6 +750,7 @@ export default function FlashcardsPage() {
               onChange={(next) => {
                 setTab(next);
                 if (next === "review") loadDueCards();
+                if (next === "flip") useFlashcardStore.getState().loadAllCards();
               }}
             />
           )}

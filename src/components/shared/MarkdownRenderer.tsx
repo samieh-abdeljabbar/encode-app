@@ -252,6 +252,10 @@ function preprocessQuizResults(md: string): string {
   return result.join("\n");
 }
 
+function preprocessHighlights(md: string): string {
+  return md.replace(/==([^=\n][\s\S]*?[^=\n])==/g, (_match, text: string) => `<mark>${escapeHtml(text.trim())}</mark>`);
+}
+
 /** Comprehensive prose styles — uses CSS variables from theme system */
 const PROSE_STYLES = `
   .prose {
@@ -432,23 +436,23 @@ const PROSE_STYLES = `
   }
   /* Flashcard cards */
   .fc-card {
-    background: var(--color-panel);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 8px;
-    padding: 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-alt) 88%, transparent), var(--color-panel));
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border-subtle));
+    border-radius: 16px;
+    padding: 18px 18px 16px;
     margin: 12px 0;
-    border-left: 3px solid var(--color-accent);
+    box-shadow: var(--shadow-panel);
   }
   .fc-q {
-    font-size: 15px;
+    font-size: 16px;
     color: var(--color-text);
-    margin-bottom: 10px;
-    font-weight: 500;
+    margin-bottom: 12px;
+    font-weight: 600;
   }
   .fc-a {
     font-size: 14px;
     color: var(--color-text-muted);
-    padding-top: 10px;
+    padding-top: 12px;
     border-top: 1px solid var(--color-border-subtle);
   }
   .fc-label {
@@ -465,6 +469,12 @@ const PROSE_STYLES = `
   }
   .fc-q .fc-label { background: var(--color-accent); color: white; }
   .fc-a .fc-label { background: var(--color-teal); color: white; }
+  .prose mark {
+    color: var(--color-text);
+    background: color-mix(in srgb, var(--color-amber) 26%, transparent);
+    padding: 0 4px;
+    border-radius: 4px;
+  }
 
   .callout {
     border-radius: 12px;
@@ -676,7 +686,8 @@ export default function MarkdownRenderer({
     const { processed: withMermaid, hasMermaid: mermaidFound } = preprocessMermaid(withWikilinks);
     const withCallouts = preprocessCallouts(withMermaid);
     const withQuizResults = preprocessQuizResults(withCallouts);
-    const rawHtml = DOMPurify.sanitize(marked.parse(withQuizResults) as string, {
+    const withHighlights = preprocessHighlights(withQuizResults);
+    const rawHtml = DOMPurify.sanitize(marked.parse(withHighlights) as string, {
       ADD_TAGS: ["div", "span", "input", "button"],
       ADD_ATTR: ["class", "data-wikilink", "data-mermaid-id", "data-quiz-retake", "checked", "type", "disabled", "style"],
     });
