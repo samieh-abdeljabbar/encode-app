@@ -74,6 +74,34 @@ class TableWidget extends WidgetType {
   }
 }
 
+/** Widget that renders a checkbox for task list items */
+class CheckboxWidget extends WidgetType {
+  constructor(
+    private readonly checked: boolean,
+    private readonly pos: number,
+  ) {
+    super();
+  }
+
+  eq(other: CheckboxWidget): boolean {
+    return this.checked === other.checked && this.pos === other.pos;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = `cm-checkbox ${this.checked ? "cm-checkbox-checked" : "cm-checkbox-unchecked"}`;
+    span.setAttribute("data-pos", String(this.pos));
+    if (this.checked) {
+      span.textContent = "\u2713";
+    }
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
 /** Check if the cursor's line overlaps with a position */
 function cursorOnLine(state: EditorState, pos: number): boolean {
   const cursorLine = state.doc.lineAt(state.selection.main.head).number;
@@ -224,6 +252,40 @@ function buildDecorations(state: EditorState): DecorationSet {
         case "Table":
           return false; // Skip — handled separately
 
+        // Strikethrough: hide ~~ markers when cursor is not in range
+        case "Strikethrough": {
+          if (!cursorInRange(state, from, to) && to - from > 4) {
+            decos.push(Decoration.replace({ inclusive: false }).range(from, from + 2));
+            decos.push(Decoration.replace({ inclusive: false }).range(to - 2, to));
+            decos.push(Decoration.mark({ class: "cm-strikethrough-text" }).range(from + 2, to - 2));
+          }
+          break;
+        }
+
+        case "StrikethroughMark": {
+          if (cursorInRange(state, node.node.parent?.from ?? from, node.node.parent?.to ?? to)) {
+            decos.push(Decoration.mark({ class: "cm-strikethrough-mark" }).range(from, to));
+          }
+          break;
+        }
+
+        // Checkbox task markers: replace [ ]/[x] with styled widget
+        case "TaskMarker": {
+          const markerText = state.sliceDoc(from, to);
+          const checked = /\[x\]/i.test(markerText);
+          if (!cursorOnLine(state, from)) {
+            decos.push(
+              Decoration.replace({
+                widget: new CheckboxWidget(checked, from),
+                inclusive: false,
+              }).range(from, to),
+            );
+          } else {
+            decos.push(Decoration.mark({ class: "cm-task-marker" }).range(from, to));
+          }
+          break;
+        }
+
         // Horizontal rule
         case "HorizontalRule": {
           if (!cursorOnLine(state, from)) {
@@ -343,6 +405,136 @@ export const linkClickHandler = EditorView.domEventHandlers({
   },
 });
 
+/** Click on a checkbox widget toggles [ ] <-> [x] in the document */
+export const checkboxClickHandler = EditorView.domEventHandlers({
+  mousedown(event: MouseEvent, view: EditorView) {
+    const target = event.target as HTMLElement;
+    if (!target.classList.contains("cm-checkbox")) return false;
+
+    const posAttr = target.getAttribute("data-pos");
+    if (!posAttr) return false;
+
+    const pos = parseInt(posAttr);
+    const line = view.state.doc.lineAt(pos);
+    const match = line.text.match(/\[([ xX])\]/);
+    if (match && match.index != null) {
+      const bracketPos = line.from + match.index + 1;
+      const newChar = match[1] === " " ? "x" : " ";
+      view.dispatch({ changes: { from: bracketPos, to: bracketPos + 1, insert: newChar } });
+    }
+    event.preventDefault();
+    return true;
+  },
+});
+
+/** Widget that renders a flashcard as a styled Q/A card */
+class FlashcardWidget extends WidgetType {
+  constructor(
+    private readonly question: string,
+    private readonly answer: string,
+    private readonly cardId: string,
+  ) {
+    super();
+  }
+
+  eq(other: FlashcardWidget): boolean {
+    return this.cardId === other.cardId && this.question === other.question && this.answer === other.answer;
+  }
+
+  toDOM(): HTMLElement {
+    const card = document.createElement("div");
+    card.className = "cm-fc-card";
+
+    const q = document.createElement("div");
+    q.className = "cm-fc-q";
+    const qLabel = document.createElement("span");
+    qLabel.className = "cm-fc-label cm-fc-label-q";
+    qLabel.textContent = "Q";
+    q.appendChild(qLabel);
+    q.appendChild(document.createTextNode(" " + this.question));
+
+    const a = document.createElement("div");
+    a.className = "cm-fc-a";
+    const aLabel = document.createElement("span");
+    aLabel.className = "cm-fc-label cm-fc-label-a";
+    aLabel.textContent = "A";
+    a.appendChild(aLabel);
+    a.appendChild(document.createTextNode(" " + this.answer));
+
+    card.appendChild(q);
+    card.appendChild(a);
+    return card;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/** Build flashcard decorations — block widgets need a StateField */
+function buildFlashcardDecorations(state: EditorState): DecorationSet {
+  const decos: Range<Decoration>[] = [];
+  const doc = state.doc;
+
+  let i = 1;
+  while (i <= doc.lines) {
+    const line = doc.line(i);
+    const cardMatch = line.text.match(/^>\s*\[!card\]\s*id:\s*(.+)/);
+    if (!cardMatch) { i++; continue; }
+
+    const cardId = cardMatch[1].trim();
+    const blockStart = i;
+    let question = "";
+    let answer = "";
+    i++;
+
+    // Collect continuation lines
+    while (i <= doc.lines) {
+      const next = doc.line(i);
+      if (!next.text.trimStart().startsWith(">")) break;
+      const content = next.text.replace(/^>\s*/, "");
+      const qMatch = content.match(/\*\*Q:\*\*\s*(.*)/);
+      const aMatch = content.match(/\*\*A:\*\*\s*(.*)/);
+      if (qMatch) question = qMatch[1];
+      if (aMatch) answer = aMatch[1];
+      i++;
+    }
+
+    const blockEnd = i - 1;
+    const startLine = doc.line(blockStart);
+    const endLine = doc.line(blockEnd);
+
+    if (question && !cursorInRange(state, startLine.from, endLine.to)) {
+      decos.push(
+        Decoration.replace({
+          widget: new FlashcardWidget(question, answer, cardId),
+          block: true,
+        }).range(startLine.from, endLine.to),
+      );
+    }
+  }
+
+  decos.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of decos) {
+    builder.add(d.from, d.to, d.value);
+  }
+  return builder.finish();
+}
+
+export const flashcardDecoField = StateField.define<DecorationSet>({
+  create(state) {
+    return buildFlashcardDecorations(state);
+  },
+  update(decos, tr) {
+    if (tr.docChanged || tr.selection) {
+      return buildFlashcardDecorations(tr.state);
+    }
+    return decos;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 export const livePreviewStyles = EditorView.baseTheme({
   ".cm-heading-mark": {
     color: "var(--color-text-muted)",
@@ -352,9 +544,9 @@ export const livePreviewStyles = EditorView.baseTheme({
     color: "var(--color-text-muted)",
   },
   ".cm-link-text": {
-    color: "var(--color-purple)",
+    color: "var(--color-accent)",
     textDecoration: "underline",
-    textDecorationColor: "rgba(127, 119, 221, 0.3)",
+    textDecorationColor: "color-mix(in srgb, var(--color-accent) 35%, transparent)",
     cursor: "pointer",
   },
   ".cm-code-mark": {
@@ -363,8 +555,8 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "0.8em",
   },
   ".cm-codeblock-line": {
-    backgroundColor: "var(--color-surface)",
-    borderLeft: "2px solid var(--color-border)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 78%, transparent)",
+    borderLeft: "2px solid var(--color-border-strong)",
     paddingLeft: "12px !important",
   },
   ".cm-quote-mark": {
@@ -372,12 +564,12 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "0.8em",
   },
   ".cm-blockquote-line": {
-    borderLeft: "3px solid var(--color-purple)",
+    borderLeft: "3px solid var(--color-border-strong)",
     paddingLeft: "14px !important",
-    backgroundColor: "rgba(127, 119, 221, 0.04)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-alt) 68%, transparent)",
   },
   ".cm-list-mark": {
-    color: "var(--color-purple)",
+    color: "var(--color-accent)",
     fontWeight: "700",
   },
   ".cm-list-mark-active": {
@@ -391,8 +583,8 @@ export const livePreviewStyles = EditorView.baseTheme({
     color: "var(--color-text-muted)",
   },
   ".cm-table-header-line": {
-    backgroundColor: "var(--color-surface)",
-    borderBottom: "2px solid var(--color-border)",
+    backgroundColor: "var(--color-panel-alt)",
+    borderBottom: "1px solid var(--color-border-strong)",
     fontWeight: "600",
   },
   ".cm-table-separator-line": {
@@ -401,8 +593,8 @@ export const livePreviewStyles = EditorView.baseTheme({
     lineHeight: "1.2",
   },
   ".cm-table-row-line": {
-    backgroundColor: "var(--color-surface)",
-    borderBottom: "1px solid var(--color-border)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel) 82%, transparent)",
+    borderBottom: "1px solid var(--color-border-subtle)",
   },
   ".cm-table-widget": {
     padding: "8px 0",
@@ -415,19 +607,93 @@ export const livePreviewStyles = EditorView.baseTheme({
     fontSize: "14px",
   },
   ".cm-table-widget th": {
-    backgroundColor: "var(--color-surface)",
+    backgroundColor: "var(--color-panel-alt)",
     color: "var(--color-text)",
     fontWeight: "600",
     padding: "8px 16px",
-    borderBottom: "2px solid var(--color-border)",
+    borderBottom: "1px solid var(--color-border-strong)",
     textAlign: "left",
   },
   ".cm-table-widget td": {
     padding: "7px 16px",
-    borderBottom: "1px solid var(--color-border)",
+    borderBottom: "1px solid var(--color-border-subtle)",
     color: "var(--color-text)",
   },
   ".cm-table-widget tbody tr:hover": {
-    backgroundColor: "rgba(127, 119, 221, 0.05)",
+    backgroundColor: "color-mix(in srgb, var(--color-panel-active) 76%, transparent)",
+  },
+  // Strikethrough
+  ".cm-strikethrough-text": {
+    textDecoration: "line-through",
+    color: "var(--color-text-muted)",
+  },
+  ".cm-strikethrough-mark": {
+    color: "var(--color-text-muted)",
+    fontSize: "0.8em",
+  },
+  // Checkboxes
+  ".cm-checkbox": {
+    display: "inline-block",
+    width: "16px",
+    height: "16px",
+    lineHeight: "16px",
+    textAlign: "center" as const,
+    borderRadius: "3px",
+    cursor: "pointer",
+    verticalAlign: "middle",
+    marginRight: "4px",
+    fontSize: "12px",
+    userSelect: "none" as const,
+  },
+  ".cm-checkbox-unchecked": {
+    border: "2px solid var(--color-text-muted)",
+  },
+  ".cm-checkbox-checked": {
+    backgroundColor: "var(--color-accent)",
+    border: "2px solid var(--color-accent)",
+    color: "white",
+    fontWeight: "700",
+  },
+  ".cm-task-marker": {
+    color: "var(--color-text-muted)",
+    fontFamily: "monospace",
+  },
+  // Flashcards
+  ".cm-fc-card": {
+    background: "var(--color-panel-alt)",
+    border: "1px solid var(--color-border-subtle)",
+    borderLeft: "3px solid var(--color-accent)",
+    borderRadius: "12px",
+    padding: "16px 18px",
+    margin: "4px 0",
+  },
+  ".cm-fc-q": {
+    fontSize: "15px",
+    color: "var(--color-text)",
+    marginBottom: "8px",
+  },
+  ".cm-fc-a": {
+    fontSize: "14px",
+    color: "var(--color-text-muted)",
+  },
+  ".cm-fc-label": {
+    display: "inline-block",
+    width: "20px",
+    height: "20px",
+    lineHeight: "20px",
+    textAlign: "center" as const,
+    borderRadius: "4px",
+    fontSize: "11px",
+    fontWeight: "700",
+    fontFamily: "monospace",
+    color: "white",
+    marginRight: "8px",
+    verticalAlign: "middle",
+  },
+  ".cm-fc-label-q": {
+    backgroundColor: "var(--color-accent)",
+  },
+  ".cm-fc-label-a": {
+    backgroundColor: "var(--color-teal)",
   },
 });

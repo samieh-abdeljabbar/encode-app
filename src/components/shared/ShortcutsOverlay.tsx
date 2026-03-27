@@ -10,6 +10,9 @@ const SHORTCUTS = [
   { keys: "Cmd + Enter", action: "Submit answer" },
   { keys: "→ / Space", action: "Next section (Reader)" },
   { keys: "←", action: "Previous section (Reader)" },
+  { keys: "Cmd + =", action: "Zoom in" },
+  { keys: "Cmd + -", action: "Zoom out" },
+  { keys: "Cmd + 0", action: "Reset zoom" },
   { keys: "?", action: "Show shortcuts" },
   { keys: "Esc", action: "Close modal / cancel" },
 ];
