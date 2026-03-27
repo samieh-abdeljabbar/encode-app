@@ -1,8 +1,8 @@
+use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
-use regex::Regex;
 
 pub struct Database {
     conn: Mutex<Connection>,
@@ -45,7 +45,8 @@ impl Database {
             .map_err(|e| format!("Failed to run migration 002: {}", e))?;
 
         // Migration 003: add status column (idempotent — ALTER TABLE fails silently if column exists)
-        let _ = conn.execute_batch("ALTER TABLE file_index ADD COLUMN status TEXT DEFAULT 'unread'");
+        let _ =
+            conn.execute_batch("ALTER TABLE file_index ADD COLUMN status TEXT DEFAULT 'unread'");
 
         Ok(Database {
             conn: Mutex::new(conn),
@@ -115,12 +116,21 @@ impl Database {
         // Escape LIKE wildcards for defense-in-depth
         let escaped = prefix.replace('%', "\\%").replace('_', "\\_");
         let pattern = format!("{}%", escaped);
-        conn.execute("DELETE FROM vault_fts WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM file_index WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM sr_schedule WHERE file_path LIKE ?1 ESCAPE '\\'", params![pattern])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM vault_fts WHERE file_path LIKE ?1 ESCAPE '\\'",
+            params![pattern],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM file_index WHERE file_path LIKE ?1 ESCAPE '\\'",
+            params![pattern],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM sr_schedule WHERE file_path LIKE ?1 ESCAPE '\\'",
+            params![pattern],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -131,12 +141,17 @@ impl Database {
             conn.execute("DELETE FROM quiz_history", [])
                 .map_err(|e| e.to_string())?;
         } else {
-            let placeholders: Vec<String> = (1..=valid_subjects.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders: Vec<String> = (1..=valid_subjects.len())
+                .map(|i| format!("?{}", i))
+                .collect();
             let sql = format!(
                 "DELETE FROM quiz_history WHERE subject NOT IN ({})",
                 placeholders.join(", ")
             );
-            let params: Vec<&dyn rusqlite::types::ToSql> = valid_subjects.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = valid_subjects
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
             conn.execute(&sql, params.as_slice())
                 .map_err(|e| e.to_string())?;
         }
@@ -279,7 +294,11 @@ impl Database {
     }
 
     /// Get cards at risk of lapse (due within threshold_days, with long intervals)
-    pub fn get_at_risk_cards(&self, today: &str, threshold_days: i32) -> Result<Vec<DueCard>, String> {
+    pub fn get_at_risk_cards(
+        &self,
+        today: &str,
+        threshold_days: i32,
+    ) -> Result<Vec<DueCard>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
@@ -351,7 +370,11 @@ pub struct SubjectGrade {
 
 impl Database {
     pub fn record_quiz_result(
-        &self, subject: &str, topic: &str, bloom_level: u32, correct: bool,
+        &self,
+        subject: &str,
+        topic: &str,
+        bloom_level: u32,
+        correct: bool,
     ) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         conn.execute(
@@ -383,16 +406,18 @@ impl Database {
              ORDER BY subject"
         ).map_err(|e| e.to_string())?;
 
-        let grades = stmt.query_map([], |row| {
-            Ok(SubjectGrade {
-                subject: row.get(0)?,
-                total_quizzes: row.get(1)?,
-                avg_score: row.get(2)?,
-                last_quiz_date: row.get(3)?,
+        let grades = stmt
+            .query_map([], |row| {
+                Ok(SubjectGrade {
+                    subject: row.get(0)?,
+                    total_quizzes: row.get(1)?,
+                    avg_score: row.get(2)?,
+                    last_quiz_date: row.get(3)?,
+                })
             })
-        }).map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
         Ok(grades)
     }
@@ -409,13 +434,20 @@ pub struct SubjectMastery {
 }
 
 impl Database {
-    pub fn get_subject_mastery(&self, subject: &str, today: &str) -> Result<SubjectMastery, String> {
+    pub fn get_subject_mastery(
+        &self,
+        subject: &str,
+        today: &str,
+    ) -> Result<SubjectMastery, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
 
-        let chapters_total: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapter'",
-            params![subject], |row| row.get(0),
-        ).unwrap_or(0);
+        let chapters_total: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapter'",
+                params![subject],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
         let chapters_read: u32 = conn.query_row(
             "SELECT COUNT(*) FROM file_index WHERE subject = ?1 AND file_type = 'chapter' AND status = 'digested'",
@@ -428,21 +460,34 @@ impl Database {
             params![subject], |row| row.get(0),
         ).unwrap_or(0.0);
 
-        let cards_total: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM sr_schedule s
+        let cards_total: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sr_schedule s
              JOIN file_index f ON s.file_path = f.file_path
              WHERE f.subject = ?1",
-            params![subject], |row| row.get(0),
-        ).unwrap_or(0);
+                params![subject],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
-        let cards_due: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM sr_schedule s
+        let cards_due: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sr_schedule s
              JOIN file_index f ON s.file_path = f.file_path
              WHERE f.subject = ?1 AND s.next_review <= ?2",
-            params![subject, today], |row| row.get(0),
-        ).unwrap_or(0);
+                params![subject, today],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
 
-        Ok(SubjectMastery { subject: subject.to_string(), chapters_total, chapters_read, avg_quiz_score, cards_total, cards_due })
+        Ok(SubjectMastery {
+            subject: subject.to_string(),
+            chapters_total,
+            chapters_read,
+            avg_quiz_score,
+            cards_total,
+            cards_due,
+        })
     }
 }
 
@@ -466,9 +511,14 @@ pub struct WeakTopic {
 }
 
 impl Database {
-    pub fn get_quiz_history_timeline(&self, subject: Option<&str>) -> Result<Vec<QuizHistoryPoint>, String> {
+    pub fn get_quiz_history_timeline(
+        &self,
+        subject: Option<&str>,
+    ) -> Result<Vec<QuizHistoryPoint>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(subj) = subject {
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(subj) =
+            subject
+        {
             (
                 "SELECT DATE(attempted_at) as date, subject,
                         COUNT(*) as total_questions,
@@ -493,7 +543,8 @@ impl Database {
             )
         };
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
         let results = stmt
             .query_map(param_refs.as_slice(), |row| {
                 Ok(QuizHistoryPoint {
@@ -512,7 +563,9 @@ impl Database {
 
     pub fn get_weak_topics(&self, subject: Option<&str>) -> Result<Vec<WeakTopic>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(subj) = subject {
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(subj) =
+            subject
+        {
             (
                 "SELECT subject, topic, bloom_level,
                         COUNT(*) as total,
@@ -541,7 +594,8 @@ impl Database {
             )
         };
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
         let results = stmt
             .query_map(param_refs.as_slice(), |row| {
                 Ok(WeakTopic {
@@ -644,13 +698,16 @@ impl Database {
             conn.execute("DELETE FROM study_sessions", [])
                 .map_err(|e| e.to_string())?;
         } else {
-            let placeholders: Vec<String> = (1..=valid_slugs.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders: Vec<String> =
+                (1..=valid_slugs.len()).map(|i| format!("?{}", i)).collect();
             let sql = format!(
                 "DELETE FROM study_sessions WHERE subject_slug NOT IN ({})",
                 placeholders.join(", ")
             );
-            let params: Vec<&dyn rusqlite::types::ToSql> =
-                valid_slugs.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = valid_slugs
+                .iter()
+                .map(|s| s as &dyn rusqlite::types::ToSql)
+                .collect();
             conn.execute(&sql, params.as_slice())
                 .map_err(|e| e.to_string())?;
         }
@@ -669,8 +726,11 @@ impl Database {
     /// Delete a single card's schedule entry
     pub fn delete_card_schedule(&self, card_id: &str) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM sr_schedule WHERE card_id = ?1", params![card_id])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM sr_schedule WHERE card_id = ?1",
+            params![card_id],
+        )
+        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -701,15 +761,16 @@ impl Database {
                 continue;
             }
 
-            let card_ids = file_cards.entry(file_path.clone()).or_insert_with(|| {
-                match std::fs::read_to_string(&full_path) {
-                    Ok(content) => card_id_re
-                        .captures_iter(&content)
-                        .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-                        .collect(),
-                    Err(_) => Vec::new(),
-                }
-            });
+            let card_ids =
+                file_cards.entry(file_path.clone()).or_insert_with(
+                    || match std::fs::read_to_string(&full_path) {
+                        Ok(content) => card_id_re
+                            .captures_iter(&content)
+                            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+                            .collect(),
+                        Err(_) => Vec::new(),
+                    },
+                );
 
             if !card_ids.contains(card_id) {
                 to_delete.push(card_id.clone());
@@ -741,8 +802,8 @@ pub struct SandboxDb {
 
 impl SandboxDb {
     pub fn new() -> Result<Self, String> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| format!("Failed to open sandbox: {}", e))?;
+        let conn =
+            Connection::open_in_memory().map_err(|e| format!("Failed to open sandbox: {}", e))?;
         // Set a busy timeout for safety
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| format!("Failed to set timeout: {}", e))?;
@@ -750,7 +811,8 @@ impl SandboxDb {
     }
 
     pub fn execute_setup(&self, sql: &str) -> Result<(), String> {
-        self.conn.execute_batch(sql)
+        self.conn
+            .execute_batch(sql)
             .map_err(|e| format!("Setup SQL failed: {}", e))
     }
 
@@ -761,7 +823,9 @@ impl SandboxDb {
             return Err("Only SELECT queries are allowed in the sandbox.".to_string());
         }
 
-        let mut stmt = self.conn.prepare(sql)
+        let mut stmt = self
+            .conn
+            .prepare(sql)
             .map_err(|e| format!("Query error: {}", e))?;
 
         let column_count = stmt.column_count();
@@ -770,14 +834,21 @@ impl SandboxDb {
             .collect();
 
         let mut rows: Vec<Vec<String>> = Vec::new();
-        let mut row_iter = stmt.query([])
+        let mut row_iter = stmt
+            .query([])
             .map_err(|e| format!("Query execution failed: {}", e))?;
 
-        while let Some(row) = row_iter.next().map_err(|e| format!("Row fetch failed: {}", e))? {
-            if rows.len() >= 100 { break; } // Max 100 rows
+        while let Some(row) = row_iter
+            .next()
+            .map_err(|e| format!("Row fetch failed: {}", e))?
+        {
+            if rows.len() >= 100 {
+                break;
+            } // Max 100 rows
             let mut values: Vec<String> = Vec::new();
             for i in 0..column_count {
-                let val: String = row.get::<_, rusqlite::types::Value>(i)
+                let val: String = row
+                    .get::<_, rusqlite::types::Value>(i)
                     .map(|v| match v {
                         rusqlite::types::Value::Null => "NULL".to_string(),
                         rusqlite::types::Value::Integer(n) => n.to_string(),
@@ -792,7 +863,11 @@ impl SandboxDb {
         }
 
         let row_count = rows.len();
-        Ok(QueryResult { columns, rows, row_count })
+        Ok(QueryResult {
+            columns,
+            rows,
+            row_count,
+        })
     }
 }
 

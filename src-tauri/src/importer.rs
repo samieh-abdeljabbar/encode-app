@@ -83,7 +83,11 @@ fn html_to_markdown(html: &str) -> String {
         let prefix = "#".repeat(level);
         text = h_re
             .replace_all(&text, |caps: &regex::Captures| {
-                format!("\n\n{} {}\n\n", prefix, strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim())
+                format!(
+                    "\n\n{} {}\n\n",
+                    prefix,
+                    strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim()
+                )
             })
             .to_string();
     }
@@ -92,7 +96,10 @@ fn html_to_markdown(html: &str) -> String {
     let p_re = Regex::new(r"(?is)<p[^>]*>(.*?)</p>").unwrap();
     text = p_re
         .replace_all(&text, |caps: &regex::Captures| {
-            format!("\n\n{}\n", strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim())
+            format!(
+                "\n\n{}\n",
+                strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim()
+            )
         })
         .to_string();
 
@@ -100,7 +107,10 @@ fn html_to_markdown(html: &str) -> String {
     let li_re = Regex::new(r"(?is)<li[^>]*>(.*?)</li>").unwrap();
     text = li_re
         .replace_all(&text, |caps: &regex::Captures| {
-            format!("\n- {}", strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim())
+            format!(
+                "\n- {}",
+                strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim()
+            )
         })
         .to_string();
 
@@ -111,25 +121,39 @@ fn html_to_markdown(html: &str) -> String {
     // Convert bold/italic
     for tag in &["strong", "b"] {
         let re = Regex::new(&format!(r"(?is)<{tag}>(.*?)</{tag}>")).unwrap();
-        text = re.replace_all(&text, |caps: &regex::Captures| {
-            format!("**{}**", strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim())
-        }).to_string();
+        text = re
+            .replace_all(&text, |caps: &regex::Captures| {
+                format!(
+                    "**{}**",
+                    strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim()
+                )
+            })
+            .to_string();
     }
 
     for tag in &["em", "i"] {
         let re = Regex::new(&format!(r"(?is)<{tag}>(.*?)</{tag}>")).unwrap();
-        text = re.replace_all(&text, |caps: &regex::Captures| {
-            format!("*{}*", strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim())
-        }).to_string();
+        text = re
+            .replace_all(&text, |caps: &regex::Captures| {
+                format!(
+                    "*{}*",
+                    strip_tags(caps.get(1).map_or("", |m| m.as_str())).trim()
+                )
+            })
+            .to_string();
     }
 
     // Convert links
     let link_re = Regex::new(r#"(?is)<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#).unwrap();
-    text = link_re.replace_all(&text, |caps: &regex::Captures| {
-        let href = caps.get(1).map_or("", |m| m.as_str());
-        let label = strip_tags(caps.get(2).map_or("", |m| m.as_str())).trim().to_string();
-        format!("[{}]({})", label, href)
-    }).to_string();
+    text = link_re
+        .replace_all(&text, |caps: &regex::Captures| {
+            let href = caps.get(1).map_or("", |m| m.as_str());
+            let label = strip_tags(caps.get(2).map_or("", |m| m.as_str()))
+                .trim()
+                .to_string();
+            format!("[{}]({})", label, href)
+        })
+        .to_string();
 
     // Strip all remaining HTML tags
     text = strip_tags(&text);

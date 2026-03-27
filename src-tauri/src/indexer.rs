@@ -83,7 +83,14 @@ fn parse_and_index_sessions(content: &str, db: &Database) -> Result<usize, Strin
         if let Some(rest) = line.strip_prefix("> [!session] id: ") {
             // Save previous session if we were in one
             if in_session && !id.is_empty() {
-                db.record_study_session(&id, &subject_name, &subject_slug, duration, &started, &completed)?;
+                db.record_study_session(
+                    &id,
+                    &subject_name,
+                    &subject_slug,
+                    duration,
+                    &started,
+                    &completed,
+                )?;
                 count += 1;
             }
             id = rest.trim().to_string();
@@ -112,7 +119,14 @@ fn parse_and_index_sessions(content: &str, db: &Database) -> Result<usize, Strin
 
     // Don't forget the last session
     if in_session && !id.is_empty() {
-        db.record_study_session(&id, &subject_name, &subject_slug, duration, &started, &completed)?;
+        db.record_study_session(
+            &id,
+            &subject_name,
+            &subject_slug,
+            duration,
+            &started,
+            &completed,
+        )?;
         count += 1;
     }
 
@@ -145,7 +159,14 @@ fn index_single_file(path: &Path, vault_root: &Path, db: &Database) -> Result<()
 }
 
 /// Extract frontmatter fields from markdown content
-fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+fn parse_frontmatter(
+    content: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     if !content.starts_with("---") {
         return (None, None, None, None);
     }
@@ -179,44 +200,40 @@ fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<S
 }
 
 /// Start watching the vault directory for changes and re-index modified files
-pub fn start_watcher(
-    vault_path: PathBuf,
-    db: Arc<Database>,
-) -> Result<RecommendedWatcher, String> {
+pub fn start_watcher(vault_path: PathBuf, db: Arc<Database>) -> Result<RecommendedWatcher, String> {
     let vault_root = vault_path.clone();
 
-    let mut watcher =
-        notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        for path in &event.paths {
-                            if path.extension().is_some_and(|ext| ext == "md")
-                                && !path.starts_with(vault_root.join(".encode"))
-                            {
-                                if let Err(e) = index_single_file(path, &vault_root, &db) {
-                                    eprintln!("Re-index failed for {:?}: {}", path, e);
-                                }
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+        if let Ok(event) = res {
+            match event.kind {
+                EventKind::Create(_) | EventKind::Modify(_) => {
+                    for path in &event.paths {
+                        if path.extension().is_some_and(|ext| ext == "md")
+                            && !path.starts_with(vault_root.join(".encode"))
+                        {
+                            if let Err(e) = index_single_file(path, &vault_root, &db) {
+                                eprintln!("Re-index failed for {:?}: {}", path, e);
                             }
                         }
                     }
-                    EventKind::Remove(_) => {
-                        for path in &event.paths {
-                            if path.extension().is_some_and(|ext| ext == "md") {
-                                let relative = path
-                                    .strip_prefix(&vault_root)
-                                    .unwrap_or(path)
-                                    .to_string_lossy()
-                                    .to_string();
-                                let _ = db.remove_file(&relative);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
+                EventKind::Remove(_) => {
+                    for path in &event.paths {
+                        if path.extension().is_some_and(|ext| ext == "md") {
+                            let relative = path
+                                .strip_prefix(&vault_root)
+                                .unwrap_or(path)
+                                .to_string_lossy()
+                                .to_string();
+                            let _ = db.remove_file(&relative);
+                        }
+                    }
+                }
+                _ => {}
             }
-        })
-        .map_err(|e| format!("Failed to create watcher: {}", e))?;
+        }
+    })
+    .map_err(|e| format!("Failed to create watcher: {}", e))?;
 
     watcher
         .watch(&vault_path, RecursiveMode::Recursive)

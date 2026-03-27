@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AppConfig, DailyCommitment, StreakInfo } from "../lib/types";
 import * as tauri from "../lib/tauri";
+import { localDateString } from "../lib/dates";
 
 interface AppState {
   config: AppConfig | null;
@@ -16,7 +17,7 @@ interface AppState {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateString();
 }
 
 export const useAppStore = create<AppState>((set) => ({

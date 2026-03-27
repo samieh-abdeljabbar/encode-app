@@ -76,10 +76,17 @@ export interface StreakInfo {
 /** App-wide settings stored in config.toml */
 export interface AppConfig {
   vault_path: string;
-  ai_provider: "ollama" | "claude" | "gemini" | "openai" | "deepseek" | "none";
+  ai_provider: "ollama" | "claude" | "gemini" | "openai" | "deepseek" | "cli" | "none";
   ollama_model: string;
   ollama_url: string;
+  openai_model: string;
+  deepseek_model: string;
+  claude_model: string;
+  gemini_model: string;
   api_key: string;
+  cli_command: string;
+  cli_args: string[];
+  cli_workdir: string;
   // User profile
   user_role: string;
   user_hobbies: string;
@@ -90,6 +97,18 @@ export interface AppConfig {
   pomodoro_long_break_secs: number;
   // Quick timer presets (seconds)
   quick_timers: number[];
+}
+
+/** Recent AI activity entry returned from the backend */
+export interface AiActivityEntry {
+  request_id: string;
+  feature: string;
+  provider: string;
+  model_or_command: string;
+  status: "start" | "success" | "failure" | string;
+  started_at: string;
+  duration_ms: number | null;
+  error: string | null;
 }
 
 /** Aggregated study time per subject */

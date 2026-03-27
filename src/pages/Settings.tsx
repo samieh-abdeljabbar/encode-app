@@ -3,6 +3,10 @@ import { useAppStore } from "../stores/app";
 import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection } from "../lib/tauri";
 import type { AppConfig } from "../lib/types";
 import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
+import { MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
+
+const CODEX_PRESET_PATH = "/Users/samiehabdeljabbar/Desktop/actually_learn/scripts/encode-codex-cli.sh";
+const CLAUDE_PRESET_PATH = "/Users/samiehabdeljabbar/Desktop/actually_learn/scripts/encode-claude-cli.sh";
 
 const POPULAR_MODELS = [
   { id: "llama3.1:8b", name: "Llama 3.1 8B", size: "4.7 GB", desc: "Best general-purpose local model" },
@@ -14,7 +18,23 @@ const POPULAR_MODELS = [
   { id: "qwen2.5:7b", name: "Qwen 2.5 7B", size: "4.4 GB", desc: "Excellent multilingual, good at math" },
 ];
 
-function TestConnectionButton({ provider, model, url, apiKey }: { provider: string; model: string; url: string; apiKey: string }) {
+function TestConnectionButton({
+  provider,
+  model,
+  url,
+  apiKey,
+  cliCommand,
+  cliArgs,
+  cliWorkdir,
+}: {
+  provider: string;
+  model: string;
+  url: string;
+  apiKey: string;
+  cliCommand: string;
+  cliArgs: string[];
+  cliWorkdir: string;
+}) {
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -22,7 +42,7 @@ function TestConnectionButton({ provider, model, url, apiKey }: { provider: stri
     setStatus("testing");
     setErrorMsg("");
     try {
-      await testAiConnection(provider, model, url, apiKey);
+      await testAiConnection(provider, model, url, apiKey, cliCommand, cliArgs, cliWorkdir);
       setStatus("success");
       setTimeout(() => setStatus("idle"), 3000);
     } catch (err) {
@@ -33,13 +53,13 @@ function TestConnectionButton({ provider, model, url, apiKey }: { provider: stri
 
   return (
     <div className="flex items-center gap-3">
-      <button
+      <PrimaryButton
         onClick={handleTest}
         disabled={status === "testing"}
-        className="px-3 py-1.5 text-xs bg-purple text-white rounded hover:opacity-90 disabled:opacity-50"
+        className="px-3 py-1.5 text-xs"
       >
         {status === "testing" ? "Testing..." : "Test Connection"}
-      </button>
+      </PrimaryButton>
       {status === "success" && <span className="text-xs text-teal">Connected</span>}
       {status === "error" && <span className="text-xs text-coral truncate max-w-[300px]">{errorMsg}</span>}
     </div>
@@ -49,16 +69,24 @@ function TestConnectionButton({ provider, model, url, apiKey }: { provider: stri
 export default function Settings() {
   const { config, loadConfig, saveConfig } = useAppStore();
   const [vaultPath, setVaultPath] = useState("");
-  const [provider, setProvider] = useState("none");
+  const [provider, setProvider] = useState<AppConfig["ai_provider"]>("none");
   const [ollamaModel, setOllamaModel] = useState("llama3.1:8b");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
+  const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
+  const [deepseekModel, setDeepseekModel] = useState("deepseek-chat");
+  const [claudeModel, setClaudeModel] = useState("claude-sonnet-4-20250514");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
   const [apiKey, setApiKey] = useState("");
+  const [cliCommand, setCliCommand] = useState("");
+  const [cliArgsText, setCliArgsText] = useState("");
+  const [cliWorkdir, setCliWorkdir] = useState("");
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "available" | "unavailable">("checking");
   const [indexCount, setIndexCount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
+  const [activeTheme, setActiveTheme] = useState(() => getCurrentTheme());
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("encode-font-size") || "16");
   const [fontFamily, setFontFamily] = useState(() => localStorage.getItem("encode-font-family") || "georgia");
   const [contentWidth, setContentWidth] = useState(() => localStorage.getItem("encode-content-width") || "medium");
@@ -77,7 +105,14 @@ export default function Settings() {
       setProvider(config.ai_provider);
       setOllamaModel(config.ollama_model);
       setOllamaUrl(config.ollama_url);
+      setOpenaiModel(config.openai_model);
+      setDeepseekModel(config.deepseek_model);
+      setClaudeModel(config.claude_model);
+      setGeminiModel(config.gemini_model);
       setApiKey(config.api_key || "");
+      setCliCommand(config.cli_command || "");
+      setCliArgsText((config.cli_args || []).join("\n"));
+      setCliWorkdir(config.cli_workdir || "");
       setUserRole(config.user_role || "");
       setUserHobbies(config.user_hobbies || "");
       setUserLearningStyle(config.user_learning_style || "");
@@ -97,13 +132,25 @@ export default function Settings() {
   }, [ollamaUrl]);
 
   const handleSave = async () => {
+    const cliArgs = cliArgsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
     setSaving(true);
     await saveConfig({
       vault_path: vaultPath,
-      ai_provider: provider as AppConfig["ai_provider"],
+      ai_provider: provider,
       ollama_model: ollamaModel,
       ollama_url: ollamaUrl,
+      openai_model: openaiModel,
+      deepseek_model: deepseekModel,
+      claude_model: claudeModel,
+      gemini_model: geminiModel,
       api_key: apiKey,
+      cli_command: cliCommand,
+      cli_args: cliArgs,
+      cli_workdir: cliWorkdir,
       user_role: userRole,
       user_hobbies: userHobbies,
       user_learning_style: userLearningStyle,
@@ -120,12 +167,47 @@ export default function Settings() {
     setIndexCount(count);
   };
 
+  const currentProviderModel =
+    provider === "openai" ? openaiModel
+      : provider === "deepseek" ? deepseekModel
+        : provider === "claude" ? claudeModel
+          : provider === "gemini" ? geminiModel
+            : provider === "cli" ? cliCommand
+              : ollamaModel;
+
+  const currentCliArgs = cliArgsText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const applyCliPreset = (preset: "codex" | "claude") => {
+    setProvider("cli");
+    if (preset === "codex") {
+      setCliCommand(CODEX_PRESET_PATH);
+      setCliArgsText(["--model", "gpt-5.4"].join("\n"));
+    } else {
+      setCliCommand(CLAUDE_PRESET_PATH);
+      setCliArgsText(["--output-format", "text", "--model", "sonnet"].join("\n"));
+    }
+    setCliWorkdir(vaultPath);
+  };
+
   return (
-    <div className="max-w-xl mx-auto py-8 px-8 space-y-8">
-      <h2 className="text-xl font-semibold">Settings</h2>
+    <div className="mx-auto max-w-5xl px-6 py-8 space-y-8">
+      <PageHeader
+        title="Settings"
+        subtitle="Configure providers, appearance, and vault behavior without changing the study workflow."
+        meta={
+          <>
+            <MetaChip>{provider === "none" ? "AI disabled" : `Provider: ${provider}`}</MetaChip>
+            <MetaChip>{vaultPath || "Vault loading..."}</MetaChip>
+          </>
+        }
+        className="rounded-2xl border border-border-subtle"
+      />
 
       {/* About You — User Profile */}
-      <div>
+      <Panel title="About You">
         <h3 className="text-sm font-medium text-text mb-3">About You</h3>
         <p className="text-xs text-text-muted mb-4">
           Help the AI personalize questions and examples to your background. All fields are optional.
@@ -162,22 +244,25 @@ export default function Settings() {
             />
           </div>
         </div>
-      </div>
+      </Panel>
 
       {/* Theme */}
-      <div>
+      <Panel title="Theme">
         <h3 className="text-sm font-medium text-text mb-3">Theme</h3>
         <div className="grid grid-cols-2 gap-2">
           {themes.map((t) => {
-            const isActive = getCurrentTheme() === t.id;
+            const isActive = activeTheme === t.id;
             return (
               <button
                 key={t.id}
-                onClick={() => { applyTheme(t.id); /* force re-render */ setFontSize(fontSize); }}
+                onClick={() => {
+                  applyTheme(t.id);
+                  setActiveTheme(t.id);
+                }}
                 className={`flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
                   isActive
-                    ? "border-purple bg-purple/10"
-                    : "border-border bg-surface hover:border-purple/30"
+                    ? "border-accent/40 bg-accent-soft"
+                    : "border-border-subtle bg-panel-alt hover:border-border-strong"
                 }`}
               >
                 <div
@@ -189,6 +274,7 @@ export default function Settings() {
                 />
                 <div>
                   <p className={`text-sm font-medium ${isActive ? "text-purple" : "text-text"}`}>{t.name}</p>
+                  <p className={`text-sm font-medium ${isActive ? "text-accent" : "text-text"}`}>{t.name}</p>
                   <div className="flex gap-1 mt-1">
                     {[t.colors.purple, t.colors.teal, t.colors.coral, t.colors.amber].map((c, i) => (
                       <div key={i} className="w-3 h-3 rounded-full" style={{ backgroundColor: c }} />
@@ -199,25 +285,25 @@ export default function Settings() {
             );
           })}
         </div>
-      </div>
+      </Panel>
 
       {/* AI Provider */}
-      <section className="space-y-4">
+      <Panel title="AI Provider">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted">AI Provider</h3>
 
         <div className="grid grid-cols-2 gap-2">
-          {(["none", "ollama", "claude", "gemini", "openai", "deepseek"] as const).map((p) => (
+          {(["none", "ollama", "claude", "gemini", "openai", "deepseek", "cli"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
               className={`px-4 py-3 rounded-lg border text-left transition-colors ${
                 provider === p
-                  ? "border-purple bg-purple/10 text-text"
-                  : "border-border bg-surface text-text-muted hover:border-purple/50"
+                  ? "border-accent/40 bg-accent-soft text-text"
+                  : "border-border-subtle bg-panel-alt text-text-muted hover:border-border-strong"
               }`}
             >
               <span className="text-sm font-medium block">
-                {p === "none" ? "No AI" : p === "ollama" ? "Ollama" : p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : p === "openai" ? "OpenAI" : "DeepSeek"}
+                {p === "none" ? "No AI" : p === "ollama" ? "Ollama" : p === "claude" ? "Claude" : p === "gemini" ? "Gemini" : p === "openai" ? "OpenAI" : p === "deepseek" ? "DeepSeek" : "CLI Agent"}
               </span>
               <span className="text-xs text-text-muted">
                 {p === "none" && "Study without AI feedback"}
@@ -226,6 +312,7 @@ export default function Settings() {
                 {p === "gemini" && "Google API (fast, free tier)"}
                 {p === "openai" && "GPT-4o, GPT-4o-mini"}
                 {p === "deepseek" && "DeepSeek API (affordable)"}
+                {p === "cli" && "Use a local non-interactive AI CLI"}
               </span>
               {p === "ollama" && provider === "ollama" && (
                 <span className={`text-[10px] mt-1 block ${
@@ -240,7 +327,7 @@ export default function Settings() {
 
         {/* Ollama settings */}
         {provider === "ollama" && (
-          <div className="space-y-4 p-4 bg-surface rounded-lg border border-border">
+          <div className="space-y-4 rounded-2xl border border-border-subtle bg-panel-alt p-4">
             <div>
               <label className="block text-xs text-text-muted mb-2">Model</label>
               {installedModels.length === 0 && ollamaStatus === "available" ? (
@@ -372,7 +459,7 @@ export default function Settings() {
 
         {/* API Key for cloud providers */}
         {(provider === "claude" || provider === "gemini" || provider === "openai" || provider === "deepseek") && (
-          <div className="p-4 bg-surface rounded-lg border border-border space-y-3">
+          <div className="space-y-3 rounded-2xl border border-border-subtle bg-panel-alt p-4">
             <div>
               <label className="block text-xs text-text-muted mb-2">
                 {provider === "claude" ? "Claude (Anthropic)" : provider === "gemini" ? "Gemini (Google)" : provider === "openai" ? "OpenAI" : "DeepSeek"} API Key
@@ -400,12 +487,18 @@ export default function Settings() {
                 {provider === "deepseek" && "Get your key at platform.deepseek.com"}
               </p>
             </div>
-            {(provider === "openai" || provider === "deepseek") && (
+            <div>
               <div>
                 <label className="block text-xs text-text-muted mb-1">Model</label>
                 <select
-                  value={ollamaModel}
-                  onChange={(e) => setOllamaModel(e.target.value)}
+                  value={currentProviderModel}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (provider === "openai") setOpenaiModel(next);
+                    else if (provider === "deepseek") setDeepseekModel(next);
+                    else if (provider === "claude") setClaudeModel(next);
+                    else if (provider === "gemini") setGeminiModel(next);
+                  }}
                   className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
                 >
                   {provider === "openai" && (
@@ -423,22 +516,123 @@ export default function Settings() {
                       <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
                     </>
                   )}
+                  {provider === "claude" && (
+                    <>
+                      <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                      <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
+                    </>
+                  )}
+                  {provider === "gemini" && (
+                    <>
+                      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                      <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    </>
+                  )}
                 </select>
               </div>
-            )}
+            </div>
             {apiKey && (
-              <TestConnectionButton provider={provider} model={ollamaModel} url={ollamaUrl} apiKey={apiKey} />
+              <TestConnectionButton
+                provider={provider}
+                model={currentProviderModel}
+                url={ollamaUrl}
+                apiKey={apiKey}
+                cliCommand={cliCommand}
+                cliArgs={currentCliArgs}
+                cliWorkdir={cliWorkdir}
+              />
             )}
           </div>
         )}
-      </section>
+
+        {provider === "cli" && (
+          <div className="space-y-3 rounded-2xl border border-border-subtle bg-panel-alt p-4">
+            <div>
+              <label className="block text-xs text-text-muted mb-2">Common Presets</label>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => applyCliPreset("codex")}
+                  className="rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs text-text transition-colors hover:border-border-strong"
+                >
+                  Use Codex CLI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyCliPreset("claude")}
+                  className="rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs text-text transition-colors hover:border-border-strong"
+                >
+                  Use Claude Code
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-muted mb-1">CLI Command</label>
+              <input
+                type="text"
+                value={cliCommand}
+                onChange={(e) => setCliCommand(e.target.value)}
+                placeholder="e.g., codex, llm, /usr/local/bin/my-ai-cli"
+                className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+              />
+              <p className="text-[10px] text-text-muted mt-1.5">
+                Encode will run this command in the background and pipe prompts through stdin.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-muted mb-1">CLI Args</label>
+              <textarea
+                value={cliArgsText}
+                onChange={(e) => setCliArgsText(e.target.value)}
+                rows={4}
+                placeholder={"One argument per line\nExample:\n--stdio\n--model\nsonnet"}
+                className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text resize-none focus:outline-none focus:border-purple"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Working Directory</label>
+              <input
+                type="text"
+                value={cliWorkdir}
+                onChange={(e) => setCliWorkdir(e.target.value)}
+                placeholder={vaultPath || "Leave blank to use the vault root"}
+                className="w-full px-3 py-2 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
+              />
+            </div>
+
+            <div className="p-3 bg-bg rounded border border-border text-xs text-text-muted space-y-1">
+              <p>Use a non-interactive CLI that reads from stdin and writes its final answer to stdout.</p>
+              <p>No API key is required here unless your chosen CLI needs one separately.</p>
+              <p>The preset scripts in this repo normalize Codex CLI and Claude Code for Encode.</p>
+            </div>
+
+            {cliCommand.trim() && (
+              <TestConnectionButton
+                provider={provider}
+                model={currentProviderModel}
+                url={ollamaUrl}
+                apiKey={apiKey}
+                cliCommand={cliCommand}
+                cliArgs={currentCliArgs}
+                cliWorkdir={cliWorkdir || vaultPath}
+              />
+            )}
+          </div>
+        )}
+      </Panel>
 
       {/* Appearance */}
-      <section className="space-y-4">
+      <Panel title="Appearance">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted">Appearance</h3>
         <div>
-          <label className="block text-xs text-text-muted mb-2">Font Size</label>
-          <div className="flex gap-2">
+          <label className="block text-xs text-text-muted mb-2">
+            Font Size <span className="text-text ml-1">{fontSize}px</span>
+          </label>
+          <div className="flex gap-2 items-center">
             {(["small", "medium", "large"] as const).map((size) => {
               const px = size === "small" ? "14" : size === "medium" ? "16" : "18";
               const isActive = fontSize === px;
@@ -461,6 +655,7 @@ export default function Settings() {
               );
             })}
           </div>
+          <p className="text-[10px] text-text-muted mt-1">Use Cmd+= / Cmd+- for fine control (10-24px)</p>
         </div>
 
         {/* Font Family */}
@@ -526,25 +721,25 @@ export default function Settings() {
             })}
           </div>
         </div>
-      </section>
+      </Panel>
 
       {/* Save */}
-      <button
+      <PrimaryButton
         onClick={handleSave}
         disabled={saving}
-        className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        className="px-6 py-2 text-sm"
       >
         {saving ? "Saving..." : "Save Settings"}
-      </button>
+      </PrimaryButton>
 
       {/* Vault */}
-      <section className="border-t border-border pt-6">
+      <Panel title="Vault">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted mb-3">Vault</h3>
         <div className="flex items-center gap-2">
-          <p className="flex-1 text-sm text-text-muted bg-surface rounded px-3 py-2 border border-border font-mono text-xs">
+          <p className="flex-1 rounded-xl border border-border-subtle bg-panel-alt px-3 py-2 font-mono text-xs text-text-muted">
             {vaultPath}
           </p>
-          <button
+          <SecondaryButton
             onClick={() => {
               import("@tauri-apps/plugin-opener").then(({ revealItemInDir }) => {
                 revealItemInDir(vaultPath);
@@ -555,29 +750,29 @@ export default function Settings() {
                 }).catch(() => {});
               });
             }}
-            className="px-3 py-2 text-xs text-text-muted border border-border rounded hover:text-purple hover:border-purple transition-colors shrink-0"
+            className="shrink-0 px-3 py-2 text-xs"
           >
             Open Folder
-          </button>
+          </SecondaryButton>
         </div>
         <p className="text-[10px] text-text-muted mt-1.5">
           All your notes, flashcards, and quizzes are stored here as markdown files. Not hardcoded — each user gets their own vault.
         </p>
-      </section>
+      </Panel>
 
       {/* Search Index */}
-      <section className="border-t border-border pt-6">
+      <Panel title="Search Index">
         <h3 className="text-sm font-medium uppercase tracking-wider text-text-muted mb-3">Search Index</h3>
-        <button
+        <SecondaryButton
           onClick={handleRebuild}
-          className="px-4 py-2 bg-surface border border-border rounded text-sm text-text-muted hover:text-text hover:border-purple transition-colors"
+          className="px-4 py-2 text-sm"
         >
           Rebuild Index
-        </button>
+        </SecondaryButton>
         {indexCount !== null && (
           <p className="text-xs text-teal mt-2">Indexed {indexCount} files</p>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

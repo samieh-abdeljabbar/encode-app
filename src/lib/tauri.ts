@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiActivityEntry,
   AppConfig,
   DailyCommitment,
   FileEntry,
@@ -173,8 +174,11 @@ export interface AiResponse {
   model: string;
 }
 
-export const aiRequest = (systemPrompt: string, userPrompt: string, maxTokens: number) =>
-  invoke<AiResponse>("ai_request_cmd", { systemPrompt, userPrompt, maxTokens });
+export const aiRequest = (feature: string, systemPrompt: string, userPrompt: string, maxTokens: number) =>
+  invoke<AiResponse>("ai_request_cmd", { feature, systemPrompt, userPrompt, maxTokens });
+
+export const getAiActivity = () =>
+  invoke<AiActivityEntry[]>("get_ai_activity").catch(() => []);
 
 export const checkOllama = (url: string) =>
   invoke<boolean>("check_ollama", { url });
@@ -182,5 +186,21 @@ export const checkOllama = (url: string) =>
 export const listOllamaModels = (url: string) =>
   invoke<string[]>("list_ollama_models", { url }).catch(() => []);
 
-export const testAiConnection = (provider: string, model: string, url: string, apiKey: string) =>
-  invoke<string>("test_ai_connection", { provider, model, url, apiKey });
+export const testAiConnection = (
+  provider: string,
+  model: string,
+  url: string,
+  apiKey: string,
+  cliCommand = "",
+  cliArgs: string[] = [],
+  cliWorkdir = "",
+) =>
+  invoke<string>("test_ai_connection", {
+    provider,
+    model,
+    url,
+    apiKey,
+    cliCommand,
+    cliArgs,
+    cliWorkdir,
+  });
