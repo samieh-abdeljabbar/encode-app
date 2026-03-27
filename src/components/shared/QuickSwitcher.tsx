@@ -16,6 +16,8 @@ interface FileResult {
   type: string;
 }
 
+let cachedFiles: FileResult[] | null = null;
+
 const TYPE_ICONS: Record<string, { letter: string; tooltip: string }> = {
   chapters: { letter: "C", tooltip: "Chapter" },
   flashcards: { letter: "F", tooltip: "Flashcard" },
@@ -34,6 +36,31 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
   const [filtered, setFiltered] = useState<FileResult[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
+  const loadFiles = async () => {
+    const subjects = await listSubjects();
+    const all: FileResult[] = [];
+    for (const subj of subjects) {
+      for (const ft of ["chapters", "flashcards", "quizzes", "teach-backs", "maps"]) {
+        try {
+          const entries: FileEntry[] = await listFiles(subj.slug, ft);
+          for (const e of entries) {
+            all.push({
+              path: e.file_path,
+              name: e.file_path.split("/").pop()?.replace(".md", "") || "",
+              subject: subj.name,
+              type: ft,
+            });
+          }
+        } catch {
+          // No files of this type
+        }
+      }
+    }
+    cachedFiles = all;
+    setFiles(all);
+    setFiltered(all);
+  };
+
   // Load all files on open
   useEffect(() => {
     if (!open) return;
@@ -41,29 +68,16 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
     setSelectedIdx(0);
     setTimeout(() => inputRef.current?.focus(), 50);
 
-    (async () => {
-      const subjects = await listSubjects();
-      const all: FileResult[] = [];
-      for (const subj of subjects) {
-        for (const ft of ["chapters", "flashcards", "quizzes", "teach-backs", "maps"]) {
-          try {
-            const entries: FileEntry[] = await listFiles(subj.slug, ft);
-            for (const e of entries) {
-              all.push({
-                path: e.file_path,
-                name: e.file_path.split("/").pop()?.replace(".md", "") || "",
-                subject: subj.name,
-                type: ft,
-              });
-            }
-          } catch {
-            // No files of this type
-          }
-        }
-      }
-      setFiles(all);
-      setFiltered(all);
-    })();
+    if (cachedFiles) {
+      setFiles(cachedFiles);
+      setFiltered(cachedFiles);
+      return;
+    }
+
+    loadFiles().catch(() => {
+      setFiles([]);
+      setFiltered([]);
+    });
   }, [open]);
 
   // Filter on query change
@@ -74,12 +88,11 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
       return;
     }
     const q = query.toLowerCase();
-    const matches = files.filter(
-      (f) =>
-        f.name.toLowerCase().includes(q) ||
-        f.subject.toLowerCase().includes(q) ||
-        f.type.toLowerCase().includes(q),
-    );
+    const matches = files
+      .map((file) => ({ file, score: fuzzyScore(file, q) }))
+      .filter((entry): entry is { file: FileResult; score: number } => entry.score !== null)
+      .sort((a, b) => b.score - a.score || a.file.name.localeCompare(b.file.name))
+      .map((entry) => entry.file);
     setFiltered(matches);
     setSelectedIdx(0);
   }, [query, files]);
@@ -189,4 +202,45 @@ export default function QuickSwitcher({ open, onClose }: QuickSwitcherProps) {
       </div>
     </div>
   );
+}
+
+function fuzzyScore(file: FileResult, query: string): number | null {
+  const haystacks = [
+    `${file.name} ${file.subject}`.toLowerCase(),
+    file.path.toLowerCase(),
+    file.type.toLowerCase(),
+  ];
+
+  let bestScore: number | null = null;
+
+  for (const haystack of haystacks) {
+    const exactIndex = haystack.indexOf(query);
+    if (exactIndex !== -1) {
+      const score = 1000 - exactIndex * 5 - Math.max(0, haystack.length - query.length);
+      bestScore = bestScore === null ? score : Math.max(bestScore, score);
+      continue;
+    }
+
+    let lastIndex = -1;
+    let gapPenalty = 0;
+    let matched = true;
+    for (const char of query) {
+      const nextIndex = haystack.indexOf(char, lastIndex + 1);
+      if (nextIndex === -1) {
+        matched = false;
+        break;
+      }
+      if (lastIndex !== -1) {
+        gapPenalty += nextIndex - lastIndex - 1;
+      }
+      lastIndex = nextIndex;
+    }
+
+    if (matched) {
+      const score = 500 - gapPenalty - (lastIndex - query.length);
+      bestScore = bestScore === null ? score : Math.max(bestScore, score);
+    }
+  }
+
+  return bestScore;
 }

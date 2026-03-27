@@ -74,25 +74,36 @@ describe("shouldGateSection", () => {
 });
 
 describe("shouldSkipRemaining", () => {
-  it("returns false with fewer than 2 sub-questions", () => {
+  it("returns false with fewer than 3 sub-questions", () => {
     const sqs: GateSubQuestion[] = [
       { promptType: "recall", prompt: "Q", response: "A", feedback: null, mastery: 3 },
     ];
     expect(shouldSkipRemaining(sqs)).toBe(false);
   });
 
-  it("returns true when all mastery scores are 3", () => {
+  it("returns true when all mastery scores are 4+ and a deep question was answered", () => {
     const sqs: GateSubQuestion[] = [
-      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 3 },
-      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 3 },
+      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 4 },
+      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 4 },
+      { promptType: "apply", prompt: "Q3", response: "A3", feedback: null, mastery: 4 },
     ];
     expect(shouldSkipRemaining(sqs)).toBe(true);
   });
 
-  it("returns false when any mastery is below 3", () => {
+  it("returns false when any mastery is below 4", () => {
     const sqs: GateSubQuestion[] = [
-      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 3 },
-      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 2 },
+      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 4 },
+      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 3 },
+      { promptType: "apply", prompt: "Q3", response: "A3", feedback: null, mastery: 4 },
+    ];
+    expect(shouldSkipRemaining(sqs)).toBe(false);
+  });
+
+  it("returns false when no apply or analyze question has been answered", () => {
+    const sqs: GateSubQuestion[] = [
+      { promptType: "recall", prompt: "Q1", response: "A1", feedback: null, mastery: 5 },
+      { promptType: "explain", prompt: "Q2", response: "A2", feedback: null, mastery: 5 },
+      { promptType: "recall", prompt: "Q3", response: "A3", feedback: null, mastery: 5 },
     ];
     expect(shouldSkipRemaining(sqs)).toBe(false);
   });

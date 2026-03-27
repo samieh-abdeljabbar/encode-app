@@ -3,9 +3,18 @@ import type { GateResponse, GateSubQuestion, GatePromptType } from "../lib/types
 import { splitSections, parseFrontmatter } from "../lib/markdown";
 import type { Section } from "../lib/markdown";
 import {
+  extractSchemaActivation,
+  extractSynthesis,
+  stripStudyMetaSections,
+  upsertSchemaActivation,
+  upsertSynthesis,
+} from "../lib/synthesis";
+import {
+  extractDigestion,
+  mergeGateResponses,
   shouldGateSection,
   shouldSkipRemaining,
-  formatDigestionMarkdown,
+  upsertDigestion,
 } from "../lib/gates";
 import { readFile, writeFile, aiRequest, getConfig } from "../lib/tauri";
 import { getProfileContext } from "../lib/profile";
@@ -44,14 +53,24 @@ interface ReaderState {
   // Pre-reading schema activation
   showSchemaActivation: boolean;
   schemaActivationTopic: string;
+  schemaActivationResponse: string;
+
+  // Post-reading synthesis
+  synthesisSaving: boolean;
+  synthesisResponse: string;
+  synthesisEvaluation: string | null;
+  synthesisComplete: boolean;
 
   loadFile: (path: string) => Promise<void>;
   advanceSection: () => void;
   goToSection: (index: number) => void;
   submitGateResponse: (response: string) => Promise<void>;
+  submitSynthesis: (response: string) => Promise<void>;
   clearError: () => void;
   dismissSuggestions: () => void;
   closeReader: () => void;
+  setSchemaActivationResponse: (response: string) => void;
+  submitSchemaActivation: (response: string) => Promise<void>;
   dismissSchemaActivation: () => void;
 }
 
@@ -76,6 +95,7 @@ async function generateGateQuestions(
     const questionCount = wordCount < 500 ? 2 : wordCount < 1500 ? 3 : wordCount < 3000 ? 4 : 5;
 
     const { text } = await aiRequest(
+      "reader_gate_generate",
       `Read the ENTIRE section below carefully. Generate exactly ${questionCount} questions that collectively cover ALL key concepts in the section, not just the beginning. Output ONLY a JSON array.${profileLine}
 
 Format: [{"type":"recall","q":"..."},{"type":"explain","q":"..."},{"type":"apply","q":"..."}]
@@ -125,6 +145,7 @@ async function evaluateResponse(
 ): Promise<{ feedback: string | null; mastery: number | null }> {
   try {
     const result = await aiRequest(
+      "reader_gate_evaluate",
       `You are evaluating a student's understanding of a study section. Reply ONLY with JSON:
 {"right":"what they got correct (1-2 sentences)","gap":"what they missed or got wrong (1-2 sentences)","deeper":"one follow-up question to deepen understanding","mastery":1}
 
@@ -160,6 +181,43 @@ Be specific: reference actual terms and concepts from the section content. Do no
   }
 }
 
+async function markChapterDigested(filePath: string, rawContent: string): Promise<string> {
+  if (!filePath.includes("/chapters/")) {
+    return rawContent;
+  }
+
+  const updatedContent = rawContent.match(/^status:\s*\w+/m)
+    ? rawContent.replace(/^status:\s*\w+/m, "status: digested")
+    : rawContent;
+
+  if (updatedContent !== rawContent) {
+    await writeFile(filePath, updatedContent);
+  }
+
+  return updatedContent;
+}
+
+async function markChapterReading(filePath: string, rawContent: string): Promise<string> {
+  if (!filePath.includes("/chapters/")) {
+    return rawContent;
+  }
+
+  const { frontmatter } = parseFrontmatter(rawContent);
+  if (frontmatter.status && frontmatter.status !== "unread") {
+    return rawContent;
+  }
+
+  const updatedContent = rawContent.match(/^status:\s*\w+/m)
+    ? rawContent.replace(/^status:\s*\w+/m, "status: reading")
+    : rawContent;
+
+  if (updatedContent !== rawContent) {
+    await writeFile(filePath, updatedContent);
+  }
+
+  return updatedContent;
+}
+
 export const useReaderStore = create<ReaderState>((set, get) => ({
   filePath: null,
   rawContent: null,
@@ -171,6 +229,11 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   loading: false,
   showSchemaActivation: false,
   schemaActivationTopic: "",
+  schemaActivationResponse: "",
+  synthesisSaving: false,
+  synthesisResponse: "",
+  synthesisEvaluation: null,
+  synthesisComplete: false,
   error: null,
   gateGenerating: false,
   gatePhase: 0,
@@ -184,19 +247,38 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     set({ loading: true });
     try {
       const raw = await readFile(path);
-      const { content, frontmatter } = parseFrontmatter(raw);
-      const sections = splitSections(content);
-      // Show schema activation for chapter files that haven't been read yet
+      const { frontmatter: originalFrontmatter } = parseFrontmatter(raw);
       const isChapter = path.includes("/chapters/");
-      const isUnread = frontmatter.status === "unread" || !frontmatter.status;
+      const isUnread = originalFrontmatter.status === "unread" || !originalFrontmatter.status;
+      const nextRaw = isChapter ? await markChapterReading(path, raw) : raw;
+      const { content, frontmatter } = parseFrontmatter(nextRaw);
+      const gateResponses = extractDigestion(nextRaw);
+      const schemaActivation = extractSchemaActivation(nextRaw);
+      const synthesis = extractSynthesis(nextRaw);
+      const sections = splitSections(content);
       const topic = (frontmatter.topic as string) || path.split("/").pop()?.replace(".md", "") || "this topic";
+      const maxRevealedSection = gateResponses.length > 0
+        ? Math.max(...gateResponses.map((response) => response.sectionIndex))
+        : 0;
+      const isComplete = Boolean(synthesis) || frontmatter.status === "digested";
+      const currentSectionIndex = sections.length === 0
+        ? 0
+        : isComplete
+          ? sections.length - 1
+          : Math.min(maxRevealedSection, sections.length - 1);
+      const showSchemaActivation = isChapter
+        && currentSectionIndex === 0
+        && gateResponses.length === 0
+        && !synthesis
+        && (isUnread || Boolean(schemaActivation?.response));
+
       set({
         filePath: path,
-        rawContent: raw,
+        rawContent: nextRaw,
         sections,
-        currentSectionIndex: 0,
+        currentSectionIndex,
         gateOpen: false,
-        gateResponses: [],
+        gateResponses,
         loading: false,
         gateGenerating: false,
         gatePhase: 0,
@@ -205,8 +287,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         lastFeedback: null,
         lastMastery: null,
         gateSkipped: false,
-        showSchemaActivation: isChapter && isUnread,
+        showSchemaActivation,
         schemaActivationTopic: topic,
+        schemaActivationResponse: schemaActivation?.response || "",
+        synthesisSaving: false,
+        synthesisResponse: synthesis?.response || "",
+        synthesisEvaluation: synthesis?.evaluation || null,
+        synthesisComplete: Boolean(synthesis),
       });
     } catch (e) {
       console.error("Failed to load file for reader:", e);
@@ -215,10 +302,19 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   },
 
   advanceSection: () => {
-    const { currentSectionIndex, sections } = get();
+    const { currentSectionIndex, sections, filePath, rawContent, synthesisComplete } = get();
     const nextIndex = currentSectionIndex + 1;
 
-    if (nextIndex >= sections.length) return;
+    if (nextIndex >= sections.length) {
+      if (filePath && rawContent && synthesisComplete) {
+        markChapterDigested(filePath, rawContent)
+          .then((updatedContent) => set({ rawContent: updatedContent }))
+          .catch(() => {
+            set({ error: "Failed to mark chapter complete. Please try again." });
+          });
+      }
+      return;
+    }
 
     const nextSection = sections[nextIndex];
     if (shouldGateSection(nextIndex, nextSection.content)) {
@@ -252,7 +348,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     if (index < 0 || index >= sections.length) return;
 
     const maxRevealed = gateResponses.length > 0
-      ? Math.max(...gateResponses.map((r) => r.sectionIndex)) + 1
+      ? Math.max(...gateResponses.map((r) => r.sectionIndex))
       : 0;
 
     if (index <= maxRevealed || index <= get().currentSectionIndex) {
@@ -293,11 +389,6 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const shouldSkip = shouldSkipRemaining(updatedSubQuestions);
 
     if (isLastQuestion || shouldSkip) {
-      // Gate complete — save and advance
-      // Re-read fresh state in case user navigated during AI evaluation
-      const fresh = get();
-      if (fresh.filePath !== filePath) return; // User switched files — abort
-
       const now = new Date().toLocaleString("en-US", {
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "numeric", minute: "2-digit",
@@ -312,12 +403,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       set({ lastFeedback: feedback, lastMastery: mastery });
 
       await saveAndAdvance(
-        newResponse, fresh.filePath!, fresh.rawContent!,
-        fresh.sections, fresh.currentSectionIndex, fresh.gateResponses,
+        newResponse,
+        filePath,
+        sections,
+        currentSectionIndex,
       );
 
       // Set gateSkipped after successful save
-      if (shouldSkip && !isLastQuestion) {
+      if (shouldSkip && !isLastQuestion && get().filePath === filePath) {
         set({ gateSkipped: true });
       }
     } else {
@@ -333,7 +426,125 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 
+  submitSynthesis: async (response) => {
+    const { filePath, rawContent } = get();
+    if (!filePath || !rawContent || !filePath.includes("/chapters/")) return;
+
+    const trimmed = response.trim();
+    if (!trimmed) {
+      set({ error: "Write a chapter synthesis before moving on." });
+      return;
+    }
+
+    set({ synthesisSaving: true, error: null });
+
+    const prompt = "Connect the key ideas from this chapter. What is the throughline, how do the parts fit together, and what should you remember going forward?";
+    let evaluation = "AI evaluation unavailable.";
+
+    try {
+      const config = await getConfig();
+      if (config.ai_provider !== "none") {
+        const { text } = await aiRequest(
+          "reader_chapter_synthesis",
+          `You are evaluating a student's chapter synthesis. Keep the response under 140 words.
+
+Respond with plain text in this structure:
+Strong: one sentence on what the synthesis connected well.
+Gap: one sentence on what was missing, vague, or underdeveloped.
+Remember: one sentence on the most important takeaway.
+
+Be specific to the chapter content. Do not fail the student or block progress.`,
+          `Chapter content:\n${stripStudyMetaSections(parseFrontmatter(rawContent).content).slice(0, 5000)}\n\nStudent synthesis:\n${trimmed}`,
+          400,
+        );
+        evaluation = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim() || evaluation;
+      }
+    } catch {
+      // Non-blocking by design.
+    }
+
+    try {
+      const timestamp = new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const latestRaw = await readFile(filePath);
+      let nextContent = upsertSynthesis(latestRaw, {
+        prompt,
+        response: trimmed,
+        evaluation,
+        completedAt: timestamp,
+      });
+      nextContent = nextContent.match(/^status:\s*\w+/m)
+        ? nextContent.replace(/^status:\s*\w+/m, "status: digested")
+        : nextContent;
+      await writeFile(filePath, nextContent);
+      const fresh = get();
+      if (fresh.filePath === filePath) {
+        set({
+          rawContent: nextContent,
+          synthesisSaving: false,
+          synthesisResponse: trimmed,
+          synthesisEvaluation: evaluation,
+          synthesisComplete: true,
+        });
+      } else {
+        set({ synthesisSaving: false });
+      }
+    } catch (e) {
+      console.error("Failed to save synthesis:", e);
+      set({ synthesisSaving: false, error: "Failed to save chapter synthesis. Please try again." });
+    }
+  },
+
   dismissSuggestions: () => set({ suggestedCards: [] }),
+
+  setSchemaActivationResponse: (schemaActivationResponse) => set({ schemaActivationResponse }),
+
+  submitSchemaActivation: async (response) => {
+    const { filePath, rawContent, schemaActivationTopic } = get();
+    if (!filePath || !rawContent || !filePath.includes("/chapters/")) {
+      set({ showSchemaActivation: false });
+      return;
+    }
+
+    const trimmed = response.trim();
+    if (!trimmed) {
+      set({ showSchemaActivation: false });
+      return;
+    }
+
+    try {
+      const latestRaw = await readFile(filePath);
+      const timestamp = new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const nextContent = upsertSchemaActivation(latestRaw, {
+        prompt: `What do you already know about ${schemaActivationTopic}?`,
+        response: trimmed,
+        completedAt: timestamp,
+      });
+      await writeFile(filePath, nextContent);
+
+      if (get().filePath === filePath) {
+        set({
+          rawContent: nextContent,
+          showSchemaActivation: false,
+          schemaActivationResponse: trimmed,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to save schema activation:", e);
+      set({ error: "Failed to save your pre-reading note. Please try again." });
+    }
+  },
 
   dismissSchemaActivation: () => set({ showSchemaActivation: false }),
 
@@ -346,6 +557,13 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       gateOpen: false,
       gateResponses: [],
       suggestedCards: [],
+      showSchemaActivation: false,
+      schemaActivationTopic: "",
+      synthesisSaving: false,
+      schemaActivationResponse: "",
+      synthesisResponse: "",
+      synthesisEvaluation: null,
+      synthesisComplete: false,
       gateGenerating: false,
       gatePhase: 0,
       gateQuestions: [],
@@ -361,46 +579,34 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
 async function saveAndAdvance(
   newResponse: GateResponse,
   filePath: string,
-  rawContent: string,
   sections: Section[],
   currentSectionIndex: number,
-  gateResponses: GateResponse[],
 ) {
-  const updatedResponses = [...gateResponses, newResponse];
-
   try {
-    const digestionMarker = "\n\n## Digestion";
-    const baseContent = rawContent.includes(digestionMarker)
-      ? rawContent.slice(0, rawContent.indexOf(digestionMarker))
-      : rawContent;
+    const latestRaw = await readFile(filePath);
+    const updatedResponses = mergeGateResponses(extractDigestion(latestRaw), newResponse);
+    const nextContent = upsertDigestion(latestRaw, updatedResponses);
 
-    const digestionMd = formatDigestionMarkdown(updatedResponses);
-    const updatedContent = baseContent + digestionMd;
+    await writeFile(filePath, nextContent);
 
-    // If this is the last section gate, mark chapter as digested
-    const isLastGate = newResponse.sectionIndex >= sections.length - 1;
-    let finalContent = updatedContent;
-    if (isLastGate && filePath.includes("/chapters/")) {
-      finalContent = finalContent.replace(/^status:\s*\w+/m, "status: digested");
+    if (useReaderStore.getState().filePath === filePath) {
+      useReaderStore.setState({
+        currentSectionIndex: newResponse.sectionIndex,
+        gateOpen: false,
+        gateResponses: updatedResponses,
+        rawContent: nextContent,
+        suggestedCards: [],
+        gatePhase: 0,
+        gateQuestions: [],
+        currentGateSubQuestions: [],
+      });
     }
-
-    await writeFile(filePath, finalContent);
-
-    useReaderStore.setState({
-      currentSectionIndex: newResponse.sectionIndex,
-      gateOpen: false,
-      gateResponses: updatedResponses,
-      rawContent: finalContent,
-      suggestedCards: [],
-      gatePhase: 0,
-      gateQuestions: [],
-      currentGateSubQuestions: [],
-    });
 
     // Auto-suggest flashcards (fire-and-forget)
     const sectionContent = sections[currentSectionIndex]?.content || "";
-    if (sectionContent.trim().split(/\s+/).length >= 20) {
+    if (useReaderStore.getState().filePath === filePath && sectionContent.trim().split(/\s+/).length >= 20) {
       aiRequest(
+        "reader_flashcard_suggest",
         `Generate 1-2 flashcard Q/A pairs from this study content. Output ONLY JSON: [{"q":"...","a":"...","bloom":1-3}]`,
         sectionContent.slice(0, 1500),
         300,
@@ -408,7 +614,13 @@ async function saveAndAdvance(
         const cleanedCards = cardText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
         const match = cleanedCards.match(/\[[\s\S]*\]/);
         if (match) {
-          const parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
+          let parsed: { q: string; a: string; bloom: number }[] = [];
+          try {
+            parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
+          } catch {
+            return;
+          }
+          if (useReaderStore.getState().filePath !== filePath) return;
           useReaderStore.setState({
             suggestedCards: parsed.map((p) => ({ question: p.q, answer: p.a, bloom: p.bloom || 2 })),
           });

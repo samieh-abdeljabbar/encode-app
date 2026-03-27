@@ -1,3 +1,5 @@
+import { localDateString } from "./dates";
+
 export interface SM2Result {
   interval: number;
   ease: number;
@@ -176,10 +178,10 @@ export function migrateToFSRS(ease: number, interval: number): FSRSCard {
 export function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return localDateString(d);
 }
 
 /** Get today's date as YYYY-MM-DD */
 export function today(): string {
-  return new Date().toISOString().split("T")[0];
+  return localDateString();
 }

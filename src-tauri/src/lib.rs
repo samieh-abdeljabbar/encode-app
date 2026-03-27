@@ -4,12 +4,20 @@ mod importer;
 mod indexer;
 mod vault;
 
-use db::{Database, DueCard, QuizHistoryPoint, QueryResult, SearchResult, StreakInfo, SubjectGrade, SubjectMastery, SubjectStudyTime, WeakTopic};
+use db::{
+    Database, DueCard, QueryResult, QuizHistoryPoint, SearchResult, StreakInfo, SubjectGrade,
+    SubjectMastery, SubjectStudyTime, WeakTopic,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::Emitter;
 use vault::Subject;
+
+const AI_ACTIVITY_LIMIT: usize = 30;
+static AI_REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// App state shared across all Tauri commands
 struct AppState {
@@ -17,6 +25,19 @@ struct AppState {
     db: Arc<Database>,
     _watcher: Option<notify::RecommendedWatcher>,
     sandboxes: Mutex<HashMap<String, db::SandboxDb>>,
+    ai_activity: Mutex<VecDeque<AiActivityEntry>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiActivityEntry {
+    pub request_id: String,
+    pub feature: String,
+    pub provider: String,
+    pub model_or_command: String,
+    pub status: String,
+    pub started_at: String,
+    pub duration_ms: Option<u64>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,7 +56,14 @@ pub struct AppConfig {
     pub ai_provider: String,
     pub ollama_model: String,
     pub ollama_url: String,
+    pub openai_model: String,
+    pub deepseek_model: String,
+    pub claude_model: String,
+    pub gemini_model: String,
     pub api_key: String,
+    pub cli_command: String,
+    pub cli_args: Vec<String>,
+    pub cli_workdir: String,
     // User profile for personalized AI
     pub user_role: String,
     pub user_hobbies: String,
@@ -46,6 +74,277 @@ pub struct AppConfig {
     pub pomodoro_long_break_secs: u32,
     // Quick timer presets (seconds, e.g. [1500, 1800, 2700, 3600])
     pub quick_timers: Vec<u32>,
+    pub pomodoro_sound_enabled: bool,
+    pub pomodoro_notifications_enabled: bool,
+}
+
+fn default_app_config(vault_path: &std::path::Path) -> AppConfig {
+    AppConfig {
+        vault_path: vault_path.to_string_lossy().to_string(),
+        ai_provider: "none".to_string(),
+        ollama_model: "llama3.1:8b".to_string(),
+        ollama_url: "http://localhost:11434".to_string(),
+        openai_model: "gpt-4o-mini".to_string(),
+        deepseek_model: "deepseek-chat".to_string(),
+        claude_model: "claude-sonnet-4-20250514".to_string(),
+        gemini_model: "gemini-2.0-flash".to_string(),
+        api_key: String::new(),
+        cli_command: String::new(),
+        cli_args: Vec::new(),
+        cli_workdir: String::new(),
+        user_role: String::new(),
+        user_hobbies: String::new(),
+        user_learning_style: String::new(),
+        pomodoro_study_secs: 1500,
+        pomodoro_break_secs: 300,
+        pomodoro_long_break_secs: 900,
+        quick_timers: vec![1500, 1800, 2700, 3600],
+        pomodoro_sound_enabled: true,
+        pomodoro_notifications_enabled: true,
+    }
+}
+
+fn parse_string_list(value: &str) -> Vec<String> {
+    let trimmed = value.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        return trimmed[1..trimmed.len() - 1]
+            .split(',')
+            .map(|part| part.trim().trim_matches('"').trim_matches('\'').to_string())
+            .filter(|part| !part.is_empty())
+            .collect();
+    }
+
+    trimmed
+        .trim_matches('"')
+        .split('\n')
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+fn format_string_list(values: &[String]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| format!("\"{}\"", escape_toml_string(value)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn read_app_config(vault_path: &std::path::Path) -> AppConfig {
+    let config_path = vault_path.join(".encode").join("config.toml");
+    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let mut config = default_app_config(vault_path);
+
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(val) = line.strip_prefix("provider =") {
+            config.ai_provider = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("ollama_model =") {
+            config.ollama_model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("ollama_url =") {
+            config.ollama_url = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("openai_model =") {
+            config.openai_model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("deepseek_model =") {
+            config.deepseek_model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("claude_model =") {
+            config.claude_model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("gemini_model =") {
+            config.gemini_model = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("api_key =") {
+            config.api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("cli_command =") {
+            config.cli_command = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("cli_args =") {
+            config.cli_args = parse_string_list(val);
+        } else if let Some(val) = line.strip_prefix("cli_workdir =") {
+            config.cli_workdir = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_role =") {
+            config.user_role = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_hobbies =") {
+            config.user_hobbies = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("user_learning_style =") {
+            config.user_learning_style = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("study_secs =") {
+            config.pomodoro_study_secs = val.trim().trim_matches('"').parse().unwrap_or(1500);
+        } else if let Some(val) = line.strip_prefix("break_secs =") {
+            config.pomodoro_break_secs = val.trim().trim_matches('"').parse().unwrap_or(300);
+        } else if let Some(val) = line.strip_prefix("long_break_secs =") {
+            config.pomodoro_long_break_secs = val.trim().trim_matches('"').parse().unwrap_or(900);
+        } else if let Some(val) = line.strip_prefix("quick_timers =") {
+            let cleaned = val.trim().trim_matches('"');
+            let parsed: Vec<u32> = cleaned
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if !parsed.is_empty() {
+                config.quick_timers = parsed;
+            }
+        } else if let Some(val) = line.strip_prefix("sound_enabled =") {
+            config.pomodoro_sound_enabled = matches!(val.trim(), "true" | "\"true\"");
+        } else if let Some(val) = line.strip_prefix("notifications_enabled =") {
+            config.pomodoro_notifications_enabled = matches!(val.trim(), "true" | "\"true\"");
+        } else if let Some(val) = line.strip_prefix("study_minutes =") {
+            config.pomodoro_study_secs =
+                val.trim().trim_matches('"').parse::<u32>().unwrap_or(25) * 60;
+        } else if let Some(val) = line.strip_prefix("break_minutes =") {
+            config.pomodoro_break_secs =
+                val.trim().trim_matches('"').parse::<u32>().unwrap_or(5) * 60;
+        } else if let Some(val) = line.strip_prefix("long_break_minutes =") {
+            config.pomodoro_long_break_secs =
+                val.trim().trim_matches('"').parse::<u32>().unwrap_or(15) * 60;
+        }
+    }
+
+    config
+}
+
+fn model_for_provider(config: &AppConfig) -> String {
+    match config.ai_provider.as_str() {
+        "ollama" => config.ollama_model.clone(),
+        "openai" => config.openai_model.clone(),
+        "deepseek" => config.deepseek_model.clone(),
+        "claude" => config.claude_model.clone(),
+        "gemini" => config.gemini_model.clone(),
+        "cli" => {
+            if config.cli_command.trim().is_empty() {
+                "cli".to_string()
+            } else {
+                config.cli_command.clone()
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+fn next_ai_request_id() -> String {
+    format!(
+        "ai-{}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        AI_REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn cli_command_basename(command: &str) -> String {
+    Path::new(command)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("cli")
+        .to_string()
+}
+
+fn model_or_command_for_activity(runtime: &ai::AiRuntimeConfig) -> String {
+    if runtime.provider == "cli" {
+        return cli_command_basename(&runtime.cli_command);
+    }
+
+    if runtime.model.trim().is_empty() {
+        runtime.provider.clone()
+    } else {
+        runtime.model.clone()
+    }
+}
+
+fn sanitize_ai_activity_error(error: &str) -> String {
+    static API_KEY_QUERY_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static BEARER_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static API_KEY_HEADER_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static WHITESPACE_RE: OnceLock<regex::Regex> = OnceLock::new();
+
+    let mut sanitized = error.to_string();
+
+    sanitized = API_KEY_QUERY_RE
+        .get_or_init(|| regex::Regex::new(r"key=[^&\s]+").expect("valid api key regex"))
+        .replace_all(&sanitized, "key=[redacted]")
+        .into_owned();
+    sanitized = BEARER_RE
+        .get_or_init(|| regex::Regex::new(r"Bearer\s+[^\s]+").expect("valid bearer regex"))
+        .replace_all(&sanitized, "Bearer [redacted]")
+        .into_owned();
+    sanitized = API_KEY_HEADER_RE
+        .get_or_init(|| regex::Regex::new(r"x-api-key[=:]\s*[^\s,]+").expect("valid header regex"))
+        .replace_all(&sanitized, "x-api-key=[redacted]")
+        .into_owned();
+    sanitized = WHITESPACE_RE
+        .get_or_init(|| regex::Regex::new(r"\s+").expect("valid whitespace regex"))
+        .replace_all(&sanitized, " ")
+        .into_owned()
+        .trim()
+        .to_string();
+
+    if sanitized.len() > 300 {
+        format!("{}...", &sanitized[..300])
+    } else {
+        sanitized
+    }
+}
+
+fn push_activity_entry(
+    buffer: &mut VecDeque<AiActivityEntry>,
+    entry: AiActivityEntry,
+    limit: usize,
+) {
+    buffer.push_back(entry);
+    while buffer.len() > limit {
+        buffer.pop_front();
+    }
+}
+
+fn record_ai_activity(state: &AppState, app: &tauri::AppHandle, entry: AiActivityEntry) {
+    match state.ai_activity.lock() {
+        Ok(mut activity) => push_activity_entry(&mut activity, entry.clone(), AI_ACTIVITY_LIMIT),
+        Err(err) => {
+            log::warn!(target: "ai_activity", "failed_to_store_activity error={}", err);
+            return;
+        }
+    }
+
+    match entry.status.as_str() {
+        "start" => log::info!(
+            target: "ai_activity",
+            "request_id={} feature={} provider={} model_or_command={} status={} started_at={}",
+            entry.request_id,
+            entry.feature,
+            entry.provider,
+            entry.model_or_command,
+            entry.status,
+            entry.started_at,
+        ),
+        "success" => log::info!(
+            target: "ai_activity",
+            "request_id={} feature={} provider={} model_or_command={} status={} duration_ms={}",
+            entry.request_id,
+            entry.feature,
+            entry.provider,
+            entry.model_or_command,
+            entry.status,
+            entry.duration_ms.unwrap_or_default(),
+        ),
+        _ => log::warn!(
+            target: "ai_activity",
+            "request_id={} feature={} provider={} model_or_command={} status={} duration_ms={} error={}",
+            entry.request_id,
+            entry.feature,
+            entry.provider,
+            entry.model_or_command,
+            entry.status,
+            entry.duration_ms.unwrap_or_default(),
+            entry.error.as_deref().unwrap_or(""),
+        ),
+    }
+
+    if let Err(err) = app.emit("ai-activity-updated", &entry) {
+        log::warn!(
+            target: "ai_activity",
+            "failed_to_emit_activity_event request_id={} error={}",
+            entry.request_id,
+            err
+        );
+    }
 }
 
 // === Tauri Commands ===
@@ -90,10 +389,7 @@ fn write_vault_file(
 }
 
 #[tauri::command]
-fn delete_vault_file(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+fn delete_vault_file(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     vault::delete_file(&state.vault_path, &path)?;
     // Also remove from search index
     state.db.remove_file(&path)?;
@@ -101,18 +397,12 @@ fn delete_vault_file(
 }
 
 #[tauri::command]
-fn create_vault_directory(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+fn create_vault_directory(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     vault::create_directory(&state.vault_path, &path)
 }
 
 #[tauri::command]
-fn delete_vault_directory(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+fn delete_vault_directory(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     vault::delete_directory(&state.vault_path, &path)
 }
 
@@ -171,66 +461,7 @@ fn get_streak(state: tauri::State<'_, AppState>) -> Result<StreakInfo, String> {
 
 #[tauri::command]
 fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
-    let config_path = state.vault_path.join(".encode").join("config.toml");
-    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-    let mut config = AppConfig {
-        vault_path: state.vault_path.to_string_lossy().to_string(),
-        ai_provider: "none".to_string(),
-        ollama_model: "llama3.1:8b".to_string(),
-        ollama_url: "http://localhost:11434".to_string(),
-        api_key: String::new(),
-        user_role: String::new(),
-        user_hobbies: String::new(),
-        user_learning_style: String::new(),
-        pomodoro_study_secs: 1500,   // 25 min
-        pomodoro_break_secs: 300,     // 5 min
-        pomodoro_long_break_secs: 900, // 15 min
-        quick_timers: vec![1500, 1800, 2700, 3600], // 25m, 30m, 45m, 1h
-    };
-
-    for line in content.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("provider =") {
-            config.ai_provider = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("ollama_model =") {
-            config.ollama_model = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("ollama_url =") {
-            config.ollama_url = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("api_key =") {
-            config.api_key = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("user_role =") {
-            config.user_role = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("user_hobbies =") {
-            config.user_hobbies = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("user_learning_style =") {
-            config.user_learning_style = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("study_secs =") {
-            config.pomodoro_study_secs = val.trim().trim_matches('"').parse().unwrap_or(1500);
-        } else if let Some(val) = line.strip_prefix("break_secs =") {
-            config.pomodoro_break_secs = val.trim().trim_matches('"').parse().unwrap_or(300);
-        } else if let Some(val) = line.strip_prefix("long_break_secs =") {
-            config.pomodoro_long_break_secs = val.trim().trim_matches('"').parse().unwrap_or(900);
-        } else if let Some(val) = line.strip_prefix("quick_timers =") {
-            // Parse comma-separated seconds: "1500,1800,2700,3600"
-            let cleaned = val.trim().trim_matches('"');
-            let parsed: Vec<u32> = cleaned.split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            if !parsed.is_empty() {
-                config.quick_timers = parsed;
-            }
-        // Backward compat: old _minutes fields → convert to seconds
-        } else if let Some(val) = line.strip_prefix("study_minutes =") {
-            config.pomodoro_study_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(25) * 60;
-        } else if let Some(val) = line.strip_prefix("break_minutes =") {
-            config.pomodoro_break_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(5) * 60;
-        } else if let Some(val) = line.strip_prefix("long_break_minutes =") {
-            config.pomodoro_long_break_secs = val.trim().trim_matches('"').parse::<u32>().unwrap_or(15) * 60;
-        }
-    }
-
-    Ok(config)
+    Ok(read_app_config(&state.vault_path))
 }
 
 fn escape_toml_string(s: &str) -> String {
@@ -248,7 +479,14 @@ fn save_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(
 provider = "{}"
 ollama_model = "{}"
 ollama_url = "{}"
+openai_model = "{}"
+deepseek_model = "{}"
+claude_model = "{}"
+gemini_model = "{}"
 api_key = "{}"
+cli_command = "{}"
+cli_args = {}
+cli_workdir = "{}"
 
 [profile]
 user_role = "{}"
@@ -260,18 +498,34 @@ study_secs = {}
 break_secs = {}
 long_break_secs = {}
 quick_timers = "{}"
+sound_enabled = {}
+notifications_enabled = {}
 "#,
         escape_toml_string(&config.ai_provider),
         escape_toml_string(&config.ollama_model),
         escape_toml_string(&config.ollama_url),
+        escape_toml_string(&config.openai_model),
+        escape_toml_string(&config.deepseek_model),
+        escape_toml_string(&config.claude_model),
+        escape_toml_string(&config.gemini_model),
         escape_toml_string(&config.api_key),
+        escape_toml_string(&config.cli_command),
+        format_string_list(&config.cli_args),
+        escape_toml_string(&config.cli_workdir),
         escape_toml_string(&config.user_role),
         escape_toml_string(&config.user_hobbies),
         escape_toml_string(&config.user_learning_style),
         config.pomodoro_study_secs,
         config.pomodoro_break_secs,
         config.pomodoro_long_break_secs,
-        config.quick_timers.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","),
+        config
+            .quick_timers
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+        config.pomodoro_sound_enabled,
+        config.pomodoro_notifications_enabled,
     );
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
@@ -286,11 +540,16 @@ fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<Str
 #[tauri::command]
 fn delete_subject(state: tauri::State<'_, AppState>, slug: String) -> Result<(), String> {
     // Read subject name before deleting files (needed for quiz_history cleanup)
-    let subject_md_path = state.vault_path.join("subjects").join(&slug).join("_subject.md");
+    let subject_md_path = state
+        .vault_path
+        .join("subjects")
+        .join(&slug)
+        .join("_subject.md");
     let subject_name = std::fs::read_to_string(&subject_md_path)
         .ok()
         .and_then(|content| {
-            content.lines()
+            content
+                .lines()
                 .find(|l| l.starts_with("subject:"))
                 .map(|l| l.trim_start_matches("subject:").trim().to_string())
         });
@@ -332,10 +591,12 @@ fn rebuild_index(state: tauri::State<'_, AppState>) -> Result<usize, String> {
 #[tauri::command]
 async fn check_ollama(url: String) -> Result<bool, String> {
     let client = reqwest::Client::new();
-    match client.get(&format!("{}/api/tags", url))
+    match client
+        .get(&format!("{}/api/tags", url))
         .timeout(std::time::Duration::from_secs(3))
         .send()
-        .await {
+        .await
+    {
         Ok(resp) => Ok(resp.status().is_success()),
         Err(_) => Ok(false),
     }
@@ -344,18 +605,23 @@ async fn check_ollama(url: String) -> Result<bool, String> {
 #[tauri::command]
 async fn list_ollama_models(url: String) -> Result<Vec<String>, String> {
     let client = reqwest::Client::new();
-    match client.get(&format!("{}/api/tags", url))
+    match client
+        .get(&format!("{}/api/tags", url))
         .timeout(std::time::Duration::from_secs(5))
         .send()
-        .await {
+        .await
+    {
         Ok(resp) => {
             let text = resp.text().await.map_err(|e| e.to_string())?;
-            let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+            let parsed: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| e.to_string())?;
             let models = parsed["models"]
                 .as_array()
-                .map(|arr| arr.iter()
-                    .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
-                    .collect::<Vec<_>>())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
                 .unwrap_or_default();
             Ok(models)
         }
@@ -386,7 +652,12 @@ fn update_card_schedule(
     last_reviewed: String,
 ) -> Result<(), String> {
     state.db.upsert_card_schedule(
-        &card_id, &file_path, &next_review, interval_days, ease_factor, &last_reviewed,
+        &card_id,
+        &file_path,
+        &next_review,
+        interval_days,
+        ease_factor,
+        &last_reviewed,
     )
 }
 
@@ -397,10 +668,7 @@ fn get_at_risk_cards(state: tauri::State<'_, AppState>) -> Result<Vec<DueCard>, 
 }
 
 #[tauri::command]
-fn delete_card_schedule(
-    state: tauri::State<'_, AppState>,
-    card_id: String,
-) -> Result<(), String> {
+fn delete_card_schedule(state: tauri::State<'_, AppState>, card_id: String) -> Result<(), String> {
     state.db.delete_card_schedule(&card_id)
 }
 
@@ -424,7 +692,9 @@ fn record_quiz_result(
     bloom_level: u32,
     correct: bool,
 ) -> Result<(), String> {
-    state.db.record_quiz_result(&subject, &topic, bloom_level, correct)
+    state
+        .db
+        .record_quiz_result(&subject, &topic, bloom_level, correct)
 }
 
 #[tauri::command]
@@ -434,52 +704,188 @@ fn get_subject_grades(state: tauri::State<'_, AppState>) -> Result<Vec<SubjectGr
 
 #[tauri::command]
 async fn ai_request_cmd(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
+    feature: String,
     system_prompt: String,
     user_prompt: String,
     max_tokens: u32,
 ) -> Result<ai::AiResponse, String> {
-    let config_path = state.vault_path.join(".encode").join("config.toml");
-    let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let config = read_app_config(&state.vault_path);
+    let runtime = ai::AiRuntimeConfig {
+        provider: config.ai_provider.clone(),
+        model: model_for_provider(&config),
+        url: config.ollama_url.clone(),
+        api_key: if config.api_key.is_empty() {
+            None
+        } else {
+            Some(config.api_key.clone())
+        },
+        cli_command: config.cli_command.clone(),
+        cli_args: config.cli_args.clone(),
+        cli_workdir: if config.cli_workdir.trim().is_empty() {
+            state.vault_path.to_string_lossy().to_string()
+        } else {
+            config.cli_workdir.clone()
+        },
+    };
 
-    let mut provider = "none".to_string();
-    let mut model = "llama3.1:8b".to_string();
-    let mut url = "http://localhost:11434".to_string();
-    let mut api_key = String::new();
-
-    for line in content.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("provider =") {
-            provider = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("ollama_model =") {
-            model = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("ollama_url =") {
-            url = val.trim().trim_matches('"').to_string();
-        } else if let Some(val) = line.strip_prefix("api_key =") {
-            api_key = val.trim().trim_matches('"').to_string();
-        }
+    if runtime.provider == "none" || runtime.provider.trim().is_empty() {
+        return Err("No AI provider configured".to_string());
     }
 
-    let key = if api_key.is_empty() { None } else { Some(api_key.as_str()) };
+    let request_id = next_ai_request_id();
+    let started_at = chrono::Utc::now().to_rfc3339();
+    let model_or_command = model_or_command_for_activity(&runtime);
 
-    ai::ai_request(&provider, &model, &url, key, &system_prompt, &user_prompt, max_tokens).await
+    record_ai_activity(
+        &state,
+        &app,
+        AiActivityEntry {
+            request_id: request_id.clone(),
+            feature: feature.clone(),
+            provider: runtime.provider.clone(),
+            model_or_command: model_or_command.clone(),
+            status: "start".to_string(),
+            started_at: started_at.clone(),
+            duration_ms: None,
+            error: None,
+        },
+    );
+
+    let started = std::time::Instant::now();
+    match ai::ai_request(&runtime, &system_prompt, &user_prompt, max_tokens).await {
+        Ok(response) => {
+            record_ai_activity(
+                &state,
+                &app,
+                AiActivityEntry {
+                    request_id,
+                    feature,
+                    provider: runtime.provider.clone(),
+                    model_or_command,
+                    status: "success".to_string(),
+                    started_at,
+                    duration_ms: Some(started.elapsed().as_millis() as u64),
+                    error: None,
+                },
+            );
+            Ok(response)
+        }
+        Err(error) => {
+            let sanitized_error = sanitize_ai_activity_error(&error);
+            record_ai_activity(
+                &state,
+                &app,
+                AiActivityEntry {
+                    request_id,
+                    feature,
+                    provider: runtime.provider.clone(),
+                    model_or_command,
+                    status: "failure".to_string(),
+                    started_at,
+                    duration_ms: Some(started.elapsed().as_millis() as u64),
+                    error: Some(sanitized_error),
+                },
+            );
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]
 async fn test_ai_connection(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     provider: String,
     model: String,
     url: String,
     api_key: String,
+    cli_command: String,
+    cli_args: Vec<String>,
+    cli_workdir: String,
 ) -> Result<String, String> {
-    let key = if api_key.is_empty() { None } else { Some(api_key.as_str()) };
-    let result = ai::ai_request(
-        &provider, &model, &url, key,
-        "Reply with exactly: OK",
-        "Test connection",
-        10,
-    ).await?;
-    Ok(result.text)
+    let runtime = ai::AiRuntimeConfig {
+        provider,
+        model,
+        url,
+        api_key: if api_key.is_empty() {
+            None
+        } else {
+            Some(api_key)
+        },
+        cli_command,
+        cli_args,
+        cli_workdir,
+    };
+
+    if runtime.provider == "none" || runtime.provider.trim().is_empty() {
+        return Err("No AI provider configured".to_string());
+    }
+
+    let request_id = next_ai_request_id();
+    let started_at = chrono::Utc::now().to_rfc3339();
+    let model_or_command = model_or_command_for_activity(&runtime);
+
+    record_ai_activity(
+        &state,
+        &app,
+        AiActivityEntry {
+            request_id: request_id.clone(),
+            feature: "settings_connection_test".to_string(),
+            provider: runtime.provider.clone(),
+            model_or_command: model_or_command.clone(),
+            status: "start".to_string(),
+            started_at: started_at.clone(),
+            duration_ms: None,
+            error: None,
+        },
+    );
+
+    let started = std::time::Instant::now();
+    match ai::ai_request(&runtime, "Reply with exactly: OK", "Test connection", 10).await {
+        Ok(result) => {
+            record_ai_activity(
+                &state,
+                &app,
+                AiActivityEntry {
+                    request_id,
+                    feature: "settings_connection_test".to_string(),
+                    provider: runtime.provider.clone(),
+                    model_or_command,
+                    status: "success".to_string(),
+                    started_at,
+                    duration_ms: Some(started.elapsed().as_millis() as u64),
+                    error: None,
+                },
+            );
+            Ok(result.text)
+        }
+        Err(error) => {
+            let sanitized_error = sanitize_ai_activity_error(&error);
+            record_ai_activity(
+                &state,
+                &app,
+                AiActivityEntry {
+                    request_id,
+                    feature: "settings_connection_test".to_string(),
+                    provider: runtime.provider.clone(),
+                    model_or_command,
+                    status: "failure".to_string(),
+                    started_at,
+                    duration_ms: Some(started.elapsed().as_millis() as u64),
+                    error: Some(sanitized_error),
+                },
+            );
+            Err(error)
+        }
+    }
+}
+
+#[tauri::command]
+fn get_ai_activity(state: tauri::State<'_, AppState>) -> Result<Vec<AiActivityEntry>, String> {
+    let activity = state.ai_activity.lock().map_err(|e| e.to_string())?;
+    Ok(activity.iter().rev().cloned().collect())
 }
 
 // === Subject Mastery ===
@@ -514,10 +920,7 @@ fn get_weak_topics(
 // === SQL Sandbox ===
 
 #[tauri::command]
-fn create_sandbox(
-    state: tauri::State<'_, AppState>,
-    setup_sql: String,
-) -> Result<String, String> {
+fn create_sandbox(state: tauri::State<'_, AppState>, setup_sql: String) -> Result<String, String> {
     let sandbox = db::SandboxDb::new()?;
     sandbox.execute_setup(&setup_sql)?;
     let id = format!("sandbox-{}", chrono::Utc::now().timestamp_millis());
@@ -533,16 +936,14 @@ fn execute_sandbox_query(
     query: String,
 ) -> Result<QueryResult, String> {
     let sandboxes = state.sandboxes.lock().map_err(|e| e.to_string())?;
-    let sandbox = sandboxes.get(&sandbox_id)
+    let sandbox = sandboxes
+        .get(&sandbox_id)
         .ok_or_else(|| "Sandbox not found. It may have been cleaned up.".to_string())?;
     sandbox.execute_query(&query)
 }
 
 #[tauri::command]
-fn destroy_sandbox(
-    state: tauri::State<'_, AppState>,
-    sandbox_id: String,
-) -> Result<(), String> {
+fn destroy_sandbox(state: tauri::State<'_, AppState>, sandbox_id: String) -> Result<(), String> {
     let mut sandboxes = state.sandboxes.lock().map_err(|e| e.to_string())?;
     sandboxes.remove(&sandbox_id);
     Ok(())
@@ -585,13 +986,22 @@ fn record_pomodoro_session(
     vault::write_file(&state.vault_path, &tracking_path, &content)?;
 
     // Also insert into SQLite for fast aggregation
-    state.db.record_study_session(&id, &subject_name, &subject_slug, duration_secs, &started_at, &completed_at)?;
+    state.db.record_study_session(
+        &id,
+        &subject_name,
+        &subject_slug,
+        duration_secs,
+        &started_at,
+        &completed_at,
+    )?;
 
     Ok(())
 }
 
 #[tauri::command]
-fn get_study_time_by_subject(state: tauri::State<'_, AppState>) -> Result<Vec<SubjectStudyTime>, String> {
+fn get_study_time_by_subject(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<SubjectStudyTime>, String> {
     state.db.get_study_time_by_subject()
 }
 
@@ -686,7 +1096,11 @@ pub fn run() {
         }
         // Clean up orphaned sr_schedule entries
         match db_clone.cleanup_orphaned_sr_schedules(&vault_clone) {
-            Ok(removed) => if removed > 0 { println!("Cleaned up {} orphaned sr_schedule entries", removed) },
+            Ok(removed) => {
+                if removed > 0 {
+                    println!("Cleaned up {} orphaned sr_schedule entries", removed)
+                }
+            }
             Err(e) => eprintln!("SR schedule cleanup failed: {}", e),
         }
         // Clean up quiz_history and study_sessions for deleted subjects
@@ -724,6 +1138,7 @@ pub fn run() {
             db,
             _watcher: watcher,
             sandboxes: Mutex::new(HashMap::new()),
+            ai_activity: Mutex::new(VecDeque::new()),
         })
         .invoke_handler(tauri::generate_handler![
             init_vault,
@@ -750,6 +1165,7 @@ pub fn run() {
             list_ollama_models,
             ai_request_cmd,
             test_ai_connection,
+            get_ai_activity,
             get_due_cards,
             get_due_count,
             get_at_risk_cards,
@@ -770,4 +1186,71 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_activity_buffer_enforces_retention_limit() {
+        let mut entries = VecDeque::new();
+        for i in 0..35 {
+            push_activity_entry(
+                &mut entries,
+                AiActivityEntry {
+                    request_id: format!("req-{}", i),
+                    feature: "quiz_generate".to_string(),
+                    provider: "cli".to_string(),
+                    model_or_command: "encode-claude-cli.sh".to_string(),
+                    status: "success".to_string(),
+                    started_at: chrono::Utc::now().to_rfc3339(),
+                    duration_ms: Some(10),
+                    error: None,
+                },
+                30,
+            );
+        }
+
+        assert_eq!(entries.len(), 30);
+        assert_eq!(
+            entries.front().map(|entry| entry.request_id.as_str()),
+            Some("req-5")
+        );
+        assert_eq!(
+            entries.back().map(|entry| entry.request_id.as_str()),
+            Some("req-34")
+        );
+    }
+
+    #[test]
+    fn sanitize_ai_activity_error_redacts_secrets() {
+        let input = "Gemini returned 403 for https://example.com?key=abc123 Authorization: Bearer secret-token x-api-key=super-secret";
+        let sanitized = sanitize_ai_activity_error(input);
+
+        assert!(!sanitized.contains("abc123"));
+        assert!(!sanitized.contains("secret-token"));
+        assert!(!sanitized.contains("super-secret"));
+        assert!(sanitized.contains("key=[redacted]"));
+        assert!(sanitized.contains("Bearer [redacted]"));
+        assert!(sanitized.contains("x-api-key=[redacted]"));
+    }
+
+    #[test]
+    fn cli_activity_uses_command_basename() {
+        let runtime = ai::AiRuntimeConfig {
+            provider: "cli".to_string(),
+            model: "/Users/test/scripts/encode-claude-cli.sh".to_string(),
+            url: String::new(),
+            api_key: None,
+            cli_command: "/Users/test/scripts/encode-claude-cli.sh".to_string(),
+            cli_args: vec!["--model".to_string(), "sonnet".to_string()],
+            cli_workdir: "/tmp".to_string(),
+        };
+
+        assert_eq!(
+            model_or_command_for_activity(&runtime),
+            "encode-claude-cli.sh"
+        );
+    }
 }

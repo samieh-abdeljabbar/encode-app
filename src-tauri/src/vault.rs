@@ -1,17 +1,56 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 fn validate_vault_path(vault_path: &Path, relative_path: &str) -> Result<PathBuf, String> {
     let full_path = vault_path.join(relative_path);
-    let canonical = full_path.canonicalize()
+    let canonical = full_path
+        .canonicalize()
         .map_err(|e| format!("Invalid path: {}", e))?;
-    let vault_canonical = vault_path.canonicalize()
+    let vault_canonical = vault_path
+        .canonicalize()
         .map_err(|e| format!("Invalid vault path: {}", e))?;
     if !canonical.starts_with(&vault_canonical) {
         return Err("Path escapes vault boundary".to_string());
     }
     Ok(canonical)
+}
+
+fn validate_new_vault_path(vault_path: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let candidate = Path::new(relative_path);
+    if candidate.is_absolute() {
+        return Err("Path must be relative to the vault root".to_string());
+    }
+    if candidate
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("Path must not contain '..' components".to_string());
+    }
+
+    let full_path = vault_path.join(candidate);
+    let vault_canonical = vault_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid vault path: {}", e))?;
+
+    let mut ancestor = full_path
+        .parent()
+        .ok_or_else(|| "Invalid path".to_string())?;
+
+    while !ancestor.exists() {
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| "Path escapes vault boundary".to_string())?;
+    }
+
+    let ancestor_canonical = ancestor
+        .canonicalize()
+        .map_err(|e| format!("Invalid parent path: {}", e))?;
+    if !ancestor_canonical.starts_with(&vault_canonical) {
+        return Err("Path escapes vault boundary".to_string());
+    }
+
+    Ok(full_path)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -63,6 +102,14 @@ pub fn init_vault(vault_path: &Path) -> Result<(), String> {
 provider = "none"
 ollama_model = "llama3.1:8b"
 ollama_url = "http://localhost:11434"
+openai_model = "gpt-4o-mini"
+deepseek_model = "deepseek-chat"
+claude_model = "claude-sonnet-4-20250514"
+gemini_model = "gemini-2.0-flash"
+api_key = ""
+cli_command = ""
+cli_args = []
+cli_workdir = ""
 "#;
         fs::write(&config_path, default_config)
             .map_err(|e| format!("Failed to write config: {}", e))?;
@@ -118,8 +165,7 @@ pub fn delete_subject(vault_path: &Path, slug: &str) -> Result<(), String> {
     if !canonical.starts_with(&vault_canonical) {
         return Err("Path traversal denied".to_string());
     }
-    fs::remove_dir_all(&canonical)
-        .map_err(|e| format!("Failed to delete subject: {}", e))?;
+    fs::remove_dir_all(&canonical).map_err(|e| format!("Failed to delete subject: {}", e))?;
     Ok(())
 }
 
@@ -131,8 +177,8 @@ pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
     }
 
     let mut subjects = Vec::new();
-    let entries = fs::read_dir(&subjects_dir)
-        .map_err(|e| format!("Failed to read subjects dir: {}", e))?;
+    let entries =
+        fs::read_dir(&subjects_dir).map_err(|e| format!("Failed to read subjects dir: {}", e))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -152,7 +198,8 @@ pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
             fs::read_to_string(&meta_path)
                 .ok()
                 .and_then(|content| {
-                    content.lines()
+                    content
+                        .lines()
                         .find(|l| l.starts_with("subject:"))
                         .map(|l| l.trim_start_matches("subject:").trim().to_string())
                 })
@@ -191,71 +238,39 @@ pub fn list_subjects(vault_path: &Path) -> Result<Vec<Subject>, String> {
 /// Read a file from the vault. Path is relative to vault root.
 pub fn read_file(vault_path: &Path, relative_path: &str) -> Result<String, String> {
     let full_path = validate_vault_path(vault_path, relative_path)?;
-    fs::read_to_string(&full_path)
-        .map_err(|e| format!("Failed to read {:?}: {}", full_path, e))
+    fs::read_to_string(&full_path).map_err(|e| format!("Failed to read {:?}: {}", full_path, e))
 }
 
 /// Write content to a file in the vault. Creates parent directories if needed.
 pub fn write_file(vault_path: &Path, relative_path: &str, content: &str) -> Result<(), String> {
-    // Reject paths with ".." components before touching the filesystem
-    if relative_path.split('/').any(|c| c == "..") {
-        return Err("Path must not contain '..' components".to_string());
-    }
-    let full_path = vault_path.join(relative_path);
+    let full_path = validate_new_vault_path(vault_path, relative_path)?;
     // Create parent directories
     if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directories: {}", e))?;
-        // Validate parent directory stays in vault
-        let parent_canonical = parent.canonicalize()
-            .map_err(|e| format!("Invalid parent path: {}", e))?;
-        let vault_canonical = vault_path.canonicalize()
-            .map_err(|e| format!("Invalid vault path: {}", e))?;
-        if !parent_canonical.starts_with(&vault_canonical) {
-            return Err("Path escapes vault boundary".to_string());
-        }
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
     }
-    fs::write(&full_path, content)
-        .map_err(|e| format!("Failed to write file: {}", e))
+    fs::write(&full_path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
 /// Rename a file in the vault.
 pub fn rename_file(vault_path: &Path, old_path: &str, new_path: &str) -> Result<(), String> {
-    if new_path.contains("..") {
-        return Err("Path must not contain '..' components".to_string());
-    }
     let old_full = validate_vault_path(vault_path, old_path)?;
-    let new_full = vault_path.join(new_path);
+    let new_full = validate_new_vault_path(vault_path, new_path)?;
     if let Some(parent) = new_full.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
     }
-    fs::rename(&old_full, &new_full)
-        .map_err(|e| format!("Failed to rename: {}", e))
+    fs::rename(&old_full, &new_full).map_err(|e| format!("Failed to rename: {}", e))
 }
 
 /// Delete a file from the vault.
 pub fn delete_file(vault_path: &Path, relative_path: &str) -> Result<(), String> {
     let full_path = validate_vault_path(vault_path, relative_path)?;
-    fs::remove_file(&full_path)
-        .map_err(|e| format!("Failed to delete {:?}: {}", full_path, e))
+    fs::remove_file(&full_path).map_err(|e| format!("Failed to delete {:?}: {}", full_path, e))
 }
 
 /// Create a directory in the vault.
 pub fn create_directory(vault_path: &Path, relative_path: &str) -> Result<(), String> {
-    if relative_path.split('/').any(|c| c == "..") {
-        return Err("Path must not contain '..' components".to_string());
-    }
-    let full_path = vault_path.join(relative_path);
-    fs::create_dir_all(&full_path)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
-    // Validate it stays in vault
-    let dir_canonical = full_path.canonicalize()
-        .map_err(|e| format!("Invalid directory path: {}", e))?;
-    let vault_canonical = vault_path.canonicalize()
-        .map_err(|e| format!("Invalid vault path: {}", e))?;
-    if !dir_canonical.starts_with(&vault_canonical) {
-        return Err("Path escapes vault boundary".to_string());
-    }
+    let full_path = validate_new_vault_path(vault_path, relative_path)?;
+    fs::create_dir_all(&full_path).map_err(|e| format!("Failed to create directory: {}", e))?;
     Ok(())
 }
 
@@ -265,22 +280,20 @@ pub fn delete_directory(vault_path: &Path, relative_path: &str) -> Result<(), St
     if !full_path.is_dir() {
         return Err("Not a directory".to_string());
     }
-    fs::remove_dir_all(&full_path)
-        .map_err(|e| format!("Failed to delete directory: {}", e))
+    fs::remove_dir_all(&full_path).map_err(|e| format!("Failed to delete directory: {}", e))
 }
 
 /// Rename a directory in the vault.
 pub fn rename_directory(vault_path: &Path, old_path: &str, new_path: &str) -> Result<(), String> {
-    if new_path.contains("..") {
-        return Err("Path must not contain '..' components".to_string());
-    }
     let old_full = validate_vault_path(vault_path, old_path)?;
     if !old_full.is_dir() {
         return Err("Not a directory".to_string());
     }
-    let new_full = vault_path.join(new_path);
-    fs::rename(&old_full, &new_full)
-        .map_err(|e| format!("Failed to rename directory: {}", e))
+    let new_full = validate_new_vault_path(vault_path, new_path)?;
+    if let Some(parent) = new_full.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directories: {}", e))?;
+    }
+    fs::rename(&old_full, &new_full).map_err(|e| format!("Failed to rename directory: {}", e))
 }
 
 /// List markdown files in a subject folder, optionally filtered by type subdirectory
@@ -378,4 +391,52 @@ fn parse_frontmatter_fields(content: &str) -> (Option<String>, Option<String>, O
     }
 
     (subject, topic, file_type)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{create_directory, write_file};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_path(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{}-{}", prefix, nanos))
+    }
+
+    #[test]
+    fn write_file_rejects_absolute_paths_outside_vault() {
+        let vault_root = unique_path("encode-vault");
+        fs::create_dir_all(&vault_root).expect("create vault root");
+
+        let outside_file = unique_path("encode-outside").join("note.md");
+        let result = write_file(
+            &vault_root,
+            outside_file.to_string_lossy().as_ref(),
+            "hello",
+        );
+
+        assert!(result.is_err());
+        assert!(!outside_file.exists());
+
+        fs::remove_dir_all(&vault_root).ok();
+    }
+
+    #[test]
+    fn create_directory_rejects_absolute_paths_outside_vault() {
+        let vault_root = unique_path("encode-vault");
+        fs::create_dir_all(&vault_root).expect("create vault root");
+
+        let outside_dir = unique_path("encode-outside-dir");
+        let result = create_directory(&vault_root, outside_dir.to_string_lossy().as_ref());
+
+        assert!(result.is_err());
+        assert!(!outside_dir.exists());
+
+        fs::remove_dir_all(&vault_root).ok();
+    }
 }

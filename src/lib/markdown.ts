@@ -1,4 +1,5 @@
 import type { Frontmatter } from "./types";
+import { stripStudyMetaSections } from "./synthesis";
 
 export interface ParsedMarkdown {
   frontmatter: Frontmatter;
@@ -55,7 +56,8 @@ export function parseFrontmatter(raw: string): ParsedMarkdown {
  * content-bearing section, and filters out the Digestion section.
  */
 export function splitSections(content: string): Section[] {
-  const lines = content.split("\n");
+  const studyContent = stripStudyMetaSections(content);
+  const lines = studyContent.split("\n");
   const raw: Section[] = [];
   let currentHeading: string | null = null;
   let currentLevel = 0;
@@ -88,8 +90,8 @@ export function splitSections(content: string): Section[] {
     });
   }
 
-  if (raw.length === 0 && content.trim()) {
-    return [{ heading: null, level: 0, content: content.trim() }];
+  if (raw.length === 0 && studyContent.trim()) {
+    return [{ heading: null, level: 0, content: studyContent.trim() }];
   }
 
   return postProcessSections(raw);
@@ -97,7 +99,7 @@ export function splitSections(content: string): Section[] {
 
 /**
  * Merge empty/title-only sections into the next content section,
- * and filter out Digestion meta-sections.
+ * and filter out study meta-sections.
  */
 function postProcessSections(sections: Section[]): Section[] {
   const result: Section[] = [];
@@ -105,8 +107,8 @@ function postProcessSections(sections: Section[]): Section[] {
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
 
-    // Skip Digestion section (gate responses stored in file)
-    if (section.heading === "Digestion") continue;
+    // Skip study meta-sections stored in the file footer.
+    if (section.heading === "Schema Activation" || section.heading === "Digestion" || section.heading === "Synthesis") continue;
 
     // Skip empty leading sections (no heading, no content)
     if (!section.heading && !section.content.trim() && result.length === 0) {

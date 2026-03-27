@@ -88,7 +88,7 @@ const slashMenuTheme = EditorView.baseTheme({
     boxShadow: "0 8px 32px rgba(0,0,0,0.3) !important",
   },
   ".cm-tooltip-autocomplete ul": {
-    fontFamily: "Inter, system-ui, sans-serif !important",
+    fontFamily: "var(--font-sans) !important",
     fontSize: "13px !important",
   },
   ".cm-tooltip-autocomplete ul li": {
@@ -101,7 +101,7 @@ const slashMenuTheme = EditorView.baseTheme({
   },
   ".cm-tooltip-autocomplete .cm-completionLabel": {
     color: "var(--color-purple) !important",
-    fontFamily: "monospace !important",
+    fontFamily: "var(--font-mono) !important",
     fontSize: "12px !important",
   },
   ".cm-tooltip-autocomplete .cm-completionDetail": {

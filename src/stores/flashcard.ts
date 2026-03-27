@@ -19,6 +19,7 @@ import {
   today,
   type FSRSCard,
 } from "../lib/sr";
+import { localDateTimeString } from "../lib/dates";
 
 export interface SessionStats {
   again: number;
@@ -224,6 +225,10 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+function normalizeSubjectKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 const emptyStats: SessionStats = { again: 0, hard: 0, good: 0, easy: 0, total: 0 };
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
@@ -390,30 +395,50 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     const topicSlug = slugify(topic || "general");
     const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
     const cardId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    let canonicalSubject = subject;
+
+    try {
+      const subjects = await listSubjects();
+      const matchedSubject = subjects.find((entry) =>
+        entry.slug === subjectSlug || normalizeSubjectKey(entry.name) === normalizeSubjectKey(subject)
+      );
+      if (matchedSubject) {
+        canonicalSubject = matchedSubject.name;
+      }
+    } catch {
+      // Ignore canonicalization failures and preserve the provided subject.
+    }
+
+    const cardBlocks = [{ id: cardId, question, answer, type: cardType }];
+    if (cardType === "reversed") {
+      cardBlocks.push({
+        id: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-rev`,
+        question: answer,
+        answer: question,
+        type: "reversed",
+      });
+    }
 
     let content: string;
+    const appendedBlocks = cardBlocks
+      .map((block) => formatCardBlock(block.id, block.question, block.answer, bloom, block.type))
+      .join("\n\n");
+
     try {
       content = await readFile(filePath);
-      content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom, cardType) + "\n";
+      content = content.trimEnd() + "\n\n" + appendedBlocks + "\n";
     } catch {
-      const now = new Date().toISOString().split(".")[0];
+      const now = localDateTimeString();
       content = [
-        "---", `subject: ${subject}`, `topic: ${topic || "General"}`,
+        "---", `subject: ${canonicalSubject}`, `topic: ${topic || "General"}`,
         "type: flashcard", `created_at: ${now}`, "---", "",
-        formatCardBlock(cardId, question, answer, bloom, cardType), "",
+        appendedBlocks, "",
       ].join("\n");
     }
 
     await writeFile(filePath, content);
-    await updateCardSchedule(cardId, filePath, today(), 0, 2.5, "");
-
-    // For reversed cards, also create the flipped version
-    if (cardType === "reversed") {
-      const reverseId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-rev`;
-      content = await readFile(filePath);
-      content = content.trimEnd() + "\n\n" + formatCardBlock(reverseId, answer, question, bloom, "reversed") + "\n";
-      await writeFile(filePath, content);
-      await updateCardSchedule(reverseId, filePath, today(), 0, 2.5, "");
+    for (const block of cardBlocks) {
+      await updateCardSchedule(block.id, filePath, today(), 0, 2.5, "");
     }
 
     const count = await getDueCount();
@@ -444,7 +469,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         } catch { /* skip */ }
       }
       const filtered = subjectFilter
-        ? all.filter((c) => c.subject === subjectFilter)
+        ? all.filter((c) => normalizeSubjectKey(c.subject) === normalizeSubjectKey(subjectFilter))
         : all;
       set({
         cards: filtered,

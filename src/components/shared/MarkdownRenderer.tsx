@@ -1,54 +1,58 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
+import { getCurrentTheme, themes } from "../../lib/themes";
 
 marked.setOptions({ gfm: true, breaks: true });
 
-// Initialize mermaid once with Encode dark theme
-mermaid.initialize({
-  startOnLoad: false,
-  securityLevel: "strict",
-  theme: "dark",
-  themeVariables: {
-    primaryColor: "#7F77DD",
-    primaryTextColor: "#e5e5e5",
-    primaryBorderColor: "#333",
-    lineColor: "#888880",
-    secondaryColor: "#1D9E75",
-    tertiaryColor: "#252525",
-    mainBkg: "#1a1a1a",
-    nodeBorder: "#333",
-    clusterBkg: "#252525",
-    titleColor: "#e5e5e5",
-    edgeLabelBackground: "#1a1a1a",
-  },
-});
+function initializeMermaid(themeId: string): void {
+  const theme = themes.find((entry) => entry.id === themeId) || themes[0];
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: "base",
+    themeVariables: {
+      primaryColor: theme.colors.purple,
+      primaryTextColor: theme.colors.text,
+      primaryBorderColor: theme.colors.border,
+      lineColor: theme.colors["text-muted"],
+      secondaryColor: theme.colors.teal,
+      tertiaryColor: theme.colors["surface-2"],
+      mainBkg: theme.colors.surface,
+      nodeBorder: theme.colors.border,
+      clusterBkg: theme.colors["surface-2"],
+      titleColor: theme.colors.text,
+      edgeLabelBackground: theme.colors.surface,
+    },
+  });
+}
 
 interface MarkdownRendererProps {
   content: string;
   className?: string;
   onWikilinkClick?: (name: string) => void;
+  onQuizRetake?: () => void;
 }
 
 /** Map callout types to colors */
 const CALLOUT_COLORS: Record<string, { border: string; bg: string; label: string }> = {
-  note: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Note" },
-  info: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Info" },
-  tip: { border: "#1D9E75", bg: "rgba(29,158,117,0.08)", label: "Tip" },
-  hint: { border: "#1D9E75", bg: "rgba(29,158,117,0.08)", label: "Hint" },
-  important: { border: "#1D9E75", bg: "rgba(29,158,117,0.08)", label: "Important" },
-  success: { border: "#1D9E75", bg: "rgba(29,158,117,0.08)", label: "Success" },
-  warning: { border: "#BA7517", bg: "rgba(186,117,23,0.08)", label: "Warning" },
-  caution: { border: "#BA7517", bg: "rgba(186,117,23,0.08)", label: "Caution" },
-  danger: { border: "#D85A30", bg: "rgba(216,90,48,0.08)", label: "Danger" },
-  error: { border: "#D85A30", bg: "rgba(216,90,48,0.08)", label: "Error" },
-  bug: { border: "#D85A30", bg: "rgba(216,90,48,0.08)", label: "Bug" },
-  example: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Example" },
-  quote: { border: "#888880", bg: "rgba(136,136,128,0.06)", label: "Quote" },
-  abstract: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Abstract" },
-  question: { border: "#BA7517", bg: "rgba(186,117,23,0.08)", label: "Question" },
-  todo: { border: "#7F77DD", bg: "rgba(127,119,221,0.08)", label: "Todo" },
+  note: { border: "var(--color-accent)", bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)", label: "Note" },
+  info: { border: "var(--color-accent)", bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)", label: "Info" },
+  tip: { border: "var(--color-teal)", bg: "color-mix(in srgb, var(--color-teal) 12%, transparent)", label: "Tip" },
+  hint: { border: "var(--color-teal)", bg: "color-mix(in srgb, var(--color-teal) 12%, transparent)", label: "Hint" },
+  important: { border: "var(--color-teal)", bg: "color-mix(in srgb, var(--color-teal) 12%, transparent)", label: "Important" },
+  success: { border: "var(--color-teal)", bg: "color-mix(in srgb, var(--color-teal) 12%, transparent)", label: "Success" },
+  warning: { border: "var(--color-amber)", bg: "color-mix(in srgb, var(--color-amber) 12%, transparent)", label: "Warning" },
+  caution: { border: "var(--color-amber)", bg: "color-mix(in srgb, var(--color-amber) 12%, transparent)", label: "Caution" },
+  danger: { border: "var(--color-coral)", bg: "color-mix(in srgb, var(--color-coral) 12%, transparent)", label: "Danger" },
+  error: { border: "var(--color-coral)", bg: "color-mix(in srgb, var(--color-coral) 12%, transparent)", label: "Error" },
+  bug: { border: "var(--color-coral)", bg: "color-mix(in srgb, var(--color-coral) 12%, transparent)", label: "Bug" },
+  example: { border: "var(--color-accent)", bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)", label: "Example" },
+  quote: { border: "var(--color-border-strong)", bg: "color-mix(in srgb, var(--color-panel-alt) 88%, transparent)", label: "Quote" },
+  abstract: { border: "var(--color-accent)", bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)", label: "Abstract" },
+  question: { border: "var(--color-amber)", bg: "color-mix(in srgb, var(--color-amber) 12%, transparent)", label: "Question" },
+  todo: { border: "var(--color-accent)", bg: "color-mix(in srgb, var(--color-accent) 12%, transparent)", label: "Todo" },
 };
 
 /** Pre-process wiki-links: [[Page Name]] → clickable anchor */
@@ -153,10 +157,110 @@ function preprocessCallouts(md: string): string {
   return result.join("\n");
 }
 
+/** Escape HTML entities in free text before embedding in HTML strings */
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Pre-process quiz result markdown into styled HTML */
+function preprocessQuizResults(md: string): string {
+  // Check if this looks like a quiz result file
+  if (!md.includes("## [MC]") && !md.includes("## [Open]") && !md.includes("## [Fill]") && !md.includes("## [T/F]") && !md.includes("## [Code]")) {
+    return md;
+  }
+
+  const lines = md.split("\n");
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    // Score line: Score: **3/5** (60%)
+    const scoreMatch = lines[i].match(/^Score:\s*\*\*(\d+)\/(\d+)\*\*\s*\((\d+)%\)/);
+    if (scoreMatch) {
+      const [, correct, total, pct] = scoreMatch;
+      const pctNum = parseInt(pct);
+      const color = pctNum >= 80 ? "var(--color-teal)" : pctNum >= 60 ? "var(--color-amber)" : "var(--color-coral)";
+      result.push(
+        `<div class="quiz-score-bar">` +
+          `<div class="quiz-score-text"><strong>${correct}/${total}</strong> <span style="color:${color}">(${pct}%)</span></div>` +
+          `<div class="quiz-score-track"><div class="quiz-score-fill" style="width:${pct}%;background:${color}"></div></div>` +
+        `</div>`,
+      );
+      // Add retake button
+      result.push(`<div class="quiz-action-row"><button class="quiz-retake-btn" data-quiz-retake="true">Retake Quiz</button></div>`);
+      i++;
+      continue;
+    }
+
+    // Question heading: ## [MC] Question text
+    const qMatch = lines[i].match(/^##\s*\[(MC|Fill|T\/F|Open|Code)\]\s*(.*)/);
+    if (qMatch) {
+      const [, type, question] = qMatch;
+      i++;
+
+      // Collect fields until next heading or EOF
+      let bloom = "";
+      let answer = "";
+      let correctAnswer = "";
+      let resultStatus = "";
+      let feedback = "";
+      let options = "";
+
+      while (i < lines.length && !lines[i].startsWith("## [")) {
+        const line = lines[i];
+        if (line.startsWith("Bloom Level:")) bloom = line.replace("Bloom Level:", "").trim();
+        else if (line.startsWith("Options:")) options = line.replace("Options:", "").trim();
+        else if (line.startsWith("**Answer:**")) answer = line.replace("**Answer:**", "").trim();
+        else if (line.startsWith("**Correct Answer:**")) correctAnswer = line.replace("**Correct Answer:**", "").trim();
+        else if (line.startsWith("**Result:**")) resultStatus = line.replace("**Result:**", "").trim();
+        else if (line.startsWith("**Feedback:**")) feedback = line.replace("**Feedback:**", "").trim();
+        i++;
+      }
+
+      const isCorrect = resultStatus.toLowerCase() === "correct";
+      const cardClass = isCorrect ? "quiz-card-correct" : "quiz-card-incorrect";
+      const typeColors: Record<string, string> = { MC: "var(--color-accent)", Fill: "var(--color-amber)", "T/F": "var(--color-teal)", Open: "var(--color-accent)", Code: "var(--color-coral)" };
+      const badgeColor = typeColors[type] || "var(--color-accent)";
+
+      let html = `<div class="quiz-result-card ${cardClass}">`;
+      html += `<div class="quiz-card-header">`;
+      html += `<span class="quiz-type-badge" style="background:${badgeColor}">${type}</span>`;
+      html += `<span class="quiz-question-text">${escapeHtml(question)}</span>`;
+      if (bloom) html += `<span class="quiz-bloom">Bloom ${bloom}</span>`;
+      html += `</div>`;
+      if (options) html += `<div class="quiz-options">${options.split(" | ").map((o) => `<span class="quiz-option">${escapeHtml(o)}</span>`).join("")}</div>`;
+      html += `<div class="quiz-answer-row">`;
+      html += `<span class="quiz-answer-label">Your answer:</span> <span class="quiz-answer-value">${escapeHtml(answer)}</span>`;
+      html += `</div>`;
+      if (correctAnswer && !isCorrect) {
+        html += `<div class="quiz-answer-row">`;
+        html += `<span class="quiz-answer-label">Correct:</span> <span class="quiz-correct-value">${escapeHtml(correctAnswer)}</span>`;
+        html += `</div>`;
+      }
+      html += `<div class="quiz-result-badge ${isCorrect ? "quiz-result-correct" : "quiz-result-incorrect"}">${escapeHtml(resultStatus)}</div>`;
+      if (feedback) html += `<div class="quiz-feedback">${escapeHtml(feedback)}</div>`;
+      html += `</div>`;
+
+      result.push(html);
+      continue;
+    }
+
+    result.push(lines[i]);
+    i++;
+  }
+
+  return result.join("\n");
+}
+
+function preprocessHighlights(md: string): string {
+  return md.replace(/==([^=\n][\s\S]*?[^=\n])==/g, (_match, text: string) => `<mark>${escapeHtml(text.trim())}</mark>`);
+}
+
 /** Comprehensive prose styles — uses CSS variables from theme system */
 const PROSE_STYLES = `
   .prose {
-    color: var(--color-text, #e5e5e5);
+    font-family: var(--font-serif);
+    color: var(--color-text);
     font-size: var(--editor-font-size, 16px);
     line-height: 1.75;
     max-width: none;
@@ -164,29 +268,29 @@ const PROSE_STYLES = `
   .prose h1 {
     font-size: 28px;
     font-weight: 700;
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     margin: 32px 0 16px 0;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--color-border, #333);
+    border-bottom: 1px solid var(--color-border-subtle);
     line-height: 1.3;
   }
   .prose h2 {
     font-size: 22px;
     font-weight: 600;
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     margin: 28px 0 12px 0;
     line-height: 1.3;
   }
   .prose h3 {
     font-size: 18px;
     font-weight: 600;
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     margin: 24px 0 8px 0;
   }
   .prose h4, .prose h5, .prose h6 {
     font-size: 15px;
     font-weight: 600;
-    color: var(--color-text-muted, #888880);
+    color: var(--color-text-muted);
     margin: 20px 0 8px 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -195,20 +299,20 @@ const PROSE_STYLES = `
     margin: 0 0 16px 0;
   }
   .prose a {
-    color: var(--color-purple, #7F77DD);
+    color: var(--color-accent);
     text-decoration: none;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-purple, #7F77DD) 30%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 32%, transparent);
     transition: border-color 0.15s;
   }
   .prose a:hover {
-    border-bottom-color: var(--color-purple, #7F77DD);
+    border-bottom-color: var(--color-accent);
   }
   .prose strong {
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     font-weight: 600;
   }
   .prose em {
-    color: var(--color-text, #ccc);
+    color: color-mix(in srgb, var(--color-text) 88%, transparent);
   }
   .prose ul, .prose ol {
     margin: 0 0 16px 0;
@@ -218,31 +322,31 @@ const PROSE_STYLES = `
     margin-bottom: 6px;
   }
   .prose li::marker {
-    color: var(--color-text-muted, #888880);
+    color: var(--color-text-muted);
   }
   .prose blockquote {
-    border-left: 3px solid var(--color-border, #333);
+    border-left: 3px solid var(--color-border-strong);
     margin: 16px 0;
     padding: 8px 16px;
-    color: var(--color-text-muted, #888880);
-    background: var(--color-surface, rgba(255,255,255,0.02));
+    color: var(--color-text-muted);
+    background: color-mix(in srgb, var(--color-panel-alt) 92%, transparent);
     border-radius: 0 6px 6px 0;
   }
   .prose blockquote p {
     margin: 0;
   }
   .prose code {
-    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
-    background: var(--color-surface-2, #252525);
-    color: var(--color-coral, #D85A30);
+    background: var(--color-panel-alt);
+    color: var(--color-coral);
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid var(--color-border, #333);
+    border: 1px solid var(--color-border-subtle);
   }
   .prose pre {
-    background: var(--color-surface, #1a1a1a);
-    border: 1px solid var(--color-border, #333);
+    background: var(--color-panel-alt);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 8px;
     padding: 16px;
     margin: 16px 0;
@@ -252,7 +356,7 @@ const PROSE_STYLES = `
     background: none;
     border: none;
     padding: 0;
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     font-size: 13px;
     line-height: 1.6;
   }
@@ -263,29 +367,29 @@ const PROSE_STYLES = `
     font-size: 14px;
   }
   .prose thead {
-    border-bottom: 2px solid var(--color-border, #333);
+    border-bottom: 2px solid var(--color-border-strong);
   }
   .prose th {
     text-align: left;
     padding: 10px 12px;
     font-weight: 600;
-    color: var(--color-text, #e5e5e5);
-    background: var(--color-surface, #1a1a1a);
+    color: var(--color-text);
+    background: var(--color-panel-alt);
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .prose td {
     padding: 8px 12px;
-    border-bottom: 1px solid var(--color-surface-2, #252525);
-    color: var(--color-text, #ccc);
+    border-bottom: 1px solid var(--color-border-subtle);
+    color: color-mix(in srgb, var(--color-text) 92%, transparent);
   }
   .prose tr:nth-child(even) td {
-    background: var(--color-surface, rgba(255,255,255,0.02));
+    background: color-mix(in srgb, var(--color-panel-alt) 86%, transparent);
   }
   .prose hr {
     border: none;
-    border-top: 1px solid var(--color-border, #333);
+    border-top: 1px solid var(--color-border-subtle);
     margin: 32px 0;
   }
   .prose img {
@@ -294,32 +398,63 @@ const PROSE_STYLES = `
     margin: 16px 0;
   }
   .prose del {
-    color: var(--color-text-muted, #888880);
+    color: var(--color-text-muted);
   }
   .prose input[type="checkbox"] {
-    accent-color: var(--color-purple, #7F77DD);
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--color-text-muted);
+    border-radius: 3px;
     margin-right: 8px;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+    cursor: default;
+    flex-shrink: 0;
+  }
+  .prose input[type="checkbox"]:checked {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .prose input[type="checkbox"]:checked::after {
+    content: "\\2713";
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    position: absolute;
+    top: -2px;
+    left: 1px;
+  }
+  .prose li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: -24px;
+  }
+  .prose li:has(> input[type="checkbox"]:checked) {
+    color: var(--color-text-muted);
+    text-decoration: line-through;
   }
   /* Flashcard cards */
   .fc-card {
-    background: var(--color-surface, #1a1a1a);
-    border: 1px solid var(--color-border, #333);
-    border-radius: 8px;
-    padding: 16px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-alt) 88%, transparent), var(--color-panel));
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border-subtle));
+    border-radius: 16px;
+    padding: 18px 18px 16px;
     margin: 12px 0;
-    border-left: 3px solid var(--color-purple, #7F77DD);
+    box-shadow: var(--shadow-panel);
   }
   .fc-q {
-    font-size: 15px;
-    color: var(--color-text, #e5e5e5);
-    margin-bottom: 10px;
-    font-weight: 500;
+    font-size: 16px;
+    color: var(--color-text);
+    margin-bottom: 12px;
+    font-weight: 600;
   }
   .fc-a {
     font-size: 14px;
-    color: var(--color-text-muted, #888880);
-    padding-top: 10px;
-    border-top: 1px solid var(--color-border, #333);
+    color: var(--color-text-muted);
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border-subtle);
   }
   .fc-label {
     display: inline-block;
@@ -333,21 +468,27 @@ const PROSE_STYLES = `
     margin-right: 8px;
     vertical-align: middle;
   }
-  .fc-q .fc-label { background: #7F77DD; color: white; }
-  .fc-a .fc-label { background: #1D9E75; color: white; }
+  .fc-q .fc-label { background: var(--color-accent); color: white; }
+  .fc-a .fc-label { background: var(--color-teal); color: white; }
+  .prose mark {
+    color: var(--color-text);
+    background: color-mix(in srgb, var(--color-amber) 26%, transparent);
+    padding: 0 4px;
+    border-radius: 4px;
+  }
 
   .callout {
-    border-radius: 6px;
-    padding: 12px 16px;
+    border-radius: 12px;
+    padding: 14px 18px;
     margin: 12px 0;
-    border-left: 3px solid #7F77DD;
-    background: rgba(127,119,221,0.08);
+    border-left: 3px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  .callout-note, .callout-info, .callout-example, .callout-abstract, .callout-todo { border-left-color: #7F77DD; background: rgba(127,119,221,0.08); }
-  .callout-tip, .callout-hint, .callout-important, .callout-success { border-left-color: #1D9E75; background: rgba(29,158,117,0.08); }
-  .callout-warning, .callout-caution, .callout-question { border-left-color: #BA7517; background: rgba(186,117,23,0.08); }
-  .callout-danger, .callout-error, .callout-bug { border-left-color: #D85A30; background: rgba(216,90,48,0.08); }
-  .callout-quote { border-left-color: #888880; background: rgba(136,136,128,0.06); }
+  .callout-note, .callout-info, .callout-example, .callout-abstract, .callout-todo { border-left-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+  .callout-tip, .callout-hint, .callout-important, .callout-success { border-left-color: var(--color-teal); background: color-mix(in srgb, var(--color-teal) 12%, transparent); }
+  .callout-warning, .callout-caution, .callout-question { border-left-color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 12%, transparent); }
+  .callout-danger, .callout-error, .callout-bug { border-left-color: var(--color-coral); background: color-mix(in srgb, var(--color-coral) 12%, transparent); }
+  .callout-quote { border-left-color: var(--color-border-strong); background: color-mix(in srgb, var(--color-panel-alt) 90%, transparent); }
 
   .callout-title {
     font-size: 12px;
@@ -355,30 +496,169 @@ const PROSE_STYLES = `
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
-    color: #7F77DD;
+    color: var(--color-accent);
   }
   .callout-title:last-child { margin-bottom: 0; }
-  .callout-title-note, .callout-title-info, .callout-title-example, .callout-title-abstract, .callout-title-todo { color: #7F77DD; }
-  .callout-title-tip, .callout-title-hint, .callout-title-important, .callout-title-success { color: #1D9E75; }
-  .callout-title-warning, .callout-title-caution, .callout-title-question { color: #BA7517; }
-  .callout-title-danger, .callout-title-error, .callout-title-bug { color: #D85A30; }
-  .callout-title-quote { color: #888880; }
+  .callout-title-note, .callout-title-info, .callout-title-example, .callout-title-abstract, .callout-title-todo { color: var(--color-accent); }
+  .callout-title-tip, .callout-title-hint, .callout-title-important, .callout-title-success { color: var(--color-teal); }
+  .callout-title-warning, .callout-title-caution, .callout-title-question { color: var(--color-amber); }
+  .callout-title-danger, .callout-title-error, .callout-title-bug { color: var(--color-coral); }
+  .callout-title-quote { color: var(--color-text-muted); }
 
   .callout-body {
     font-size: 14px;
-    color: var(--color-text, #e5e5e5);
+    color: var(--color-text);
     line-height: 1.6;
   }
 
   /* Wiki-links */
   .wikilink {
-    color: #7F77DD !important;
-    border-bottom: 1px dotted #7F77DD !important;
+    color: var(--color-accent) !important;
+    border-bottom: 1px dotted var(--color-accent) !important;
     cursor: pointer;
     text-decoration: none !important;
   }
   .wikilink:hover {
     border-bottom-style: solid !important;
+  }
+
+  /* Quiz result cards */
+  .quiz-score-bar {
+    margin: 16px 0;
+    padding: 12px 16px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+  }
+  .quiz-score-text {
+    font-size: 18px;
+    margin-bottom: 8px;
+    color: var(--color-text);
+  }
+  .quiz-score-track {
+    height: 6px;
+    background: var(--color-panel-alt);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .quiz-score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .quiz-action-row {
+    margin: 8px 0 16px 0;
+  }
+  .quiz-retake-btn {
+    padding: 8px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-amber);
+    border: 1px solid color-mix(in srgb, var(--color-amber) 40%, transparent);
+    background: color-mix(in srgb, var(--color-amber) 10%, transparent);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .quiz-retake-btn:hover {
+    background: color-mix(in srgb, var(--color-amber) 16%, transparent);
+    border-color: var(--color-amber);
+  }
+  .quiz-result-card {
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 10px 0;
+    border-left: 3px solid var(--color-border-strong);
+    background: var(--color-panel);
+  }
+  .quiz-card-correct {
+    border-left-color: var(--color-teal);
+    background: color-mix(in srgb, var(--color-teal) 8%, transparent);
+  }
+  .quiz-card-incorrect {
+    border-left-color: var(--color-coral);
+    background: color-mix(in srgb, var(--color-coral) 8%, transparent);
+  }
+  .quiz-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .quiz-type-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .quiz-question-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--color-text);
+    flex: 1;
+  }
+  .quiz-bloom {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    background: var(--color-panel-alt);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .quiz-options {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .quiz-option {
+    font-size: 12px;
+    padding: 3px 10px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 4px;
+    color: var(--color-text-muted);
+  }
+  .quiz-answer-row {
+    font-size: 13px;
+    margin-bottom: 4px;
+    color: var(--color-text);
+  }
+  .quiz-answer-label {
+    color: var(--color-text-muted);
+    margin-right: 4px;
+  }
+  .quiz-correct-value {
+    color: var(--color-teal);
+    font-weight: 500;
+  }
+  .quiz-result-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 4px;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .quiz-result-correct {
+    background: color-mix(in srgb, var(--color-teal) 18%, transparent);
+    color: var(--color-teal);
+  }
+  .quiz-result-incorrect {
+    background: color-mix(in srgb, var(--color-coral) 18%, transparent);
+    color: var(--color-coral);
+  }
+  .quiz-feedback {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    font-style: italic;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border-subtle);
   }
 
   /* Mermaid diagrams */
@@ -396,35 +676,58 @@ export default function MarkdownRenderer({
   content,
   className = "",
   onWikilinkClick,
+  onQuizRetake,
 }: MarkdownRendererProps) {
   const proseRef = useRef<HTMLDivElement>(null);
+  const [themeId, setThemeId] = useState(() => getCurrentTheme());
 
   const { html, hasMermaid } = useMemo(() => {
-    // Pipeline: wikilinks → mermaid → callouts → marked → sanitize
+    // Pipeline: wikilinks → mermaid → callouts → quiz results → marked → sanitize
     const withWikilinks = preprocessWikilinks(content);
     const { processed: withMermaid, hasMermaid: mermaidFound } = preprocessMermaid(withWikilinks);
     const withCallouts = preprocessCallouts(withMermaid);
-    const rawHtml = DOMPurify.sanitize(marked.parse(withCallouts) as string, {
-      ADD_TAGS: ["div", "span"],
-      ADD_ATTR: ["class", "data-wikilink", "data-mermaid-id"],
+    const withQuizResults = preprocessQuizResults(withCallouts);
+    const withHighlights = preprocessHighlights(withQuizResults);
+    const rawHtml = DOMPurify.sanitize(marked.parse(withHighlights) as string, {
+      ADD_TAGS: ["div", "span", "input", "button"],
+      ADD_ATTR: ["class", "data-wikilink", "data-mermaid-id", "data-quiz-retake", "checked", "type", "disabled", "style"],
     });
     return { html: rawHtml, hasMermaid: mermaidFound };
   }, [content]);
 
+  useEffect(() => {
+    const handleThemeChange = (event: Event) => {
+      const nextTheme = (event as CustomEvent<string>).detail || getCurrentTheme();
+      setThemeId(nextTheme);
+    };
+
+    window.addEventListener("encode-theme-change", handleThemeChange as EventListener);
+    return () => window.removeEventListener("encode-theme-change", handleThemeChange as EventListener);
+  }, []);
+
   // Render mermaid diagrams after DOM update
   useEffect(() => {
     if (!hasMermaid || !proseRef.current) return;
+    initializeMermaid(themeId);
     const nodes = proseRef.current.querySelectorAll(".mermaid[data-mermaid-id]");
     if (nodes.length > 0) {
       mermaid.run({ nodes: Array.from(nodes) as HTMLElement[] }).catch(() => {
         // Silently handle invalid mermaid syntax — the raw text stays visible
       });
     }
-  }, [html, hasMermaid]);
+  }, [html, hasMermaid, themeId]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
+
+      // Quiz retake button
+      if (target.getAttribute("data-quiz-retake")) {
+        e.preventDefault();
+        onQuizRetake?.();
+        return;
+      }
+
       const anchor = target.closest("a");
       if (!anchor) return;
 
@@ -443,7 +746,7 @@ export default function MarkdownRenderer({
         window.open(href, "_blank");
       }
     },
-    [onWikilinkClick],
+    [onWikilinkClick, onQuizRetake],
   );
 
   return (

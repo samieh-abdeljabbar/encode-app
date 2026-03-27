@@ -3,6 +3,8 @@ import { aiRequest, writeFile, recordQuizResult, listFiles, readFile, createSand
 import type { QueryResult } from "../lib/types";
 import { runPython, type PythonResult } from "../lib/pyodide";
 import { parseFrontmatter } from "../lib/markdown";
+import { localDateString, localDateTimeString } from "../lib/dates";
+import { hasCompletedSynthesis, stripStudyMetaSections } from "../lib/synthesis";
 import { useFlashcardStore } from "./flashcard";
 
 function slugify(s: string): string {
@@ -45,6 +47,7 @@ export interface QuizQuestion {
 interface QuizState {
   subject: string | null;
   topic: string | null;
+  sourceChapterPath: string | null;
   questions: QuizQuestion[];
   currentIndex: number;
   loading: boolean;
@@ -52,14 +55,18 @@ interface QuizState {
   showFeedback: boolean;
   sessionComplete: boolean;
   error: string | null;
+  completionWarning: string | null;
+  completing: boolean;
   summary: string | null;
   generatedCards: number;
+  resultFilePath: string | null;
   config: QuizConfig;
 
   // Pre-quiz config state
   configSubject: string | null;
   configTopic: string | null;
   configContent: string | null;
+  configChapterPath: string | null;
   showConfig: boolean;
 
   // SQL sandbox state
@@ -71,15 +78,15 @@ interface QuizState {
   pythonRunning: boolean;
 
   setConfig: (config: Partial<QuizConfig>) => void;
-  prepareQuiz: (subject: string, topic: string, content: string) => void;
+  prepareQuiz: (subject: string, topic: string, content: string, chapterPath?: string) => void;
   prepareSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
   prepareMultiChapterQuiz: (subjectSlug: string, subjectName: string, chapterPaths: string[]) => Promise<void>;
   startQuiz: () => Promise<void>;
-  generateQuiz: (subject: string, topic: string, chapterContent: string, config?: QuizConfig) => Promise<void>;
+  generateQuiz: (subject: string, topic: string, chapterContent: string, config?: QuizConfig, chapterPath?: string) => Promise<void>;
   generateSubjectQuiz: (subjectSlug: string, subjectName: string) => Promise<void>;
   submitAnswer: (answer: string) => Promise<void>;
   flagQuestion: (index: number) => void;
-  nextQuestion: () => void;
+  nextQuestion: () => Promise<void>;
   retakeQuiz: (filePath: string) => Promise<void>;
   runSandboxQuery: (query: string) => Promise<void>;
   runPythonCode: (code: string) => Promise<void>;
@@ -98,9 +105,17 @@ function buildTypePrompt(types: QuestionType[]): string {
   return types.map((t) => `- ${descriptions[t]}`).join("\n");
 }
 
+function buildQuizResultFilePath(subject: string, topic: string, timestampMs: number): string {
+  const subjectSlug = slugify(subject);
+  const topicSlug = slugify(topic);
+  const date = localDateString();
+  return `subjects/${subjectSlug}/quizzes/${topicSlug}-${date}-${timestampMs}.md`;
+}
+
 export const useQuizStore = create<QuizState>((set, get) => ({
   subject: null,
   topic: null,
+  sourceChapterPath: null,
   questions: [],
   currentIndex: 0,
   loading: false,
@@ -108,12 +123,16 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   showFeedback: false,
   sessionComplete: false,
   error: null,
+  completionWarning: null,
+  completing: false,
   summary: null,
   generatedCards: 0,
+  resultFilePath: null,
   config: { ...DEFAULT_CONFIG },
   configSubject: null,
   configTopic: null,
   configContent: null,
+  configChapterPath: null,
   showConfig: false,
   activeSandboxId: null,
   sandboxResult: null,
@@ -125,11 +144,12 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set((s) => ({ config: { ...s.config, ...partial } }));
   },
 
-  prepareQuiz: (subject, topic, content) => {
+  prepareQuiz: (subject, topic, content, chapterPath) => {
     set({
       configSubject: subject,
       configTopic: topic,
       configContent: content,
+      configChapterPath: chapterPath ?? null,
       showConfig: true,
       error: null,
     });
@@ -140,15 +160,19 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     try {
       const files = await listFiles(subjectSlug, "chapters");
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const f of files) {
         try {
           const raw = await readFile(f.file_path);
-          const { content } = parseFrontmatter(raw);
-          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${content}`;
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
+          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No chapter content found for this subject." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "No synthesized chapters are ready for a subject quiz yet. Finish reading and save chapter synthesis first." });
         return;
       }
       set({
@@ -156,6 +180,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         configSubject: subjectName,
         configTopic: "All Chapters",
         configContent: combinedContent,
+        configChapterPath: null,
         showConfig: true,
       });
     } catch (e) {
@@ -167,16 +192,20 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set({ generating: true, error: null });
     try {
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const path of chapterPaths) {
         try {
           const raw = await readFile(path);
-          const { content } = parseFrontmatter(raw);
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
           const name = path.split("/").pop()?.replace(".md", "") || "";
-          combinedContent += `\n\n--- Chapter: ${name} ---\n\n${content}`;
+          combinedContent += `\n\n--- Chapter: ${name} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No content found in selected chapters." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "Selected chapters are not ready yet. Finish chapter synthesis in Reader before quizzing them together." });
         return;
       }
       set({
@@ -184,6 +213,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         configSubject: subjectName,
         configTopic: `${chapterPaths.length} Chapters`,
         configContent: combinedContent,
+        configChapterPath: null,
         showConfig: true,
       });
     } catch (e) {
@@ -192,7 +222,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   },
 
   startQuiz: async () => {
-    const { configSubject, configTopic, configContent, config } = get();
+    const { configSubject, configTopic, configContent, config, configChapterPath } = get();
     if (!configSubject || !configTopic || !configContent) return;
 
     // Adaptive difficulty: auto-adjust bloom range based on recent scores
@@ -214,23 +244,36 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       }
     }
 
-    set({ showConfig: false });
-    await get().generateQuiz(configSubject, configTopic, configContent, finalConfig);
+    set({ showConfig: false, error: null, completionWarning: null });
+    await get().generateQuiz(configSubject, configTopic, configContent, finalConfig, configChapterPath ?? undefined);
   },
 
-  generateQuiz: async (subject, topic, chapterContent, config) => {
+  generateQuiz: async (subject, topic, chapterContent, config, chapterPath) => {
     const cfg = config || get().config;
-    set({ generating: true, subject, topic, error: null, summary: null, generatedCards: 0 });
+    const cleanContent = stripStudyMetaSections(chapterContent);
+    set({
+      generating: true,
+      subject,
+      topic,
+      sourceChapterPath: chapterPath ?? null,
+      error: null,
+      completionWarning: null,
+      completing: false,
+      summary: null,
+      generatedCards: 0,
+      resultFilePath: null,
+    });
     try {
       const typeList = buildTypePrompt(cfg.types);
       const typeNames = cfg.types.map((t) => `"${t}"`).join(", ");
 
       const contentLimit = cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000;
       const { text } = await aiRequest(
+        "quiz_generate",
         `Generate exactly ${cfg.questionCount} quiz questions. Types: ${typeNames}. Bloom ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Output ONLY a JSON array:
 [{"question":"...","bloomLevel":2,"type":"free-recall"},{"question":"...","bloomLevel":1,"type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"B"}]
 ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a "setupSql" field with CREATE TABLE and INSERT INTO statements so the user can run their query against real data. Include "correctAnswer" with the expected SQL query. For Python, include a "setupCode" field with any imports or test data, an "expectedOutput" field with the expected stdout, and "correctAnswer" with the solution code. For pseudocode, include "correctAnswer".' : ""}`,
-        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${chapterContent.slice(0, contentLimit)}`,
+        `Subject: ${subject}\nTopic: ${topic}\n\nContent:\n${cleanContent.slice(0, contentLimit)}`,
         cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000,
       );
 
@@ -271,6 +314,10 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
         currentIndex: 0,
         sessionComplete: false,
         showFeedback: false,
+        configChapterPath: chapterPath ?? null,
+        completionWarning: null,
+        completing: false,
+        resultFilePath: null,
       });
     } catch (e) {
       set({
@@ -285,15 +332,19 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     try {
       const files = await listFiles(subjectSlug, "chapters");
       let combinedContent = "";
+      let eligibleCount = 0;
       for (const f of files) {
         try {
           const raw = await readFile(f.file_path);
-          const { content } = parseFrontmatter(raw);
-          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${content}`;
+          const { content, frontmatter } = parseFrontmatter(raw);
+          const eligible = frontmatter.status === "digested" || hasCompletedSynthesis(raw);
+          if (!eligible) continue;
+          eligibleCount++;
+          combinedContent += `\n\n--- Chapter: ${f.file_path.split("/").pop()?.replace(".md", "")} ---\n\n${stripStudyMetaSections(content)}`;
         } catch { /* skip */ }
       }
-      if (!combinedContent.trim()) {
-        set({ generating: false, error: "No chapter content found for this subject." });
+      if (!combinedContent.trim() || eligibleCount === 0) {
+        set({ generating: false, error: "No synthesized chapters are ready for a subject quiz yet." });
         return;
       }
       await get().generateQuiz(subjectName, "All Chapters", combinedContent);
@@ -318,10 +369,10 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     // Local validation for MC and T/F (exact match is reliable for these)
     if (question.type === "multiple-choice" && question.correctAnswer) {
       correct = answer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
-      feedback = correct ? "Correct!" : `Incorrect. The correct answer is: ${question.correctAnswer}`;
+      feedback = correct ? "Correct!" : null;
     } else if (question.type === "true-false" && question.correctAnswer) {
       correct = answer.toLowerCase() === question.correctAnswer.toLowerCase();
-      feedback = correct ? "Correct!" : `Incorrect. The answer is: ${question.correctAnswer}`;
+      feedback = correct ? "Correct!" : null;
     } else if (question.type === "fill-blank" && question.correctAnswer) {
       // Exact match → correct. Otherwise fall through to AI for semantic evaluation.
       if (answer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim()) {
@@ -335,14 +386,20 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     if (question.type === "free-recall" || question.type === "code" || !feedback) {
       try {
         const codeContext = question.type === "code"
-          ? `\nLanguage: ${question.language || "unknown"}\nEvaluate the code for correctness of logic and approach, not exact syntax.`
+          ? `\nLanguage: ${question.language || "unknown"}\nIf the answer is wrong, explicitly classify the problem as conceptual misunderstanding, incomplete solution, or invalid syntax / malformed query.`
           : "";
+        const evaluationGoal = correct === false
+          ? "The student's answer is already known to be incorrect. Explain specifically why it is incorrect, what misconception or mismatch caused the mistake, and why the correct answer is right."
+          : "Decide whether the student's answer is correct, then explain what they got right or wrong. If wrong, explain the mismatch and why the correct answer is right.";
         const { text } = await aiRequest(
+          "quiz_evaluate",
           `You are evaluating a student's quiz answer. Respond with ONLY JSON:
-{"correct": true, "feedback": "1-2 sentences explaining what was right/wrong", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+{"correct": true, "feedback": "3-5 sentences explaining what was right or wrong, the misconception or mismatch if wrong, and why the correct answer is right", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+${evaluationGoal}
+If the answer is incorrect, the feedback must say what was wrong about the student's answer, not just state the correct answer.
 Always include "correctAnswer" with the real, complete answer to the question.`,
           `Question (Bloom Level ${question.bloomLevel}): ${question.question}\nStudent's answer: ${answer}${question.correctAnswer ? `\nExpected answer: ${question.correctAnswer}` : ""}`,
-          500,
+          700,
         );
         const cleanedEval = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
         const jsonMatch = cleanedEval.match(/\{[\s\S]*\}/);
@@ -358,7 +415,11 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
           if (correct === null) correct = parsed.correct ?? null;
         }
       } catch {
-        if (feedback === null) feedback = "AI evaluation unavailable.";
+        if (feedback === null && correct === false && question.correctAnswer) {
+          feedback = `Incorrect. Your answer does not match the expected answer. The mismatch is that you gave a different result than the chapter expects. Correct answer: ${question.correctAnswer}`;
+        } else if (feedback === null) {
+          feedback = "AI evaluation unavailable.";
+        }
       }
     }
 
@@ -380,94 +441,120 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
     set({ questions: updated });
   },
 
-  nextQuestion: () => {
-    const { currentIndex, questions, subject, topic } = get();
+  nextQuestion: async () => {
+    const { currentIndex, questions, subject, topic, sourceChapterPath } = get();
     const nextIndex = currentIndex + 1;
-    if (nextIndex >= questions.length) {
+    if (nextIndex < questions.length) {
+      set({ currentIndex: nextIndex, showFeedback: false, error: null });
+      return;
+    }
+
+    if (!subject || !topic) {
       set({ sessionComplete: true, showFeedback: false });
+      return;
+    }
 
-      // Save results + auto-create flashcards from wrong answers
-      if (subject && topic) {
-        const d = new Date().toISOString().split("T")[0];
-        const now = new Date().toISOString().split(".")[0];
-        const ts = Date.now();
-        const subjectSlug = slugify(subject);
-        const topicSlug = slugify(topic);
-        const filePath = `subjects/${subjectSlug}/quizzes/${topicSlug}-${d}-${ts}.md`;
-        const correctCount = questions.filter((q) => q.correct === true).length;
-        const pct = Math.round((correctCount / questions.length) * 100);
+    set({ completing: true, error: null, completionWarning: null });
 
-        const lines = [
-          "---", `subject: ${subject}`, `topic: ${topic}`, "type: quiz",
-          `created_at: ${now}`, `score: ${pct}`, "---", "",
-          `# Quiz: ${topic} (${d})`, "",
-          `Score: **${correctCount}/${questions.length}** (${pct}%)`, "",
-        ];
+    const now = localDateTimeString();
+    const timestampMs = Date.now();
+    const filePath = get().resultFilePath || buildQuizResultFilePath(subject, topic, timestampMs);
+    const correctCount = questions.filter((q) => q.correct === true).length;
+    const wrongQuestions = questions.filter((q) => q.correct === false && !q.flagged);
+    const pct = Math.round((correctCount / questions.length) * 100);
+    const lines = [
+      "---", `subject: ${subject}`, `topic: ${topic}`, "type: quiz",
+      `created_at: ${now}`, `score: ${pct}`,
+      ...(sourceChapterPath ? [`source_chapter: ${sourceChapterPath}`] : []),
+      "---", "",
+      `# Quiz: ${topic} (${localDateString()})`, "",
+      `Score: **${correctCount}/${questions.length}** (${pct}%)`, "",
+    ];
 
-        for (const q of questions) {
-          const typeLabel = q.type === "multiple-choice" ? "MC"
-            : q.type === "fill-blank" ? "Fill"
-            : q.type === "true-false" ? "T/F"
-            : q.type === "code" ? "Code"
-            : "Open";
-          lines.push(`## [${typeLabel}] ${q.question}`);
-          lines.push(`Bloom Level: ${q.bloomLevel}`);
-          if (q.language) lines.push(`Language: ${q.language}`);
-          if (q.options) lines.push(`Options: ${q.options.join(" | ")}`);
-          lines.push("");
-          lines.push(`**Answer:** ${q.userAnswer || "(no answer)"}`);
-          if (q.correctAnswer) lines.push(`**Correct Answer:** ${q.correctAnswer}`);
-          lines.push(`**Result:** ${q.correct === true ? "Correct" : q.correct === false ? "Incorrect" : "Unevaluated"}`);
-          if (q.feedback) lines.push(`**Feedback:** ${q.feedback}`);
-          if (q.flagged) lines.push(`**Flagged:** Yes — question may be inaccurate`);
-          lines.push("");
-        }
+    for (const q of questions) {
+      const typeLabel = q.type === "multiple-choice" ? "MC"
+        : q.type === "fill-blank" ? "Fill"
+        : q.type === "true-false" ? "T/F"
+        : q.type === "code" ? "Code"
+        : "Open";
+      lines.push(`## [${typeLabel}] ${q.question}`);
+      lines.push(`Bloom Level: ${q.bloomLevel}`);
+      if (q.language) lines.push(`Language: ${q.language}`);
+      if (q.options) lines.push(`Options: ${q.options.join(" | ")}`);
+      lines.push("");
+      lines.push(`**Answer:** ${q.userAnswer || "(no answer)"}`);
+      if (q.correctAnswer) lines.push(`**Correct Answer:** ${q.correctAnswer}`);
+      lines.push(`**Result:** ${q.correct === true ? "Correct" : q.correct === false ? "Incorrect" : "Unevaluated"}`);
+      if (q.feedback) lines.push(`**Feedback:** ${q.feedback}`);
+      if (q.flagged) lines.push("**Flagged:** Yes — question may be inaccurate");
+      lines.push("");
+    }
 
-        writeFile(filePath, lines.join("\n")).catch(() => {});
+    try {
+      await writeFile(filePath, lines.join("\n"));
+    } catch (e) {
+      set({
+        completing: false,
+        resultFilePath: filePath,
+        error: `Failed to save quiz results. Please try again. ${e instanceof Error ? e.message : String(e)}`,
+      });
+      return;
+    }
 
-        // Record each question in DB for grade tracking
-        for (const q of questions) {
-          if (q.correct !== null) {
-            recordQuizResult(subject, topic, q.bloomLevel, q.correct).catch(() => {});
-          }
-        }
+    const warnings: string[] = [];
 
-        // Auto-create flashcards from wrong answers (awaited + serialized to avoid file races)
-        const wrongQuestions = questions.filter((q) => q.correct === false && !q.flagged);
-        if (wrongQuestions.length > 0) {
-          (async () => {
-            let cardCount = 0;
-            for (const q of wrongQuestions) {
-              const cardAnswer = q.correctAnswer || q.feedback || "Review this concept.";
-              try {
-                await useFlashcardStore.getState().createCard(subject, topic, q.question, cardAnswer, q.bloomLevel);
-                cardCount++;
-              } catch { /* skip */ }
-            }
-            set({ generatedCards: cardCount });
-          })();
-        }
-
-        // Generate summary of wrong answers
-        if (wrongQuestions.length > 0) {
-          const wrongSummary = wrongQuestions.map((q) =>
-            `Q: ${q.question}\nYour answer: ${q.userAnswer}\nCorrect: ${q.correctAnswer || "(see feedback)"}\nFeedback: ${q.feedback || ""}`
-          ).join("\n\n");
-
-          aiRequest(
-            "You are a study coach. Based on the questions the student got wrong, write a concise summary (3-5 bullet points) of the key concepts they need to review. Be specific and actionable. Use plain text, no markdown headers.",
-            `Subject: ${subject}\nTopic: ${topic}\n\nWrong answers:\n${wrongSummary}`,
-            500,
-          ).then(({ text }) => {
-            set({ summary: text });
-          }).catch(() => {
-            set({ summary: null });
-          });
+    try {
+      for (const q of questions) {
+        if (q.correct !== null) {
+          await recordQuizResult(subject, topic, q.bloomLevel, q.correct);
         }
       }
-    } else {
-      set({ currentIndex: nextIndex, showFeedback: false });
+    } catch {
+      warnings.push("Quiz results were saved, but grade history failed to update.");
     }
+
+    let cardCount = 0;
+    if (wrongQuestions.length > 0) {
+      try {
+        for (const q of wrongQuestions) {
+          const cardAnswer = q.correctAnswer || q.feedback || "Review this concept.";
+          await useFlashcardStore.getState().createCard(subject, topic, q.question, cardAnswer, q.bloomLevel);
+          cardCount++;
+        }
+      } catch {
+        warnings.push("Quiz results were saved, but some review cards could not be created.");
+      }
+    }
+
+    let summary: string | null = null;
+    if (wrongQuestions.length > 0) {
+      const wrongSummary = wrongQuestions.map((q) =>
+        `Q: ${q.question}\nYour answer: ${q.userAnswer}\nCorrect: ${q.correctAnswer || "(see feedback)"}\nFeedback: ${q.feedback || ""}`
+      ).join("\n\n");
+
+      try {
+        const { text } = await aiRequest(
+          "quiz_wrong_answer_summary",
+          "You are a study coach. Based on the questions the student got wrong, write a concise summary (3-5 bullet points) of the key concepts they need to review. Be specific and actionable. Use plain text, no markdown headers.",
+          `Subject: ${subject}\nTopic: ${topic}\n\nWrong answers:\n${wrongSummary}`,
+          500,
+        );
+        summary = text;
+      } catch {
+        summary = null;
+      }
+    }
+
+    set({
+      sessionComplete: true,
+      showFeedback: false,
+      completing: false,
+      error: null,
+      generatedCards: cardCount,
+      summary,
+      completionWarning: warnings.length > 0 ? warnings.join(" ") : null,
+      resultFilePath: filePath,
+    });
   },
 
   retakeQuiz: async (filePath) => {
@@ -530,12 +617,16 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
       set({
         subject,
         topic,
+        sourceChapterPath: typeof frontmatter.source_chapter === "string" ? frontmatter.source_chapter : null,
         questions,
         generating: false,
         currentIndex: 0,
         sessionComplete: false,
         showFeedback: false,
         showConfig: false,
+        completionWarning: null,
+        completing: false,
+        resultFilePath: null,
       });
     } catch (e) {
       set({ generating: false, error: `Failed to load quiz: ${e instanceof Error ? e.message : String(e)}` });
@@ -594,10 +685,13 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
     }
     set({
       subject: null, topic: null, questions: [],
+      sourceChapterPath: null,
       currentIndex: 0, loading: false, generating: false,
       showFeedback: false, sessionComplete: false, error: null,
+      completionWarning: null, completing: false,
       summary: null, generatedCards: 0,
-      configSubject: null, configTopic: null, configContent: null, showConfig: false,
+      resultFilePath: null,
+      configSubject: null, configTopic: null, configContent: null, configChapterPath: null, showConfig: false,
       activeSandboxId: null, sandboxResult: null, sandboxError: null,
       pythonResult: null, pythonRunning: false,
     });

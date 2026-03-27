@@ -6,32 +6,32 @@ import { tags } from "@lezer/highlight";
 export const encodeTheme = EditorView.theme(
   {
     "&": {
-      backgroundColor: "var(--color-bg)",
-      fontFamily: "var(--editor-font-family, Georgia, Merriweather, serif)",
+      backgroundColor: "transparent",
+      fontFamily: "var(--font-serif, Georgia, Merriweather, serif)",
       fontSize: "var(--editor-font-size, 16px)",
       lineHeight: "1.75",
     },
     ".cm-content": {
-      caretColor: "var(--color-purple)",
-      padding: "32px",
+      caretColor: "var(--color-accent)",
+      padding: "40px",
       maxWidth: "var(--editor-max-width, 800px)",
       color: "var(--color-text)",
     },
     ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "var(--color-purple)",
+      borderLeftColor: "var(--color-accent)",
       borderLeftWidth: "2px",
     },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-      backgroundColor: "rgba(127, 119, 221, 0.2) !important",
+      backgroundColor: "color-mix(in srgb, var(--color-accent) 22%, transparent) !important",
     },
     ".cm-activeLine": {
-      backgroundColor: "var(--color-surface)",
+      backgroundColor: "color-mix(in srgb, var(--color-panel-active) 72%, transparent)",
     },
     ".cm-gutters": {
       display: "none",
     },
     ".cm-line": {
-      padding: "2px 0",
+      padding: "3px 0",
     },
     ".cm-scroller": {
       overflow: "auto",
@@ -61,20 +61,20 @@ export const encodeHighlighting = syntaxHighlighting(
       { tag: tags.heading6, fontSize: "13px", fontWeight: "600" },
 
       // Heading markers ## — very dim
-      { tag: tags.processingInstruction, color: "#666" },
+      { tag: tags.processingInstruction, color: "var(--color-text-muted)" },
 
       // Bold + Italic
       { tag: tags.strong, fontWeight: "600", color: "inherit" },
       { tag: tags.emphasis, fontStyle: "italic", color: "inherit" },
 
       // Links
-      { tag: tags.link, color: "var(--color-purple)" },
+      { tag: tags.link, color: "var(--color-accent)" },
       { tag: tags.url, fontSize: "13px" },
 
       // Inline code
       {
         tag: tags.monospace,
-        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: "13px",
         color: "var(--color-coral)",
       },

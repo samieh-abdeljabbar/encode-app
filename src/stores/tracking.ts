@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { SubjectStudyTime } from "../lib/types";
 import * as tauri from "../lib/tauri";
+import { localDateTimeString } from "../lib/dates";
 
 interface TrackingState {
   studyTimes: SubjectStudyTime[];
@@ -34,7 +35,7 @@ export const useTrackingStore = create<TrackingState>((set, get) => ({
 
   recordSession: async (subjectName, subjectSlug, durationSecs, startedAt) => {
     const id = `sess-${Date.now()}`;
-    const completedAt = new Date().toISOString().slice(0, 19);
+    const completedAt = localDateTimeString();
     await tauri.recordPomodoroSession(
       id,
       subjectName,

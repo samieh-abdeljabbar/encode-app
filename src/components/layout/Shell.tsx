@@ -4,16 +4,26 @@ import Ribbon from "./Ribbon";
 import Sidebar from "./Sidebar";
 import QuickSwitcher from "../shared/QuickSwitcher";
 import ShortcutsOverlay from "../shared/ShortcutsOverlay";
+import { useAppStore } from "../../stores/app";
+import PomodoroRuntime from "./PomodoroRuntime";
 
 export default function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
+  const config = useAppStore((s) => s.config);
+  const loadConfig = useAppStore((s) => s.loadConfig);
 
   // Sidebar only shows on vault page, controlled by toggle
   const onVault = location.pathname === "/vault";
   const showSidebar = onVault && sidebarOpen;
+
+  useEffect(() => {
+    if (!config) {
+      loadConfig();
+    }
+  }, [config, loadConfig]);
 
   // Auto-open sidebar when navigating to Vault
   useEffect(() => {
@@ -34,6 +44,26 @@ export default function Shell() {
       e.preventDefault();
       setSidebarOpen((v) => !v);
     }
+    // Zoom: Cmd+= / Cmd+- / Cmd+0
+    if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
+      e.preventDefault();
+      const cur = parseInt(localStorage.getItem("encode-font-size") || "16");
+      const next = Math.min(24, cur + 1);
+      document.documentElement.style.setProperty("--editor-font-size", `${next}px`);
+      localStorage.setItem("encode-font-size", String(next));
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "-") {
+      e.preventDefault();
+      const cur = parseInt(localStorage.getItem("encode-font-size") || "16");
+      const next = Math.max(10, cur - 1);
+      document.documentElement.style.setProperty("--editor-font-size", `${next}px`);
+      localStorage.setItem("encode-font-size", String(next));
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "0") {
+      e.preventDefault();
+      document.documentElement.style.setProperty("--editor-font-size", "16px");
+      localStorage.setItem("encode-font-size", "16");
+    }
     if (e.key === "?" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
       e.preventDefault();
       setShortcutsOpen(true);
@@ -47,9 +77,13 @@ export default function Shell() {
 
   return (
     <div className="flex h-screen bg-bg overflow-hidden">
-      <Ribbon sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
+      <Ribbon
+        sidebarOpen={sidebarOpen}
+        sidebarVisible={showSidebar}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
       {showSidebar && <Sidebar />}
-      <main className="flex-1 overflow-y-auto">
+      <main className="app-main-surface relative flex-1 overflow-y-auto">
         <Outlet />
       </main>
       <QuickSwitcher
@@ -60,6 +94,7 @@ export default function Shell() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+      <PomodoroRuntime />
     </div>
   );
 }

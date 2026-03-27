@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, X, ChevronRight, BookOpen } from "lucide-react";
 import { useVaultStore } from "../../stores/vault";
 import { writeFile } from "../../lib/tauri";
+import { localDateTimeString } from "../../lib/dates";
 
 interface CreateSubjectWizardProps {
   open: boolean;
@@ -58,7 +59,7 @@ export default function CreateSubjectWizard({ open, onClose, onCreated }: Create
 
       // Create chapter files for each non-empty chapter name
       const validChapters = chapters.filter((c) => c.trim());
-      const now = new Date().toISOString().slice(0, 19);
+      const now = localDateTimeString();
 
       for (const chapterName of validChapters) {
         const chapterSlug = chapterName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

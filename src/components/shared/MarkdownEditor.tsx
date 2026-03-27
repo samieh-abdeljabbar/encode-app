@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
-import { Table } from "@lezer/markdown";
+import { Table, TaskList, Strikethrough } from "@lezer/markdown";
 import { EditorView } from "@codemirror/view";
 import { encodeTheme, encodeHighlighting } from "../../lib/cm-theme";
-import { livePreviewPlugin, livePreviewStyles, tableDecoField, linkClickHandler } from "../../lib/cm-decorations";
+import { livePreviewPlugin, livePreviewStyles, tableDecoField, flashcardDecoField, linkClickHandler, checkboxClickHandler } from "../../lib/cm-decorations";
 import { pasteHandler } from "../../lib/cm-paste-handler";
 import { slashMenuExtension } from "../../lib/cm-slash-menu";
 
@@ -17,13 +17,15 @@ interface MarkdownEditorProps {
 }
 
 const extensions = [
-  markdown({ extensions: [Table] }),
+  markdown({ extensions: [Table, TaskList, Strikethrough] }),
   encodeTheme,
   encodeHighlighting,
   livePreviewPlugin,
   livePreviewStyles,
   tableDecoField,
+  flashcardDecoField,
   linkClickHandler,
+  checkboxClickHandler,
   pasteHandler,
   EditorView.lineWrapping,
   ...slashMenuExtension,
@@ -44,7 +46,7 @@ export default function MarkdownEditor({
   );
 
   return (
-    <div className="h-full overflow-auto" onBlur={onBlur}>
+    <div className="h-full overflow-auto bg-panel" onBlur={onBlur}>
       {/* Force text color to match theme */}
       <style>{`
         .cm-editor .cm-content { color: var(--color-text) !important; }
@@ -54,11 +56,11 @@ export default function MarkdownEditor({
         .cm-editor .ͼ6 { color: var(--color-text) !important; }
         .cm-editor .ͼ7 { color: var(--color-text) !important; }
         .cm-editor .ͼ1 { color: var(--color-text); }
-        .cm-editor { background-color: var(--color-bg) !important; }
-        .cm-editor .cm-gutters { background-color: var(--color-bg) !important; border-color: var(--color-border) !important; }
-        .cm-editor .cm-activeLineGutter { background-color: var(--color-surface) !important; }
-        .cm-editor .cm-activeLine { background-color: var(--color-surface) !important; }
-        .cm-editor .cm-cursor { border-color: var(--color-text) !important; }
+        .cm-editor { background-color: transparent !important; }
+        .cm-editor .cm-gutters { background-color: transparent !important; border-color: var(--color-border-subtle) !important; }
+        .cm-editor .cm-activeLineGutter { background-color: var(--color-panel-active) !important; }
+        .cm-editor .cm-activeLine { background-color: color-mix(in srgb, var(--color-panel-active) 72%, transparent) !important; }
+        .cm-editor .cm-cursor { border-color: var(--color-accent) !important; }
       `}</style>
       <CodeMirror
         value={value}
