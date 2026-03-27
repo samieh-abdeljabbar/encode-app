@@ -61,6 +61,10 @@ pub struct AppConfig {
     pub claude_model: String,
     pub gemini_model: String,
     pub api_key: String,
+    pub claude_api_key: String,
+    pub gemini_api_key: String,
+    pub openai_api_key: String,
+    pub deepseek_api_key: String,
     pub cli_command: String,
     pub cli_args: Vec<String>,
     pub cli_workdir: String,
@@ -89,6 +93,10 @@ fn default_app_config(vault_path: &std::path::Path) -> AppConfig {
         claude_model: "claude-sonnet-4-20250514".to_string(),
         gemini_model: "gemini-2.0-flash".to_string(),
         api_key: String::new(),
+        claude_api_key: String::new(),
+        gemini_api_key: String::new(),
+        openai_api_key: String::new(),
+        deepseek_api_key: String::new(),
         cli_command: String::new(),
         cli_args: Vec::new(),
         cli_workdir: String::new(),
@@ -156,6 +164,14 @@ fn read_app_config(vault_path: &std::path::Path) -> AppConfig {
             config.gemini_model = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("api_key =") {
             config.api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("claude_api_key =") {
+            config.claude_api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("gemini_api_key =") {
+            config.gemini_api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("openai_api_key =") {
+            config.openai_api_key = val.trim().trim_matches('"').to_string();
+        } else if let Some(val) = line.strip_prefix("deepseek_api_key =") {
+            config.deepseek_api_key = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("cli_command =") {
             config.cli_command = val.trim().trim_matches('"').to_string();
         } else if let Some(val) = line.strip_prefix("cli_args =") {
@@ -199,7 +215,51 @@ fn read_app_config(vault_path: &std::path::Path) -> AppConfig {
         }
     }
 
+    // Migrate legacy single api_key to the active provider's field if empty
+    if !config.api_key.is_empty() {
+        match config.ai_provider.as_str() {
+            "claude" if config.claude_api_key.is_empty() => {
+                config.claude_api_key = config.api_key.clone()
+            }
+            "gemini" if config.gemini_api_key.is_empty() => {
+                config.gemini_api_key = config.api_key.clone()
+            }
+            "openai" if config.openai_api_key.is_empty() => {
+                config.openai_api_key = config.api_key.clone()
+            }
+            "deepseek" if config.deepseek_api_key.is_empty() => {
+                config.deepseek_api_key = config.api_key.clone()
+            }
+            _ => {}
+        }
+    }
+
+    // Migrate stale dev-machine CLI paths that no longer exist on disk
+    if !config.cli_command.is_empty() {
+        let cmd_path = std::path::Path::new(&config.cli_command);
+        let is_bundled_script = config.cli_command.contains("/scripts/encode-")
+            || config.cli_command.contains("\\scripts\\encode-");
+        if is_bundled_script && !cmd_path.exists() {
+            config.cli_command = String::new();
+        }
+    }
+
     config
+}
+
+fn api_key_for_provider(config: &AppConfig) -> Option<String> {
+    let key = match config.ai_provider.as_str() {
+        "claude" => &config.claude_api_key,
+        "gemini" => &config.gemini_api_key,
+        "openai" => &config.openai_api_key,
+        "deepseek" => &config.deepseek_api_key,
+        _ => return None, // ollama, cli, none — no API key needed
+    };
+    if key.is_empty() {
+        None
+    } else {
+        Some(key.clone())
+    }
 }
 
 fn model_for_provider(config: &AppConfig) -> String {
@@ -483,7 +543,11 @@ openai_model = "{}"
 deepseek_model = "{}"
 claude_model = "{}"
 gemini_model = "{}"
-api_key = "{}"
+api_key = ""
+claude_api_key = "{}"
+gemini_api_key = "{}"
+openai_api_key = "{}"
+deepseek_api_key = "{}"
 cli_command = "{}"
 cli_args = {}
 cli_workdir = "{}"
@@ -508,7 +572,10 @@ notifications_enabled = {}
         escape_toml_string(&config.deepseek_model),
         escape_toml_string(&config.claude_model),
         escape_toml_string(&config.gemini_model),
-        escape_toml_string(&config.api_key),
+        escape_toml_string(&config.claude_api_key),
+        escape_toml_string(&config.gemini_api_key),
+        escape_toml_string(&config.openai_api_key),
+        escape_toml_string(&config.deepseek_api_key),
         escape_toml_string(&config.cli_command),
         format_string_list(&config.cli_args),
         escape_toml_string(&config.cli_workdir),
@@ -530,6 +597,85 @@ notifications_enabled = {}
 
     let config_path = state.vault_path.join(".encode").join("config.toml");
     std::fs::write(&config_path, toml).map_err(|e| format!("Failed to save config: {}", e))
+}
+
+#[tauri::command]
+fn get_cli_preset_paths(app: tauri::AppHandle) -> Result<HashMap<String, String>, String> {
+    use tauri::Manager;
+    let ext = if cfg!(windows) { "ps1" } else { "sh" };
+
+    // Try bundled resource path first (production builds)
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let mut paths = HashMap::new();
+        for name in ["codex", "claude"] {
+            let script = resource_dir.join(format!("encode-{}-cli.{}", name, ext));
+            if script.exists() {
+                paths.insert(name.to_string(), script.to_string_lossy().to_string());
+            }
+        }
+        if !paths.is_empty() {
+            return Ok(paths);
+        }
+    }
+
+    // Fallback: dev mode only — look relative to the project root
+    #[cfg(debug_assertions)]
+    {
+        let dev_scripts = Path::new(env!("CARGO_MANIFEST_DIR")).join("../scripts");
+        let mut paths = HashMap::new();
+        for name in ["codex", "claude"] {
+            let script = dev_scripts.join(format!("encode-{}-cli.{}", name, ext));
+            if script.exists() {
+                paths.insert(
+                    name.to_string(),
+                    script
+                        .canonicalize()
+                        .unwrap_or(script)
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+        if !paths.is_empty() {
+            return Ok(paths);
+        }
+    }
+
+    Ok(HashMap::new())
+}
+
+#[tauri::command]
+fn get_cached_analysis(
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+    section_index: i32,
+    fingerprint: String,
+) -> Result<Option<String>, String> {
+    let config = read_app_config(&state.vault_path);
+    let model = model_for_provider(&config);
+    state
+        .db
+        .get_cached_analysis(&file_path, section_index, &fingerprint, &config.ai_provider, &model)
+}
+
+#[tauri::command]
+fn put_cached_analysis(
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+    section_index: i32,
+    fingerprint: String,
+    analysis_json: String,
+) -> Result<(), String> {
+    let config = read_app_config(&state.vault_path);
+    let model = model_for_provider(&config);
+    state.db.put_cached_analysis(
+        &file_path,
+        section_index,
+        &fingerprint,
+        &config.ai_provider,
+        &model,
+        &analysis_json,
+    )
 }
 
 #[tauri::command]
@@ -716,11 +862,7 @@ async fn ai_request_cmd(
         provider: config.ai_provider.clone(),
         model: model_for_provider(&config),
         url: config.ollama_url.clone(),
-        api_key: if config.api_key.is_empty() {
-            None
-        } else {
-            Some(config.api_key.clone())
-        },
+        api_key: api_key_for_provider(&config),
         cli_command: config.cli_command.clone(),
         cli_args: config.cli_args.clone(),
         cli_workdir: if config.cli_workdir.trim().is_empty() {
@@ -1114,6 +1256,14 @@ pub fn run() {
                 eprintln!("Study session cleanup failed: {}", e);
             }
         }
+        // Cap analysis cache at 500 entries
+        match db_clone.cleanup_analysis_cache(500) {
+            Ok(removed) if removed > 0 => {
+                println!("Cleaned up {} old analysis cache entries", removed)
+            }
+            Err(e) => eprintln!("Analysis cache cleanup failed: {}", e),
+            _ => {}
+        }
     });
 
     // Start file watcher
@@ -1157,6 +1307,9 @@ pub fn run() {
             get_streak,
             get_config,
             save_config,
+            get_cli_preset_paths,
+            get_cached_analysis,
+            put_cached_analysis,
             create_subject,
             delete_subject,
             import_url,
@@ -1234,6 +1387,47 @@ mod tests {
         assert!(sanitized.contains("key=[redacted]"));
         assert!(sanitized.contains("Bearer [redacted]"));
         assert!(sanitized.contains("x-api-key=[redacted]"));
+    }
+
+    #[test]
+    fn legacy_api_key_migrates_to_active_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let encode_dir = dir.path().join(".encode");
+        std::fs::create_dir_all(&encode_dir).unwrap();
+        std::fs::write(
+            encode_dir.join("config.toml"),
+            r#"[ai]
+provider = "claude"
+api_key = "sk-legacy-key-123"
+"#,
+        )
+        .unwrap();
+
+        let config = read_app_config(dir.path());
+        assert_eq!(config.ai_provider, "claude");
+        assert_eq!(config.claude_api_key, "sk-legacy-key-123");
+        assert!(config.gemini_api_key.is_empty());
+        assert!(config.openai_api_key.is_empty());
+        assert!(config.deepseek_api_key.is_empty());
+    }
+
+    #[test]
+    fn legacy_api_key_does_not_overwrite_existing_provider_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let encode_dir = dir.path().join(".encode");
+        std::fs::create_dir_all(&encode_dir).unwrap();
+        std::fs::write(
+            encode_dir.join("config.toml"),
+            r#"[ai]
+provider = "claude"
+api_key = "sk-old"
+claude_api_key = "sk-already-set"
+"#,
+        )
+        .unwrap();
+
+        let config = read_app_config(dir.path());
+        assert_eq!(config.claude_api_key, "sk-already-set");
     }
 
     #[test]

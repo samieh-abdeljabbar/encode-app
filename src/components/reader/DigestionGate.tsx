@@ -105,7 +105,15 @@ export default function DigestionGate({
 
       {/* Current question */}
       {generating ? (
-        <p className="text-text-muted text-sm animate-pulse">Reading section and generating questions...</p>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 border-2 border-purple border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-text-muted">Preparing questions...</span>
+          </div>
+          <div className="h-1 w-full bg-surface-2 rounded-full overflow-hidden">
+            <div className="h-full bg-purple/40 rounded-full animate-pulse" style={{ width: "60%" }} />
+          </div>
+        </div>
       ) : (
         <p className="text-text font-medium">{prompt}</p>
       )}
@@ -129,7 +137,12 @@ export default function DigestionGate({
           disabled={!response.trim() || submitting || generating}
           className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {submitting ? "Evaluating..." : currentPhase + 1 >= totalQuestions ? "Submit & Continue" : "Submit"}
+          {submitting ? (
+            <span className="flex items-center gap-2">
+              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Checking your answer...
+            </span>
+          ) : currentPhase + 1 >= totalQuestions ? "Submit & Continue" : "Submit"}
         </button>
       </div>
     </div>

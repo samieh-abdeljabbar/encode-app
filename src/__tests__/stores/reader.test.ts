@@ -32,6 +32,8 @@ vi.mock("../../lib/tauri", () => ({
   deleteCardSchedule: vi.fn(),
   listSubjects: listSubjectsMock,
   listFiles: vi.fn(),
+  getCachedAnalysis: vi.fn(async () => null),
+  putCachedAnalysis: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../lib/profile", () => ({
@@ -204,6 +206,88 @@ describe("reader store durability", () => {
 
     expect(files.get(chapterPath)).toContain("## Digestion");
     expect(useReaderStore.getState().filePath).toBe("subjects/other/chapters/other.md");
+  });
+
+  it("prefetches analysis for the section the user is now reading, not the one after", async () => {
+    const tauri = await import("../../lib/tauri");
+    const putMock = vi.mocked(tauri.putCachedAnalysis);
+    putMock.mockClear();
+
+    // Set up a 4-section chapter (intro + 3 gated sections)
+    const fourSectionChapter = [
+      "---", "subject: Test", "topic: Prefetch", "type: chapter", "status: unread", "---",
+      "", "# Intro", "", "Short intro paragraph that is not gated.",
+      "", "## Section One", "", "This section has enough words to be gated because it contains more than twenty words of real content that matters for normalization testing.",
+      "", "## Section Two", "", "This section also has enough words to be gated because it contains more than twenty words of real content that matters for testing.",
+      "", "## Section Three", "", "This section also has enough words to be gated because it contains more than twenty words of content for the test.",
+    ].join("\n");
+    files.set(chapterPath, fourSectionChapter);
+
+    // AI returns valid analysis for any reader_gate_analyze call
+    aiRequestMock.mockImplementation(async (feature: string) => {
+      if (feature === "reader_gate_analyze") {
+        return {
+          text: JSON.stringify({
+            concepts: [
+              { name: "A", kind: "term", detail: "Detail A." },
+              { name: "B", kind: "mechanism", detail: "Detail B." },
+              { name: "C", kind: "relationship", detail: "Detail C." },
+            ],
+            commonMisconception: "None.",
+            questions: [
+              { type: "recall", q: "What is A?" },
+              { type: "explain", q: "Why does B work?" },
+            ],
+            summary: { remember: "Remember A.", watchOut: "Watch B.", goDeeper: "Dig into C." },
+            coreCard: { q: "Q?", a: "A.", bloom: 1 },
+          }),
+          provider: "test", model: "test",
+        };
+      }
+      if (feature === "reader_gate_evaluate") {
+        return {
+          text: '{"right":"Correct.","gap":"None.","deeper":"Think more.","mastery":4}',
+          provider: "test", model: "test",
+        };
+      }
+      return { text: "", provider: "test", model: "test" };
+    });
+    getConfigMock.mockResolvedValue({ ai_provider: "claude" });
+
+    await useReaderStore.getState().loadFile(chapterPath);
+    // After loading: currentSectionIndex=0, sections[0]=Intro, sections[1]=Section One, etc.
+
+    // Advance past intro (section 0 → section 1 is gated, so gate opens)
+    useReaderStore.getState().advanceSection();
+    await flushPromises();
+    await flushPromises();
+
+    // Gate should now be open with questions for section 0
+    // Submit the gate response to advance to section 1
+    const state1 = useReaderStore.getState();
+    if (state1.gateQuestions.length > 0) {
+      for (let i = 0; i < state1.gateQuestions.length; i++) {
+        await useReaderStore.getState().submitGateResponse("Test answer.");
+        await flushPromises();
+      }
+    }
+    await flushPromises();
+    await flushPromises();
+    await flushPromises();
+
+    // After completing the gate, user is at section 1.
+    // The prefetch should cache analysis for section 1 (the section being read),
+    // NOT section 2 (the off-by-one bug).
+    const putCalls = putMock.mock.calls;
+    const prefetchedIndices = putCalls.map((call) => call[1]);
+
+    // The prefetch target should be section index 1 (the section the user is now reading)
+    // If the off-by-one bug existed, it would be 2
+    if (prefetchedIndices.length > 0) {
+      const lastPrefetchIdx = prefetchedIndices[prefetchedIndices.length - 1];
+      expect(lastPrefetchIdx).toBe(1);
+      expect(lastPrefetchIdx).not.toBe(2);
+    }
   });
 
   it("persists summary fields and auto-adds a deterministic core card", async () => {

@@ -84,6 +84,10 @@ export interface AppConfig {
   claude_model: string;
   gemini_model: string;
   api_key: string;
+  claude_api_key: string;
+  gemini_api_key: string;
+  openai_api_key: string;
+  deepseek_api_key: string;
   cli_command: string;
   cli_args: string[];
   cli_workdir: string;

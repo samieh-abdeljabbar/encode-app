@@ -180,6 +180,16 @@ export const aiRequest = (feature: string, systemPrompt: string, userPrompt: str
 export const getAiActivity = () =>
   invoke<AiActivityEntry[]>("get_ai_activity").catch(() => []);
 
+export const getCliPresetPaths = () =>
+  invoke<Record<string, string>>("get_cli_preset_paths");
+
+// Analysis cache
+export const getCachedAnalysis = (filePath: string, sectionIndex: number, fingerprint: string) =>
+  invoke<string | null>("get_cached_analysis", { filePath, sectionIndex, fingerprint });
+
+export const putCachedAnalysis = (filePath: string, sectionIndex: number, fingerprint: string, analysisJson: string) =>
+  invoke<void>("put_cached_analysis", { filePath, sectionIndex, fingerprint, analysisJson });
+
 export const checkOllama = (url: string) =>
   invoke<boolean>("check_ollama", { url });
 

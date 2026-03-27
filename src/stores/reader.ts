@@ -15,7 +15,7 @@ import {
   shouldGateSection,
   upsertDigestion,
 } from "../lib/gates";
-import { readFile, writeFile, aiRequest, getConfig } from "../lib/tauri";
+import { readFile, writeFile, aiRequest, getConfig, getCachedAnalysis, putCachedAnalysis } from "../lib/tauri";
 import { getProfileContext } from "../lib/profile";
 import { useFlashcardStore } from "./flashcard";
 
@@ -140,6 +140,17 @@ function slugify(s: string): string {
 function analysisCacheKey(filePath: string, sectionIndex: number): string {
   return `${filePath}::${sectionIndex}`;
 }
+
+/** SHA-256 fingerprint of section content (first 8 bytes as hex). */
+async function contentFingerprint(content: string): Promise<string> {
+  const data = new TextEncoder().encode(content.trim());
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(hash);
+  return Array.from(bytes.slice(0, 8), b => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Tracks in-flight analysis requests to prevent duplicate generation. */
+const inflightAnalysis = new Set<string>();
 
 function getFallbackQuestions(sectionIndex: number, wordCount: number): GeneratedQuestion[] {
   const pair = FALLBACK_GATE_QUESTIONS[sectionIndex % FALLBACK_GATE_QUESTIONS.length];
@@ -515,42 +526,86 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         currentCoreCard: null,
       });
 
-      const cacheKey = filePath ? analysisCacheKey(filePath, currentSectionIndex) : "";
-      const cached = filePath ? get().gateAnalysisCache[cacheKey] : undefined;
-      if (cached) {
+      // Level 1: in-memory cache (session-scoped)
+      const memKey = filePath ? analysisCacheKey(filePath, currentSectionIndex) : "";
+      const memCached = filePath ? get().gateAnalysisCache[memKey] : undefined;
+      if (memCached) {
         set({
-          gateQuestions: cached.questions,
-          currentGateAnalysis: cached,
+          gateQuestions: memCached.questions,
+          currentGateAnalysis: memCached,
           gateGenerating: false,
         });
         return;
       }
 
-      analyzeSectionForGate(
-        filePath || "",
-        currentSectionIndex,
-        currentSection?.content || "",
-        currentSection?.heading || "Introduction",
-      ).then(({ analysis, questions }) => {
-        if (analysis && filePath) {
-          set((state) => ({
-            gateQuestions: questions,
-            currentGateAnalysis: analysis,
-            gateGenerating: false,
-            gateAnalysisCache: {
-              ...state.gateAnalysisCache,
-              [analysisCacheKey(filePath, currentSectionIndex)]: analysis,
-            },
-          }));
-          return;
+      const sectionContent = currentSection?.content || "";
+      const sectionHeading = currentSection?.heading || "Introduction";
+      const fp = filePath || "";
+
+      // Level 2: persistent SQLite cache, then live generation
+      (async () => {
+        // Short-circuit when AI is disabled — skip cache, use fallback questions
+        try {
+          const config = await getConfig();
+          if (config.ai_provider === "none") {
+            const wordCount = sectionContent.trim().split(/\s+/).filter(Boolean).length;
+            set({
+              gateQuestions: getFallbackQuestions(currentSectionIndex, wordCount),
+              currentGateAnalysis: null,
+              gateGenerating: false,
+            });
+            return;
+          }
+        } catch { /* config unavailable — proceed with live generation attempt */ }
+
+        // Check SQLite cache
+        if (fp) {
+          try {
+            const fingerprint = await contentFingerprint(sectionContent);
+            const dbHit = await getCachedAnalysis(fp, currentSectionIndex, fingerprint);
+            if (dbHit) {
+              // Derive question count from stored data to avoid mismatch if word count threshold shifted
+              const storedQCount = (() => { try { return (JSON.parse(dbHit) as { questions?: unknown[] })?.questions?.length ?? 2; } catch { return 2; } })();
+              const parsed = parseAnalysis(dbHit, storedQCount);
+              if (parsed) {
+                set((state) => ({
+                  gateQuestions: parsed.questions,
+                  currentGateAnalysis: parsed,
+                  gateGenerating: false,
+                  gateAnalysisCache: { ...state.gateAnalysisCache, [memKey]: parsed },
+                }));
+                return;
+              }
+              // Corrupt row — will be overwritten on regeneration
+            }
+          } catch { /* SQLite unavailable — fall through to live generation */ }
         }
 
-        set({
-          gateQuestions: questions,
-          currentGateAnalysis: null,
-          gateGenerating: false,
-        });
-      });
+        // Live generation with inflight guard
+        const inflightKey = `${fp}::${currentSectionIndex}`;
+        if (inflightAnalysis.has(inflightKey)) return;
+        inflightAnalysis.add(inflightKey);
+        try {
+          const { analysis, questions } = await analyzeSectionForGate(fp, currentSectionIndex, sectionContent, sectionHeading);
+          if (analysis && fp) {
+            // Store in both caches
+            set((state) => ({
+              gateQuestions: questions,
+              currentGateAnalysis: analysis,
+              gateGenerating: false,
+              gateAnalysisCache: { ...state.gateAnalysisCache, [memKey]: analysis },
+            }));
+            try {
+              const fingerprint = await contentFingerprint(sectionContent);
+              await putCachedAnalysis(fp, currentSectionIndex, fingerprint, JSON.stringify(analysis));
+            } catch { /* SQLite write failed — non-fatal */ }
+            return;
+          }
+          set({ gateQuestions: questions, currentGateAnalysis: null, gateGenerating: false });
+        } finally {
+          inflightAnalysis.delete(inflightKey);
+        }
+      })();
     } else {
       set({ currentSectionIndex: nextIndex, gateOpen: false });
     }
@@ -866,6 +921,39 @@ async function saveAndAdvance(
         currentGateSubQuestions: [],
         weakestRepairCard: null,
       });
+    }
+
+    // Prefetch: analyze the section the user is now reading (will be needed at next gate)
+    const sections = useReaderStore.getState().sections;
+    const prefetchIdx = newResponse.sectionIndex;
+    const gateBoundaryIdx = prefetchIdx + 1;
+    if (gateBoundaryIdx < sections.length && shouldGateSection(gateBoundaryIdx, sections[gateBoundaryIdx].content)) {
+      const pContent = sections[prefetchIdx].content;
+      const pHeading = sections[prefetchIdx].heading || "Introduction";
+      const pInflightKey = `${filePath}::${prefetchIdx}`;
+
+      if (!inflightAnalysis.has(pInflightKey)) {
+        inflightAnalysis.add(pInflightKey);
+        contentFingerprint(pContent).then((fp) =>
+          getCachedAnalysis(filePath, prefetchIdx, fp).then((hit) => {
+            if (hit) {
+              inflightAnalysis.delete(pInflightKey);
+              return;
+            }
+            analyzeSectionForGate(filePath, prefetchIdx, pContent, pHeading)
+              .then(({ analysis }) => {
+                if (analysis) {
+                  putCachedAnalysis(filePath, prefetchIdx, fp, JSON.stringify(analysis)).catch(() => {});
+                  useReaderStore.setState((s) => ({
+                    gateAnalysisCache: { ...s.gateAnalysisCache, [`${filePath}::${prefetchIdx}`]: analysis },
+                  }));
+                }
+              })
+              .catch(() => {})
+              .finally(() => inflightAnalysis.delete(pInflightKey));
+          }).catch(() => inflightAnalysis.delete(pInflightKey))
+        ).catch(() => inflightAnalysis.delete(pInflightKey));
+      }
     }
   } catch (e) {
     console.error("Failed to save digestion:", e);

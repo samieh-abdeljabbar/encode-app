@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../stores/app";
-import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection } from "../lib/tauri";
+import { rebuildIndex, getVaultPath, checkOllama, listOllamaModels, testAiConnection, getCliPresetPaths } from "../lib/tauri";
 import { MONO_FONT_OPTIONS, READING_FONT_OPTIONS, UI_FONT_OPTIONS, getStoredFontId, persistFontPreference, type FontOption } from "../lib/fonts";
 import type { AppConfig } from "../lib/types";
 import { themes, applyTheme, getCurrentTheme } from "../lib/themes";
 import { MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
 
-const CODEX_PRESET_PATH = "/Users/samiehabdeljabbar/Desktop/actually_learn/scripts/encode-codex-cli.sh";
-const CLAUDE_PRESET_PATH = "/Users/samiehabdeljabbar/Desktop/actually_learn/scripts/encode-claude-cli.sh";
+// CLI preset paths are resolved dynamically in Phase 2 via get_cli_preset_paths Tauri command.
+// Preset buttons are disabled until dynamic resolution is wired up.
 
 const POPULAR_MODELS = [
   { id: "llama3.1:8b", name: "Llama 3.1 8B", size: "4.7 GB", desc: "Best general-purpose local model" },
@@ -114,10 +114,14 @@ export default function Settings() {
   const [deepseekModel, setDeepseekModel] = useState("deepseek-chat");
   const [claudeModel, setClaudeModel] = useState("claude-sonnet-4-20250514");
   const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
-  const [apiKey, setApiKey] = useState("");
+  const [claudeApiKey, setClaudeApiKey] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [deepseekApiKey, setDeepseekApiKey] = useState("");
   const [cliCommand, setCliCommand] = useState("");
   const [cliArgsText, setCliArgsText] = useState("");
   const [cliWorkdir, setCliWorkdir] = useState("");
+  const [presetPaths, setPresetPaths] = useState<Record<string, string>>({});
   const [ollamaStatus, setOllamaStatus] = useState<"checking" | "available" | "unavailable">("checking");
   const [indexCount, setIndexCount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -138,6 +142,7 @@ export default function Settings() {
   useEffect(() => {
     loadConfig();
     getVaultPath().then(setVaultPath).catch(() => {});
+    getCliPresetPaths().then(setPresetPaths).catch(() => {});
   }, [loadConfig]);
 
   useEffect(() => {
@@ -149,7 +154,12 @@ export default function Settings() {
       setDeepseekModel(config.deepseek_model);
       setClaudeModel(config.claude_model);
       setGeminiModel(config.gemini_model);
-      setApiKey(config.api_key || "");
+      // Per-provider API keys with legacy migration
+      const legacyKey = config.api_key || "";
+      setClaudeApiKey(config.claude_api_key || (config.ai_provider === "claude" ? legacyKey : ""));
+      setGeminiApiKey(config.gemini_api_key || (config.ai_provider === "gemini" ? legacyKey : ""));
+      setOpenaiApiKey(config.openai_api_key || (config.ai_provider === "openai" ? legacyKey : ""));
+      setDeepseekApiKey(config.deepseek_api_key || (config.ai_provider === "deepseek" ? legacyKey : ""));
       setCliCommand(config.cli_command || "");
       setCliArgsText((config.cli_args || []).join("\n"));
       setCliWorkdir(config.cli_workdir || "");
@@ -187,7 +197,11 @@ export default function Settings() {
       deepseek_model: deepseekModel,
       claude_model: claudeModel,
       gemini_model: geminiModel,
-      api_key: apiKey,
+      api_key: "",
+      claude_api_key: claudeApiKey,
+      gemini_api_key: geminiApiKey,
+      openai_api_key: openaiApiKey,
+      deepseek_api_key: deepseekApiKey,
       cli_command: cliCommand,
       cli_args: cliArgs,
       cli_workdir: cliWorkdir,
@@ -222,13 +236,28 @@ export default function Settings() {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const activeApiKey =
+    provider === "claude" ? claudeApiKey
+      : provider === "gemini" ? geminiApiKey
+        : provider === "openai" ? openaiApiKey
+          : provider === "deepseek" ? deepseekApiKey
+            : "";
+
+  const setActiveApiKey = (value: string) => {
+    if (provider === "claude") setClaudeApiKey(value);
+    else if (provider === "gemini") setGeminiApiKey(value);
+    else if (provider === "openai") setOpenaiApiKey(value);
+    else if (provider === "deepseek") setDeepseekApiKey(value);
+  };
+
   const applyCliPreset = (preset: "codex" | "claude") => {
+    const path = presetPaths[preset];
+    if (!path) return;
     setProvider("cli");
+    setCliCommand(path);
     if (preset === "codex") {
-      setCliCommand(CODEX_PRESET_PATH);
       setCliArgsText(["--model", "gpt-5.4"].join("\n"));
     } else {
-      setCliCommand(CLAUDE_PRESET_PATH);
       setCliArgsText(["--output-format", "text", "--model", "sonnet"].join("\n"));
     }
     setCliWorkdir(vaultPath);
@@ -508,8 +537,8 @@ export default function Settings() {
               <div className="relative">
                 <input
                   type={showApiKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
+                  value={activeApiKey}
+                  onChange={(e) => setActiveApiKey(e.target.value)}
                   placeholder="Enter API key..."
                   className="w-full px-3 py-2 pr-16 bg-surface-2 border border-border rounded text-sm text-text focus:outline-none focus:border-purple"
                 />
@@ -573,12 +602,12 @@ export default function Settings() {
                 </select>
               </div>
             </div>
-            {apiKey && (
+            {activeApiKey && (
               <TestConnectionButton
                 provider={provider}
                 model={currentProviderModel}
                 url={ollamaUrl}
-                apiKey={apiKey}
+                apiKey={activeApiKey}
                 cliCommand={cliCommand}
                 cliArgs={currentCliArgs}
                 cliWorkdir={cliWorkdir}
@@ -594,15 +623,23 @@ export default function Settings() {
               <div className="flex gap-2 flex-wrap">
                 <button
                   type="button"
+                  disabled={!presetPaths.codex}
                   onClick={() => applyCliPreset("codex")}
-                  className="rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs text-text transition-colors hover:border-border-strong"
+                  className={`rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs transition-colors ${
+                    presetPaths.codex ? "text-text hover:border-border-strong" : "text-text-muted opacity-50 cursor-not-allowed"
+                  }`}
+                  title={presetPaths.codex || "Codex CLI preset not found"}
                 >
                   Use Codex CLI
                 </button>
                 <button
                   type="button"
+                  disabled={!presetPaths.claude}
                   onClick={() => applyCliPreset("claude")}
-                  className="rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs text-text transition-colors hover:border-border-strong"
+                  className={`rounded-xl border border-border-subtle bg-panel px-3 py-2 text-xs transition-colors ${
+                    presetPaths.claude ? "text-text hover:border-border-strong" : "text-text-muted opacity-50 cursor-not-allowed"
+                  }`}
+                  title={presetPaths.claude || "Claude CLI preset not found"}
                 >
                   Use Claude Code
                 </button>
@@ -647,7 +684,7 @@ export default function Settings() {
 
             <div className="p-3 bg-bg rounded border border-border text-xs text-text-muted space-y-1">
               <p>Use a non-interactive CLI that reads from stdin and writes its final answer to stdout.</p>
-              <p>No API key is required here unless your chosen CLI needs one separately.</p>
+              <p>API keys are not used for CLI providers. Your CLI tool handles its own authentication.</p>
               <p>The preset scripts in this repo normalize Codex CLI and Claude Code for Encode.</p>
             </div>
 
@@ -656,7 +693,7 @@ export default function Settings() {
                 provider={provider}
                 model={currentProviderModel}
                 url={ollamaUrl}
-                apiKey={apiKey}
+                apiKey=""
                 cliCommand={cliCommand}
                 cliArgs={currentCliArgs}
                 cliWorkdir={cliWorkdir || vaultPath}

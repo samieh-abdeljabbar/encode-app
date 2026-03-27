@@ -35,7 +35,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../scripts/encode-claude-cli.sh":  "encode-claude-cli.sh",
+      "../scripts/encode-codex-cli.sh":   "encode-codex-cli.sh",
+      "../scripts/encode-claude-cli.ps1": "encode-claude-cli.ps1",
+      "../scripts/encode-codex-cli.ps1":  "encode-codex-cli.ps1"
+    }
   },
   "plugins": {
     "updater": {

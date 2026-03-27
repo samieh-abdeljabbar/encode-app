@@ -430,25 +430,56 @@ async fn cli_request(
     };
 
     tauri::async_runtime::spawn_blocking(move || {
-        let mut child = Command::new(&command);
-        child
-            .args(&args)
-            .stdin(Stdio::piped())
+        // Interpreter-based dispatch: .sh via sh, .ps1 via powershell, else direct
+        let cmd_lower = command.to_lowercase();
+        let mut cmd = if cmd_lower.ends_with(".sh") {
+            let mut c = Command::new("sh");
+            c.arg(&command);
+            c.args(&args);
+            c
+        } else if cmd_lower.ends_with(".ps1") {
+            let mut c = Command::new("powershell.exe");
+            c.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &command]);
+            c.args(&args);
+            c
+        } else {
+            let mut c = Command::new(&command);
+            c.args(&args);
+            c
+        };
+
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        if !workdir.is_empty() {
-            child.current_dir(&workdir);
+        // Augment PATH for macOS/Linux GUI apps that have restricted PATH
+        #[cfg(unix)]
+        {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let extra = [
+                "/usr/local/bin",
+                "/opt/homebrew/bin",
+                &format!("{}/.local/bin", home),
+                &format!("{}/.cargo/bin", home),
+            ];
+            let augmented = format!("{}:{}", extra.join(":"), current_path);
+            cmd.env("PATH", augmented);
         }
 
-        let mut child = child
+        if !workdir.is_empty() {
+            cmd.current_dir(&workdir);
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("CLI launch failed: {}", e))?;
 
-        if let Some(stdin) = child.stdin.as_mut() {
+        if let Some(mut stdin) = child.stdin.take() {
             stdin
                 .write_all(prompt.as_bytes())
                 .map_err(|e| format!("Failed to write prompt to CLI stdin: {}", e))?;
+            // stdin dropped here — sends EOF to the child process
         }
 
         let output = child

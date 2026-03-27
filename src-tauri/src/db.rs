@@ -48,6 +48,10 @@ impl Database {
         let _ =
             conn.execute_batch("ALTER TABLE file_index ADD COLUMN status TEXT DEFAULT 'unread'");
 
+        let migration_004 = include_str!("../migrations/004_analysis_cache.sql");
+        conn.execute_batch(migration_004)
+            .map_err(|e| format!("Failed to run migration 004: {}", e))?;
+
         Ok(Database {
             conn: Mutex::new(conn),
         })
@@ -784,6 +788,98 @@ impl Database {
         }
 
         Ok(removed)
+    }
+
+    // ─── Analysis Cache ────────────────────────────────────
+
+    const ANALYSIS_SCHEMA_VERSION: i32 = 1;
+
+    pub fn get_cached_analysis(
+        &self,
+        file_path: &str,
+        section_index: i32,
+        fingerprint: &str,
+        provider: &str,
+        model: &str,
+    ) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT analysis FROM analysis_cache
+                 WHERE file_path = ?1 AND section_index = ?2
+                   AND fingerprint = ?3 AND provider = ?4 AND model = ?5
+                   AND schema_version = ?6",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let result = stmt
+            .query_row(
+                params![
+                    file_path,
+                    section_index,
+                    fingerprint,
+                    provider,
+                    model,
+                    Self::ANALYSIS_SCHEMA_VERSION
+                ],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+
+        Ok(result)
+    }
+
+    pub fn put_cached_analysis(
+        &self,
+        file_path: &str,
+        section_index: i32,
+        fingerprint: &str,
+        provider: &str,
+        model: &str,
+        analysis_json: &str,
+    ) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO analysis_cache
+             (file_path, section_index, fingerprint, provider, model, schema_version, analysis)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                file_path,
+                section_index,
+                fingerprint,
+                provider,
+                model,
+                Self::ANALYSIS_SCHEMA_VERSION,
+                analysis_json
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn cleanup_analysis_cache(&self, max_entries: usize) -> Result<usize, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let count: usize = conn
+            .query_row("SELECT COUNT(*) FROM analysis_cache", [], |row| {
+                row.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+
+        if count <= max_entries {
+            return Ok(0);
+        }
+
+        let to_remove = count - max_entries;
+        let deleted = conn
+            .execute(
+                "DELETE FROM analysis_cache WHERE id IN (
+                    SELECT id FROM analysis_cache ORDER BY created_at ASC LIMIT ?1
+                )",
+                params![to_remove],
+            )
+            .map_err(|e| e.to_string())?;
+
+        Ok(deleted)
     }
 }
 
