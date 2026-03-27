@@ -985,7 +985,7 @@ function PythonQuizEditor({ question, answer, setAnswer, onSubmit, onRun, python
 function ActiveQuiz() {
   const {
     subject, topic, questions, currentIndex, loading, generating,
-    showFeedback, sessionComplete, error, summary, generatedCards,
+    showFeedback, sessionComplete, error, completionWarning, completing, summary, generatedCards,
     activeSandboxId, sandboxResult, sandboxError,
     pythonResult, pythonRunning,
     submitAnswer, flagQuestion, nextQuestion, resetQuiz,
@@ -1021,7 +1021,7 @@ function ActiveQuiz() {
     );
   }
 
-  if (error) {
+  if (error && questions.length === 0) {
     return (
       <div className="mx-auto flex h-full max-w-xl items-center justify-center px-4">
         <EmptyState
@@ -1067,6 +1067,12 @@ function ActiveQuiz() {
               <p className="text-xs text-text">
                 Created <span className="font-semibold text-accent">{generatedCards} flashcard{generatedCards !== 1 ? "s" : ""}</span> from wrong answers — they are due for review today.
               </p>
+            </div>
+          )}
+
+          {completionWarning && (
+            <div className="rounded-xl border border-amber/30 bg-amber/10 p-3 text-xs text-text">
+              {completionWarning}
             </div>
           )}
 
@@ -1159,6 +1165,11 @@ function ActiveQuiz() {
         className="rounded-t-2xl border border-border-subtle"
       />
       <Panel className="rounded-t-none border-t-0" bodyClassName="space-y-6">
+      {error && (
+        <div className="rounded-xl border border-coral/30 bg-coral/10 px-3 py-3 text-sm text-coral">
+          {error}
+        </div>
+      )}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs text-text-muted">Progress</span>
@@ -1213,8 +1224,8 @@ function ActiveQuiz() {
             </Panel>
           )}
 
-          <PrimaryButton onClick={nextQuestion} className="w-full py-3">
-            {currentIndex + 1 >= questions.length ? "See Results" : "Next Question"}
+          <PrimaryButton onClick={nextQuestion} disabled={completing} className="w-full py-3">
+            {completing ? "Saving Results..." : currentIndex + 1 >= questions.length ? "See Results" : "Next Question"}
           </PrimaryButton>
         </div>
       ) : (

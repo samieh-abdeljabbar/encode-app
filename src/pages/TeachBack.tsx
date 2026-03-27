@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTeachBackStore } from "../stores/teachback";
 import { EmptyState, InputShell, MetaChip, PageHeader, Panel, PrimaryButton, SecondaryButton } from "../components/ui/primitives";
@@ -8,16 +7,16 @@ export default function TeachBackPage() {
   const {
     subject,
     topic,
+    explanation,
     evaluation,
     loading,
     evaluated,
     saved,
+    setExplanation,
     submitExplanation,
     saveToVault,
     reset,
   } = useTeachBackStore();
-
-  const [text, setText] = useState("");
 
   if (!topic) {
     return (
@@ -53,8 +52,8 @@ export default function TeachBackPage() {
   }
 
   const handleSubmit = () => {
-    if (!text.trim()) return;
-    submitExplanation(text.trim());
+    if (!explanation.trim()) return;
+    submitExplanation(explanation.trim());
   };
 
   return (
@@ -101,8 +100,8 @@ export default function TeachBackPage() {
             <Panel title="Your Explanation">
               <InputShell className="px-0 py-0">
                 <textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
                   placeholder="Start explaining in your own words..."
                   rows={12}
                   className="input-reset w-full resize-none bg-transparent px-4 py-4 text-base leading-relaxed text-text"
@@ -112,11 +111,11 @@ export default function TeachBackPage() {
               </InputShell>
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs text-text-muted">
-                  {text.split(/\s+/).filter(Boolean).length} words
+                  {explanation.split(/\s+/).filter(Boolean).length} words
                 </span>
                 <PrimaryButton
                   onClick={handleSubmit}
-                  disabled={!text.trim() || loading}
+                  disabled={!explanation.trim() || loading}
                 >
                   {loading ? "Evaluating..." : "Submit for Evaluation"}
                 </PrimaryButton>
@@ -129,7 +128,7 @@ export default function TeachBackPage() {
                   className="text-sm text-text leading-relaxed whitespace-pre-wrap"
                   style={{ fontFamily: "var(--font-serif)" }}
                 >
-                  {text}
+                  {explanation}
                 </p>
               </Panel>
 

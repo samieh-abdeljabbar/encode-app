@@ -108,7 +108,7 @@ function postProcessSections(sections: Section[]): Section[] {
     const section = sections[i];
 
     // Skip study meta-sections stored in the file footer.
-    if (section.heading === "Digestion" || section.heading === "Synthesis") continue;
+    if (section.heading === "Schema Activation" || section.heading === "Digestion" || section.heading === "Synthesis") continue;
 
     // Skip empty leading sections (no heading, no content)
     if (!section.heading && !section.content.trim() && result.length === 0) {

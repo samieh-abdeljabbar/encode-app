@@ -176,6 +176,13 @@ export interface GateResponse {
   timestamp: string;
 }
 
+/** Minimal persisted pre-reading artifact for a chapter */
+export interface SchemaActivationEntry {
+  prompt: string;
+  response: string;
+  completedAt: string;
+}
+
 /** A single flashcard parsed from a markdown file */
 export interface Flashcard {
   id: string;

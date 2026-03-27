@@ -224,6 +224,9 @@ export default function ReaderPage() {
     gateSkipped,
     showSchemaActivation,
     schemaActivationTopic,
+    schemaActivationResponse,
+    setSchemaActivationResponse,
+    submitSchemaActivation,
     dismissSchemaActivation,
     synthesisSaving,
     synthesisResponse,
@@ -355,6 +358,8 @@ export default function ReaderPage() {
             <InputShell className="px-0 py-0">
               <textarea
                 autoFocus
+                value={schemaActivationResponse}
+                onChange={(e) => setSchemaActivationResponse(e.target.value)}
                 placeholder="I know that..."
                 rows={4}
                 className="input-reset w-full resize-none bg-transparent px-4 py-4 text-sm text-text placeholder:text-text-muted"
@@ -369,7 +374,7 @@ export default function ReaderPage() {
                 Skip
               </SecondaryButton>
               <PrimaryButton
-                onClick={dismissSchemaActivation}
+                onClick={() => submitSchemaActivation(schemaActivationResponse)}
                 className="flex-1 py-3"
               >
                 I'm Ready to Read

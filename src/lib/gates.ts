@@ -1,4 +1,9 @@
-import type { GateResponse, GateSubQuestion } from "./types";
+import type { GatePromptType, GateResponse, GateSubQuestion } from "./types";
+import {
+  buildStudyMetaContent,
+  splitFrontmatter,
+  splitStudyMetaSections,
+} from "./synthesis";
 
 /**
  * Check if a section should have a gate.
@@ -32,7 +37,7 @@ export function shouldSkipRemaining(subQuestions: GateSubQuestion[]): boolean {
 export function formatDigestionMarkdown(responses: GateResponse[]): string {
   if (responses.length === 0) return "";
 
-  const lines = ["\n\n## Digestion\n"];
+  const lines = ["## Digestion", ""];
 
   for (const r of responses) {
     lines.push(`### Gate ${r.sectionIndex}\n`);
@@ -59,4 +64,86 @@ export function formatDigestionMarkdown(responses: GateResponse[]): string {
   }
 
   return lines.join("\n");
+}
+
+function normalizePromptType(label: string): GatePromptType {
+  const lower = label.trim().toLowerCase();
+  if (lower === "recall" || lower === "explain" || lower === "apply" || lower === "analyze") {
+    return lower;
+  }
+  return "explain";
+}
+
+function readField(block: string, label: string, lookahead: string[]): string {
+  const next = lookahead.length > 0 ? `(?=\\n(?:${lookahead.join("|")})|$)` : "(?=$)";
+  const pattern = new RegExp(`\\*\\*${label}:\\*\\*\\s*([\\s\\S]*?)${next}`, "m");
+  return block.match(pattern)?.[1]?.trim() || "";
+}
+
+export function extractDigestion(raw: string): GateResponse[] {
+  const { content } = splitFrontmatter(raw);
+  const sections = splitStudyMetaSections(content);
+  const digestion = sections.digestion?.trim();
+  if (!digestion) return [];
+
+  const responses: GateResponse[] = [];
+  const gatePattern = /(?:^|\n)### Gate (\d+)\s*\n([\s\S]*?)(?=(?:\n### Gate \d+\s*\n)|$)/g;
+
+  for (const gateMatch of digestion.matchAll(gatePattern)) {
+    const sectionIndex = parseInt(gateMatch[1], 10);
+    if (Number.isNaN(sectionIndex)) continue;
+
+    const gateBlock = gateMatch[2].trim();
+    const timestamp = gateBlock.match(/\*\((.+)\)\*\s*$/)?.[1]?.trim() || "";
+    const body = gateBlock.replace(/\n?\*\((.+)\)\*\s*$/m, "").trim();
+    const subQuestions: GateSubQuestion[] = [];
+    const questionPattern = /(?:^|\n)\*\*Q\d+ \(([^)]+)\):\*\*\n([\s\S]*?)(?=(?:\n\*\*Q\d+ \([^)]+\):\*\*\n)|$)/g;
+
+    for (const questionMatch of body.matchAll(questionPattern)) {
+      const promptType = normalizePromptType(questionMatch[1]);
+      const questionBlock = questionMatch[2].trim();
+      const prompt = readField(questionBlock, "Prompt", ["\\*\\*Response:\\*\\*"]);
+      const response = readField(questionBlock, "Response", ["\\*\\*AI Feedback:\\*\\*", "\\*\\*Mastery:\\*\\*"]);
+      if (!prompt || !response) continue;
+
+      const feedback = readField(questionBlock, "AI Feedback", ["\\*\\*Mastery:\\*\\*"]) || null;
+      const masteryMatch = questionBlock.match(/\*\*Mastery:\*\*\s*(\d+)\/5\b/);
+
+      subQuestions.push({
+        promptType,
+        prompt,
+        response,
+        feedback,
+        mastery: masteryMatch ? parseInt(masteryMatch[1], 10) : null,
+      });
+    }
+
+    if (subQuestions.length === 0) continue;
+    responses.push({ sectionIndex, subQuestions, timestamp });
+  }
+
+  return responses.sort((a, b) => a.sectionIndex - b.sectionIndex);
+}
+
+export function upsertDigestion(raw: string, responses: GateResponse[]): string {
+  const { frontmatter, content } = splitFrontmatter(raw);
+  const sections = splitStudyMetaSections(content);
+  sections.digestion = responses.length > 0
+    ? formatDigestionMarkdown(responses).replace(/^## Digestion\s*\n?/, "").trim()
+    : null;
+
+  const nextContent = buildStudyMetaContent(sections);
+  return frontmatter ? `${frontmatter}${nextContent}` : nextContent;
+}
+
+export function mergeGateResponses(
+  existing: GateResponse[],
+  nextResponse: GateResponse,
+): GateResponse[] {
+  const merged = new Map<number, GateResponse>();
+  for (const response of existing) {
+    merged.set(response.sectionIndex, response);
+  }
+  merged.set(nextResponse.sectionIndex, nextResponse);
+  return [...merged.values()].sort((a, b) => a.sectionIndex - b.sectionIndex);
 }

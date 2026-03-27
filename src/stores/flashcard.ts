@@ -409,29 +409,36 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       // Ignore canonicalization failures and preserve the provided subject.
     }
 
+    const cardBlocks = [{ id: cardId, question, answer, type: cardType }];
+    if (cardType === "reversed") {
+      cardBlocks.push({
+        id: `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-rev`,
+        question: answer,
+        answer: question,
+        type: "reversed",
+      });
+    }
+
     let content: string;
+    const appendedBlocks = cardBlocks
+      .map((block) => formatCardBlock(block.id, block.question, block.answer, bloom, block.type))
+      .join("\n\n");
+
     try {
       content = await readFile(filePath);
-      content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom, cardType) + "\n";
+      content = content.trimEnd() + "\n\n" + appendedBlocks + "\n";
     } catch {
       const now = localDateTimeString();
       content = [
         "---", `subject: ${canonicalSubject}`, `topic: ${topic || "General"}`,
         "type: flashcard", `created_at: ${now}`, "---", "",
-        formatCardBlock(cardId, question, answer, bloom, cardType), "",
+        appendedBlocks, "",
       ].join("\n");
     }
 
     await writeFile(filePath, content);
-    await updateCardSchedule(cardId, filePath, today(), 0, 2.5, "");
-
-    // For reversed cards, also create the flipped version
-    if (cardType === "reversed") {
-      const reverseId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-rev`;
-      content = await readFile(filePath);
-      content = content.trimEnd() + "\n\n" + formatCardBlock(reverseId, answer, question, bloom, "reversed") + "\n";
-      await writeFile(filePath, content);
-      await updateCardSchedule(reverseId, filePath, today(), 0, 2.5, "");
+    for (const block of cardBlocks) {
+      await updateCardSchedule(block.id, filePath, today(), 0, 2.5, "");
     }
 
     const count = await getDueCount();

@@ -2,11 +2,19 @@ import { create } from "zustand";
 import type { GateResponse, GateSubQuestion, GatePromptType } from "../lib/types";
 import { splitSections, parseFrontmatter } from "../lib/markdown";
 import type { Section } from "../lib/markdown";
-import { extractSynthesis, upsertSynthesis } from "../lib/synthesis";
 import {
+  extractSchemaActivation,
+  extractSynthesis,
+  stripStudyMetaSections,
+  upsertSchemaActivation,
+  upsertSynthesis,
+} from "../lib/synthesis";
+import {
+  extractDigestion,
+  mergeGateResponses,
   shouldGateSection,
   shouldSkipRemaining,
-  formatDigestionMarkdown,
+  upsertDigestion,
 } from "../lib/gates";
 import { readFile, writeFile, aiRequest, getConfig } from "../lib/tauri";
 import { getProfileContext } from "../lib/profile";
@@ -45,6 +53,7 @@ interface ReaderState {
   // Pre-reading schema activation
   showSchemaActivation: boolean;
   schemaActivationTopic: string;
+  schemaActivationResponse: string;
 
   // Post-reading synthesis
   synthesisSaving: boolean;
@@ -60,6 +69,8 @@ interface ReaderState {
   clearError: () => void;
   dismissSuggestions: () => void;
   closeReader: () => void;
+  setSchemaActivationResponse: (response: string) => void;
+  submitSchemaActivation: (response: string) => Promise<void>;
   dismissSchemaActivation: () => void;
 }
 
@@ -218,6 +229,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
   loading: false,
   showSchemaActivation: false,
   schemaActivationTopic: "",
+  schemaActivationResponse: "",
   synthesisSaving: false,
   synthesisResponse: "",
   synthesisEvaluation: null,
@@ -240,16 +252,33 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       const isUnread = originalFrontmatter.status === "unread" || !originalFrontmatter.status;
       const nextRaw = isChapter ? await markChapterReading(path, raw) : raw;
       const { content, frontmatter } = parseFrontmatter(nextRaw);
+      const gateResponses = extractDigestion(nextRaw);
+      const schemaActivation = extractSchemaActivation(nextRaw);
       const synthesis = extractSynthesis(nextRaw);
       const sections = splitSections(content);
       const topic = (frontmatter.topic as string) || path.split("/").pop()?.replace(".md", "") || "this topic";
+      const maxRevealedSection = gateResponses.length > 0
+        ? Math.max(...gateResponses.map((response) => response.sectionIndex))
+        : 0;
+      const isComplete = Boolean(synthesis) || frontmatter.status === "digested";
+      const currentSectionIndex = sections.length === 0
+        ? 0
+        : isComplete
+          ? sections.length - 1
+          : Math.min(maxRevealedSection, sections.length - 1);
+      const showSchemaActivation = isChapter
+        && currentSectionIndex === 0
+        && gateResponses.length === 0
+        && !synthesis
+        && (isUnread || Boolean(schemaActivation?.response));
+
       set({
         filePath: path,
         rawContent: nextRaw,
         sections,
-        currentSectionIndex: 0,
+        currentSectionIndex,
         gateOpen: false,
-        gateResponses: [],
+        gateResponses,
         loading: false,
         gateGenerating: false,
         gatePhase: 0,
@@ -258,8 +287,9 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
         lastFeedback: null,
         lastMastery: null,
         gateSkipped: false,
-        showSchemaActivation: isChapter && isUnread,
+        showSchemaActivation,
         schemaActivationTopic: topic,
+        schemaActivationResponse: schemaActivation?.response || "",
         synthesisSaving: false,
         synthesisResponse: synthesis?.response || "",
         synthesisEvaluation: synthesis?.evaluation || null,
@@ -318,7 +348,7 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     if (index < 0 || index >= sections.length) return;
 
     const maxRevealed = gateResponses.length > 0
-      ? Math.max(...gateResponses.map((r) => r.sectionIndex)) + 1
+      ? Math.max(...gateResponses.map((r) => r.sectionIndex))
       : 0;
 
     if (index <= maxRevealed || index <= get().currentSectionIndex) {
@@ -359,11 +389,6 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
     const shouldSkip = shouldSkipRemaining(updatedSubQuestions);
 
     if (isLastQuestion || shouldSkip) {
-      // Gate complete — save and advance
-      // Re-read fresh state in case user navigated during AI evaluation
-      const fresh = get();
-      if (fresh.filePath !== filePath) return; // User switched files — abort
-
       const now = new Date().toLocaleString("en-US", {
         year: "numeric", month: "2-digit", day: "2-digit",
         hour: "numeric", minute: "2-digit",
@@ -378,12 +403,14 @@ export const useReaderStore = create<ReaderState>((set, get) => ({
       set({ lastFeedback: feedback, lastMastery: mastery });
 
       await saveAndAdvance(
-        newResponse, fresh.filePath!, fresh.rawContent!,
-        fresh.sections, fresh.currentSectionIndex, fresh.gateResponses,
+        newResponse,
+        filePath,
+        sections,
+        currentSectionIndex,
       );
 
       // Set gateSkipped after successful save
-      if (shouldSkip && !isLastQuestion) {
+      if (shouldSkip && !isLastQuestion && get().filePath === filePath) {
         set({ gateSkipped: true });
       }
     } else {
@@ -427,7 +454,7 @@ Gap: one sentence on what was missing, vague, or underdeveloped.
 Remember: one sentence on the most important takeaway.
 
 Be specific to the chapter content. Do not fail the student or block progress.`,
-          `Chapter content:\n${parseFrontmatter(rawContent).content.slice(0, 5000)}\n\nStudent synthesis:\n${trimmed}`,
+          `Chapter content:\n${stripStudyMetaSections(parseFrontmatter(rawContent).content).slice(0, 5000)}\n\nStudent synthesis:\n${trimmed}`,
           400,
         );
         evaluation = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim() || evaluation;
@@ -444,7 +471,8 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
         hour: "numeric",
         minute: "2-digit",
       });
-      let nextContent = upsertSynthesis(rawContent, {
+      const latestRaw = await readFile(filePath);
+      let nextContent = upsertSynthesis(latestRaw, {
         prompt,
         response: trimmed,
         evaluation,
@@ -454,13 +482,18 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
         ? nextContent.replace(/^status:\s*\w+/m, "status: digested")
         : nextContent;
       await writeFile(filePath, nextContent);
-      set({
-        rawContent: nextContent,
-        synthesisSaving: false,
-        synthesisResponse: trimmed,
-        synthesisEvaluation: evaluation,
-        synthesisComplete: true,
-      });
+      const fresh = get();
+      if (fresh.filePath === filePath) {
+        set({
+          rawContent: nextContent,
+          synthesisSaving: false,
+          synthesisResponse: trimmed,
+          synthesisEvaluation: evaluation,
+          synthesisComplete: true,
+        });
+      } else {
+        set({ synthesisSaving: false });
+      }
     } catch (e) {
       console.error("Failed to save synthesis:", e);
       set({ synthesisSaving: false, error: "Failed to save chapter synthesis. Please try again." });
@@ -468,6 +501,50 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
   },
 
   dismissSuggestions: () => set({ suggestedCards: [] }),
+
+  setSchemaActivationResponse: (schemaActivationResponse) => set({ schemaActivationResponse }),
+
+  submitSchemaActivation: async (response) => {
+    const { filePath, rawContent, schemaActivationTopic } = get();
+    if (!filePath || !rawContent || !filePath.includes("/chapters/")) {
+      set({ showSchemaActivation: false });
+      return;
+    }
+
+    const trimmed = response.trim();
+    if (!trimmed) {
+      set({ showSchemaActivation: false });
+      return;
+    }
+
+    try {
+      const latestRaw = await readFile(filePath);
+      const timestamp = new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const nextContent = upsertSchemaActivation(latestRaw, {
+        prompt: `What do you already know about ${schemaActivationTopic}?`,
+        response: trimmed,
+        completedAt: timestamp,
+      });
+      await writeFile(filePath, nextContent);
+
+      if (get().filePath === filePath) {
+        set({
+          rawContent: nextContent,
+          showSchemaActivation: false,
+          schemaActivationResponse: trimmed,
+        });
+      }
+    } catch (e) {
+      console.error("Failed to save schema activation:", e);
+      set({ error: "Failed to save your pre-reading note. Please try again." });
+    }
+  },
 
   dismissSchemaActivation: () => set({ showSchemaActivation: false }),
 
@@ -480,7 +557,10 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
       gateOpen: false,
       gateResponses: [],
       suggestedCards: [],
+      showSchemaActivation: false,
+      schemaActivationTopic: "",
       synthesisSaving: false,
+      schemaActivationResponse: "",
       synthesisResponse: "",
       synthesisEvaluation: null,
       synthesisComplete: false,
@@ -499,40 +579,32 @@ Be specific to the chapter content. Do not fail the student or block progress.`,
 async function saveAndAdvance(
   newResponse: GateResponse,
   filePath: string,
-  rawContent: string,
   sections: Section[],
   currentSectionIndex: number,
-  gateResponses: GateResponse[],
 ) {
-  const updatedResponses = [...gateResponses, newResponse];
-
   try {
-    const digestionMarker = "\n\n## Digestion";
-    const baseContent = rawContent.includes(digestionMarker)
-      ? rawContent.slice(0, rawContent.indexOf(digestionMarker))
-      : rawContent;
+    const latestRaw = await readFile(filePath);
+    const updatedResponses = mergeGateResponses(extractDigestion(latestRaw), newResponse);
+    const nextContent = upsertDigestion(latestRaw, updatedResponses);
 
-    const digestionMd = formatDigestionMarkdown(updatedResponses);
-    const updatedContent = baseContent + digestionMd;
+    await writeFile(filePath, nextContent);
 
-    let finalContent = updatedContent;
-
-    await writeFile(filePath, finalContent);
-
-    useReaderStore.setState({
-      currentSectionIndex: newResponse.sectionIndex,
-      gateOpen: false,
-      gateResponses: updatedResponses,
-      rawContent: finalContent,
-      suggestedCards: [],
-      gatePhase: 0,
-      gateQuestions: [],
-      currentGateSubQuestions: [],
-    });
+    if (useReaderStore.getState().filePath === filePath) {
+      useReaderStore.setState({
+        currentSectionIndex: newResponse.sectionIndex,
+        gateOpen: false,
+        gateResponses: updatedResponses,
+        rawContent: nextContent,
+        suggestedCards: [],
+        gatePhase: 0,
+        gateQuestions: [],
+        currentGateSubQuestions: [],
+      });
+    }
 
     // Auto-suggest flashcards (fire-and-forget)
     const sectionContent = sections[currentSectionIndex]?.content || "";
-    if (sectionContent.trim().split(/\s+/).length >= 20) {
+    if (useReaderStore.getState().filePath === filePath && sectionContent.trim().split(/\s+/).length >= 20) {
       aiRequest(
         "reader_flashcard_suggest",
         `Generate 1-2 flashcard Q/A pairs from this study content. Output ONLY JSON: [{"q":"...","a":"...","bloom":1-3}]`,
@@ -542,7 +614,13 @@ async function saveAndAdvance(
         const cleanedCards = cardText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
         const match = cleanedCards.match(/\[[\s\S]*\]/);
         if (match) {
-          const parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
+          let parsed: { q: string; a: string; bloom: number }[] = [];
+          try {
+            parsed = JSON.parse(match[0]) as { q: string; a: string; bloom: number }[];
+          } catch {
+            return;
+          }
+          if (useReaderStore.getState().filePath !== filePath) return;
           useReaderStore.setState({
             suggestedCards: parsed.map((p) => ({ question: p.q, answer: p.a, bloom: p.bloom || 2 })),
           });

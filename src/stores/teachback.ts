@@ -14,6 +14,7 @@ interface TeachBackState {
   saved: boolean;
 
   startTeachBack: (subject: string, topic: string, chapterPath?: string) => void;
+  setExplanation: (text: string) => void;
   submitExplanation: (text: string) => Promise<void>;
   saveToVault: () => Promise<void>;
   reset: () => void;
@@ -49,6 +50,8 @@ export const useTeachBackStore = create<TeachBackState>((set, get) => ({
     });
   },
 
+  setExplanation: (text) => set({ explanation: text }),
+
   submitExplanation: async (text) => {
     const { topic } = get();
     set({ explanation: text, loading: true });
@@ -72,7 +75,7 @@ Be specific. Reference what they actually wrote. Keep total response under 150 w
     } catch {
       set({
         evaluation:
-          "AI evaluation unavailable. Your explanation has been saved — review it yourself for gaps.",
+          "AI evaluation unavailable. Review your explanation yourself for missing steps or unsupported claims before saving it.",
         loading: false,
         evaluated: true,
       });
