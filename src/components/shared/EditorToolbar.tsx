@@ -5,6 +5,7 @@ import {
   CheckSquare, Minus, Undo2, Redo2, IndentIncrease, IndentDecrease,
   RemoveFormatting,
 } from "lucide-react";
+import { ToolbarButton } from "../ui/primitives";
 
 interface EditorToolbarProps {
   onInsert: (text: string) => void;
@@ -63,21 +64,19 @@ export default function EditorToolbar({
   const sz = 14;
 
   const btn = (icon: React.ReactNode, title: string, onClick: () => void, disabled = false) => (
-    <button
+    <ToolbarButton
       key={title}
+      icon={icon}
+      label={title}
       onClick={onClick}
-      title={title}
       disabled={disabled}
-      className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors disabled:opacity-30"
-    >
-      {icon}
-    </button>
+    />
   );
 
-  const sep = <div className="w-px h-4 bg-border mx-0.5 shrink-0" />;
+  const sep = <div className="mx-1 h-5 w-px shrink-0 bg-border-subtle" />;
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 px-4 py-1.5 border-b border-border bg-surface shrink-0">
+    <div className="flex flex-wrap items-center gap-1 border-b border-border-subtle bg-panel px-5 py-3 shrink-0">
       {/* Undo / Redo */}
       {btn(<Undo2 size={sz} />, "Undo (⌘Z)", () => onUndo?.(), !onUndo)}
       {btn(<Redo2 size={sz} />, "Redo (⌘⇧Z)", () => onRedo?.(), !onRedo)}
@@ -113,7 +112,7 @@ export default function EditorToolbar({
         <button
           onClick={() => setShowTablePicker(!showTablePicker)}
           title="Insert table"
-          className="p-1.5 text-text-muted hover:text-text hover:bg-surface-2 rounded transition-colors"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent text-text-muted transition-colors hover:border-border-strong hover:bg-panel-active hover:text-text"
         >
           <Table size={sz} />
         </button>
