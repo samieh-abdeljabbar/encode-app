@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { aiRequest, writeFile } from "../lib/tauri";
+import { localDateTimeString } from "../lib/dates";
 import { today } from "../lib/sr";
 
 interface TeachBackState {
@@ -51,6 +52,7 @@ export const useTeachBackStore = create<TeachBackState>((set, get) => ({
 
     try {
       const { text: feedback } = await aiRequest(
+        "teachback_evaluate",
         `You are evaluating a teach-back explanation using the Feynman Technique. The student attempted to explain a concept in simple terms.
 
 Evaluate with this structure:
@@ -81,7 +83,7 @@ Be specific. Reference what they actually wrote. Keep total response under 150 w
     const subjectSlug = slugify(subject);
     const topicSlug = slugify(topic);
     const d = today();
-    const now = new Date().toISOString().split(".")[0];
+    const now = localDateTimeString();
     const filePath = `subjects/${subjectSlug}/teach-backs/${topicSlug}-${d}.md`;
 
     const content = [

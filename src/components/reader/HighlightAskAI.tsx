@@ -67,6 +67,7 @@ export default function HighlightAskAI({
     setPhase("loading");
     try {
       const { text } = await aiRequest(
+        "reader_highlight_ask",
         `You are a study assistant. The student highlighted some text and has a question. Answer clearly and concisely in under 150 words. Use simple language.`,
         `Selected text: "${selectedText.slice(0, 500)}"\n\nSection: ${sectionHeading || ""}\n${sectionContent.slice(0, 1000)}\n\nQuestion: ${question}`,
         300,

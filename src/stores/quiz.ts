@@ -3,6 +3,7 @@ import { aiRequest, writeFile, recordQuizResult, listFiles, readFile, createSand
 import type { QueryResult } from "../lib/types";
 import { runPython, type PythonResult } from "../lib/pyodide";
 import { parseFrontmatter } from "../lib/markdown";
+import { localDateString, localDateTimeString } from "../lib/dates";
 import { useFlashcardStore } from "./flashcard";
 
 function slugify(s: string): string {
@@ -227,6 +228,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
       const contentLimit = cfg.questionCount > 10 ? 8000 : cfg.questionCount > 5 ? 6000 : 4000;
       const { text } = await aiRequest(
+        "quiz_generate",
         `Generate exactly ${cfg.questionCount} quiz questions. Types: ${typeNames}. Bloom ${cfg.bloomRange[0]}-${cfg.bloomRange[1]}. Output ONLY a JSON array:
 [{"question":"...","bloomLevel":2,"type":"free-recall"},{"question":"...","bloomLevel":1,"type":"multiple-choice","options":["A","B","C","D"],"correctAnswer":"B"}]
 ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a "setupSql" field with CREATE TABLE and INSERT INTO statements so the user can run their query against real data. Include "correctAnswer" with the expected SQL query. For Python, include a "setupCode" field with any imports or test data, an "expectedOutput" field with the expected stdout, and "correctAnswer" with the solution code. For pseudocode, include "correctAnswer".' : ""}`,
@@ -318,10 +320,10 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
     // Local validation for MC and T/F (exact match is reliable for these)
     if (question.type === "multiple-choice" && question.correctAnswer) {
       correct = answer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
-      feedback = correct ? "Correct!" : `Incorrect. The correct answer is: ${question.correctAnswer}`;
+      feedback = correct ? "Correct!" : null;
     } else if (question.type === "true-false" && question.correctAnswer) {
       correct = answer.toLowerCase() === question.correctAnswer.toLowerCase();
-      feedback = correct ? "Correct!" : `Incorrect. The answer is: ${question.correctAnswer}`;
+      feedback = correct ? "Correct!" : null;
     } else if (question.type === "fill-blank" && question.correctAnswer) {
       // Exact match → correct. Otherwise fall through to AI for semantic evaluation.
       if (answer.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim()) {
@@ -337,12 +339,18 @@ ${typeList}${cfg.types.includes("code") ? '\nCode questions: For SQL, include a 
         const codeContext = question.type === "code"
           ? `\nLanguage: ${question.language || "unknown"}\nEvaluate the code for correctness of logic and approach, not exact syntax.`
           : "";
+        const evaluationGoal = correct === false
+          ? "The student's answer is already known to be incorrect. Explain specifically why it is incorrect, what misconception or mismatch caused the mistake, and why the correct answer is right."
+          : "Decide whether the student's answer is correct, then explain what they got right or wrong.";
         const { text } = await aiRequest(
+          "quiz_evaluate",
           `You are evaluating a student's quiz answer. Respond with ONLY JSON:
-{"correct": true, "feedback": "1-2 sentences explaining what was right/wrong", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+{"correct": true, "feedback": "2-4 sentences explaining what was right or wrong and why", "correctAnswer": "the actual correct answer to the question"}${codeContext}
+${evaluationGoal}
+If the answer is incorrect, the feedback must say what was wrong about the student's answer, not just state the correct answer.
 Always include "correctAnswer" with the real, complete answer to the question.`,
           `Question (Bloom Level ${question.bloomLevel}): ${question.question}\nStudent's answer: ${answer}${question.correctAnswer ? `\nExpected answer: ${question.correctAnswer}` : ""}`,
-          500,
+          700,
         );
         const cleanedEval = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
         const jsonMatch = cleanedEval.match(/\{[\s\S]*\}/);
@@ -358,7 +366,11 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
           if (correct === null) correct = parsed.correct ?? null;
         }
       } catch {
-        if (feedback === null) feedback = "AI evaluation unavailable.";
+        if (feedback === null && correct === false && question.correctAnswer) {
+          feedback = `Incorrect. Your answer does not match the expected answer. Correct answer: ${question.correctAnswer}`;
+        } else if (feedback === null) {
+          feedback = "AI evaluation unavailable.";
+        }
       }
     }
 
@@ -388,8 +400,8 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
 
       // Save results + auto-create flashcards from wrong answers
       if (subject && topic) {
-        const d = new Date().toISOString().split("T")[0];
-        const now = new Date().toISOString().split(".")[0];
+        const d = localDateString();
+        const now = localDateTimeString();
         const ts = Date.now();
         const subjectSlug = slugify(subject);
         const topicSlug = slugify(topic);
@@ -455,6 +467,7 @@ Always include "correctAnswer" with the real, complete answer to the question.`,
           ).join("\n\n");
 
           aiRequest(
+            "quiz_wrong_answer_summary",
             "You are a study coach. Based on the questions the student got wrong, write a concise summary (3-5 bullet points) of the key concepts they need to review. Be specific and actionable. Use plain text, no markdown headers.",
             `Subject: ${subject}\nTopic: ${topic}\n\nWrong answers:\n${wrongSummary}`,
             500,

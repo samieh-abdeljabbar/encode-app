@@ -19,6 +19,7 @@ import {
   today,
   type FSRSCard,
 } from "../lib/sr";
+import { localDateTimeString } from "../lib/dates";
 
 export interface SessionStats {
   again: number;
@@ -224,6 +225,10 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+function normalizeSubjectKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 const emptyStats: SessionStats = { again: 0, hard: 0, good: 0, easy: 0, total: 0 };
 
 export const useFlashcardStore = create<FlashcardState>((set, get) => ({
@@ -390,15 +395,28 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     const topicSlug = slugify(topic || "general");
     const filePath = `subjects/${subjectSlug}/flashcards/${topicSlug}.md`;
     const cardId = `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    let canonicalSubject = subject;
+
+    try {
+      const subjects = await listSubjects();
+      const matchedSubject = subjects.find((entry) =>
+        entry.slug === subjectSlug || normalizeSubjectKey(entry.name) === normalizeSubjectKey(subject)
+      );
+      if (matchedSubject) {
+        canonicalSubject = matchedSubject.name;
+      }
+    } catch {
+      // Ignore canonicalization failures and preserve the provided subject.
+    }
 
     let content: string;
     try {
       content = await readFile(filePath);
       content = content.trimEnd() + "\n\n" + formatCardBlock(cardId, question, answer, bloom, cardType) + "\n";
     } catch {
-      const now = new Date().toISOString().split(".")[0];
+      const now = localDateTimeString();
       content = [
-        "---", `subject: ${subject}`, `topic: ${topic || "General"}`,
+        "---", `subject: ${canonicalSubject}`, `topic: ${topic || "General"}`,
         "type: flashcard", `created_at: ${now}`, "---", "",
         formatCardBlock(cardId, question, answer, bloom, cardType), "",
       ].join("\n");
@@ -444,7 +462,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         } catch { /* skip */ }
       }
       const filtered = subjectFilter
-        ? all.filter((c) => c.subject === subjectFilter)
+        ? all.filter((c) => normalizeSubjectKey(c.subject) === normalizeSubjectKey(subjectFilter))
         : all;
       set({
         cards: filtered,
