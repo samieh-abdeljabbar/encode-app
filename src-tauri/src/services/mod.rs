@@ -5,5 +5,6 @@ pub mod exporter;
 pub mod importer;
 pub mod indexer;
 pub mod reader;
+pub mod review;
 pub mod snapshot;
 pub mod vault_fs;
