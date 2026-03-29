@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      run: npm run check
+    typecheck:
+      run: npx tsc --noEmit
+    cargo-check:
+      run: cd src-tauri && cargo check

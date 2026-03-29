@@ -1,0 +1,135 @@
+<h2>Current Spacing Issues Found</h2>
+<p class="subtitle">Comparing your code against DESIGN.md and Obsidian's patterns — here's what's off</p>
+
+<div class="section">
+  <h3>Issue 1: The "Island" Effect (Library page)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Current: Library.tsx</div>
+      <div class="mockup-body" style="background:#f4f0e8;padding:24px">
+        <div style="background:#ebe5d9;border-radius:28px;border:1px solid #c8c1b0;box-shadow:0 18px 60px rgba(30,42,34,0.08);display:flex;height:260px;overflow:hidden">
+          <div style="width:120px;border-right:1px solid #d6d0c3;background:#faf8f3;padding:16px 8px">
+            <div style="font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:#6b7265;margin-bottom:8px">SUBJECTS</div>
+            <div style="background:rgba(45,106,79,0.1);border-radius:6px;padding:6px 8px;font-size:10px;color:#2d6a4f;margin-bottom:4px">Physics</div>
+            <div style="padding:6px 8px;font-size:10px;color:#6b7265">Math</div>
+          </div>
+          <div style="flex:1;padding:20px;background:#f4f0e8">
+            <div style="background:#faf8f3;height:36px;border-radius:16px;border:1px solid #c8c1b0;margin-bottom:16px"></div>
+            <div style="background:#faf8f3;height:60px;border-radius:16px;border:1px solid #c8c1b0;margin-bottom:8px"></div>
+            <div style="background:#faf8f3;height:60px;border-radius:16px;border:1px solid #c8c1b0"></div>
+          </div>
+        </div>
+        <div style="margin-top:10px;text-align:center">
+          <span style="color:#b85c3a;font-size:11px;font-weight:600">24px wasted padding on all sides</span>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">Obsidian Style: Edge-to-Edge</div>
+      <div class="mockup-body" style="background:#f4f0e8;display:flex;height:300px">
+        <div style="width:120px;border-right:1px solid #d6d0c3;background:#faf8f3;padding:12px 8px">
+          <div style="font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:#6b7265;margin-bottom:8px;padding:0 8px">SUBJECTS</div>
+          <div style="background:rgba(45,106,79,0.1);border-radius:6px;padding:6px 8px;font-size:10px;color:#2d6a4f;margin-bottom:2px">Physics</div>
+          <div style="padding:6px 8px;font-size:10px;color:#6b7265;margin-bottom:2px">Math</div>
+          <div style="padding:6px 8px;font-size:10px;color:#6b7265">Chemistry</div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column">
+          <div style="padding:12px 20px;border-bottom:1px solid #d6d0c3">
+            <div style="background:#faf8f3;height:36px;border-radius:12px;border:1px solid #c8c1b0"></div>
+          </div>
+          <div style="flex:1;padding:20px">
+            <div style="background:#faf8f3;height:56px;border-radius:12px;border:1px solid #c8c1b0;margin-bottom:8px"></div>
+            <div style="background:#faf8f3;height:56px;border-radius:12px;border:1px solid #c8c1b0;margin-bottom:8px"></div>
+            <div style="background:#faf8f3;height:56px;border-radius:12px;border:1px solid #c8c1b0"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Issue 2: Inconsistent Page Padding</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+    <div style="background:var(--surface);border-radius:12px;padding:20px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--text)">Library.tsx</div>
+      <code style="font-size:11px;color:#b85c3a;display:block;margin-bottom:4px">p-6 (24px)</code>
+      <span style="font-size:10px;color:var(--muted)">Outer wrapper</span>
+      <code style="font-size:11px;color:#b85c3a;display:block;margin-top:8px;margin-bottom:4px">px-7 py-5 (28/20)</code>
+      <span style="font-size:10px;color:var(--muted)">Search header</span>
+      <code style="font-size:11px;color:#b85c3a;display:block;margin-top:8px;margin-bottom:4px">px-7 py-7 (28/28)</code>
+      <span style="font-size:10px;color:var(--muted)">Content area</span>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:20px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--text)">Settings.tsx</div>
+      <code style="font-size:11px;color:#b85c3a;display:block;margin-bottom:4px">px-10 pt-10 pb-16</code>
+      <span style="font-size:10px;color:var(--muted)">(40/40/64px)</span>
+      <code style="font-size:11px;display:block;margin-top:12px;margin-bottom:4px;color:var(--muted)">— different from —</code>
+      <code style="font-size:11px;color:#2d6a4f;display:block;margin-bottom:4px">DESIGN.md says:</code>
+      <code style="font-size:11px;color:#2d6a4f;display:block">px-7 py-7 (28/28)</code>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:20px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--text)">Ribbon.tsx</div>
+      <code style="font-size:11px;color:#b85c3a;display:block;margin-bottom:4px">pt-8 (32px top)</code>
+      <span style="font-size:10px;color:var(--muted)">Title bar clearance?</span>
+      <code style="font-size:11px;display:block;margin-top:12px;margin-bottom:4px;color:var(--muted)">But no titleBarStyle</code>
+      <code style="font-size:11px;color:#b85c3a;display:block">in tauri.conf.json</code>
+      <span style="font-size:10px;color:var(--muted);display:block;margin-top:4px">Native title bar = wasted padding</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Issue 3: Double-Border / Excessive Roundness</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div style="background:var(--surface);border-radius:12px;padding:20px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;margin-bottom:12px;color:var(--text)">Current: Nested Containers</div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5">
+        <div>Shell <code style="color:#b85c3a">bg-bg</code></div>
+        <div style="padding-left:12px">&#8627; Library wrapper <code style="color:#b85c3a">p-6</code></div>
+        <div style="padding-left:24px">&#8627; Rounded container <code style="color:#b85c3a">rounded-[28px] border shadow</code></div>
+        <div style="padding-left:36px">&#8627; Sidebar <code style="color:#b85c3a">border-r bg-panel</code></div>
+        <div style="padding-left:36px">&#8627; Content <code style="color:#b85c3a">bg-bg px-7 py-7</code></div>
+        <div style="padding-left:48px">&#8627; Chapter cards <code style="color:#b85c3a">rounded-2xl border bg-panel</code></div>
+      </div>
+      <div style="font-size:10px;color:#b85c3a;margin-top:8px">= 4 layers of containers</div>
+    </div>
+    <div style="background:var(--surface);border-radius:12px;padding:20px;border:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;margin-bottom:12px;color:var(--text)">Obsidian: Flat Panels</div>
+      <div style="font-size:10px;color:var(--muted);line-height:1.5">
+        <div>Shell <code style="color:#2d6a4f">bg-bg</code></div>
+        <div style="padding-left:12px">&#8627; Sidebar <code style="color:#2d6a4f">border-r</code></div>
+        <div style="padding-left:12px">&#8627; Content <code style="color:#2d6a4f">px-7 py-7</code></div>
+        <div style="padding-left:24px">&#8627; Chapter cards <code style="color:#2d6a4f">rounded-xl border</code></div>
+      </div>
+      <div style="font-size:10px;color:#2d6a4f;margin-top:8px">= 2 layers, clean hierarchy</div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:32px">Which overall direction do you prefer?</h3>
+<p class="subtitle">This will guide the detailed plan</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Full Obsidian Treatment</h3>
+      <p>Edge-to-edge panels, sidebar extends full-height, remove all "island" containers, flatten nesting, tighter spacing throughout. Bigger structural change.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Fix Spacing Only</h3>
+      <p>Keep the current structure but align all spacing values to DESIGN.md, fix the inconsistent padding, remove the unnecessary Ribbon pt-8. Smaller, targeted fix.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Flatten + Fix</h3>
+      <p>Remove the Library "island" container and go edge-to-edge there, fix spacing everywhere to match DESIGN.md, but keep the warm rounded card style for individual items.</p>
+    </div>
+  </div>
+</div>

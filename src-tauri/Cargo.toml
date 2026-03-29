@@ -1,36 +1,31 @@
 [package]
 name = "encode"
-version = "0.9.4"
-description = "Encode — Study Environment + Structured Knowledge Vault"
-authors = ["Samieh"]
-license = ""
-repository = ""
+version = "2.0.0"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80"
 
 [lib]
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.6", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-log = "0.4"
-tauri = { version = "2.10.3", features = [] }
-tauri-plugin-log = "2"
-rusqlite = { version = "0.34", features = ["bundled"] }
-notify = "8"
-walkdir = "2"
-chrono = { version = "0.4", features = ["serde"] }
-dirs = "6"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
-regex = "1"
+tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.34", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+toml = "0.8"
+dirs = "6"
+
+# Staged for Epic 1.4 (Import, Library, search) and Epic 1.5 (indexing, file watcher)
+chrono = { version = "0.4", features = ["serde"] }  # timestamp formatting in import/export
+regex = "1"                                          # HTML-to-markdown import parsing
+walkdir = "2"                                        # vault directory scanning for indexer
+notify = "8"                                         # file watcher for incremental index
 
 [dev-dependencies]
 tempfile = "3"
