@@ -19,6 +19,8 @@ export interface Chapter {
   status: string;
   estimated_minutes: number | null;
   created_at: string;
+  section_count: number;
+  checked_count: number;
 }
 
 export interface Section {
