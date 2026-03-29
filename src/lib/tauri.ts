@@ -181,3 +181,31 @@ export const submitSectionCheck = (
 
 export const submitSynthesis = (chapterId: number, synthesisText: string) =>
   invoke<SynthesisResult>("submit_synthesis", { chapterId, synthesisText });
+
+// Review types
+export interface DueCard {
+  id: number;
+  subject_id: number;
+  chapter_id: number | null;
+  source_type: string;
+  prompt: string;
+  answer: string;
+  card_type: string;
+  stability: number;
+  difficulty: number;
+  reps: number;
+  lapses: number;
+}
+
+export interface RatingResult {
+  next_review_days: number;
+  new_stability: number;
+  cards_remaining: number;
+}
+
+// Review IPC
+export const getDueCards = (limit: number) =>
+  invoke<DueCard[]>("get_due_cards", { limit });
+
+export const submitCardRating = (cardId: number, rating: number) =>
+  invoke<RatingResult>("submit_card_rating", { cardId, rating });
