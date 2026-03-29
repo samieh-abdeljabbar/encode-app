@@ -141,6 +141,7 @@ pub fn run() {
             get_schema_version,
             read_file,
             write_file,
+            commands::ai::check_ai_status,
             commands::cards::create_card,
             commands::cards::list_cards,
             commands::cards::update_card,
