@@ -4,6 +4,7 @@ import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ChapterView } from "./pages/ChapterView";
 import { Library } from "./pages/Library";
 import { Reader } from "./pages/Reader";
+import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
@@ -28,7 +29,7 @@ export default function App() {
             <Route path="/library" element={<Library />} />
             <Route path="/chapter" element={<ChapterView />} />
             <Route path="/reader" element={<Reader />} />
-            <Route path="/review" element={<Placeholder name="Review" />} />
+            <Route path="/review" element={<Review />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
