@@ -44,7 +44,7 @@ export function Shell() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <div
           data-tauri-drag-region
-          className="flex h-10 shrink-0 items-center border-b border-border-subtle bg-bg px-5"
+          className="flex h-14 shrink-0 items-end border-b border-border-subtle bg-bg pb-2 px-5"
         >
           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-muted">
             {label}
