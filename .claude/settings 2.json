@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE_PATH\" | grep -qE '\\.(ts|tsx|json)$' && ! echo \"$CLAUDE_FILE_PATH\" | grep -q 'src-tauri'; then npx biome check --write \"$CLAUDE_FILE_PATH\" 2>/dev/null; fi",
+            "description": "Auto-format TypeScript/JSON files with Biome after edits"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE_PATH\" | grep -q 'src-tauri/src/.*\\.rs$'; then cd src-tauri && cargo clippy --all-targets -- -D warnings 2>&1 | grep '^error' | head -5; fi",
+            "description": "Run cargo clippy on Rust file edits to catch lint issues immediately"
+          }
+        ]
+      }
+    ]
+  }
+}
