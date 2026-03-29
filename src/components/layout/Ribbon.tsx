@@ -49,7 +49,7 @@ export function Ribbon() {
   };
 
   return (
-    <nav className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border-subtle bg-panel px-1 pb-3 pt-[38px]">
+    <nav className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border-subtle bg-panel px-1 pb-3 pt-[52px]">
       <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
         <GraduationCap size={16} className="text-accent" />
       </div>
