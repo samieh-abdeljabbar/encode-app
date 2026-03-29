@@ -158,6 +158,8 @@ pub fn run() {
             commands::reader::mark_section_read,
             commands::reader::submit_section_check,
             commands::reader::submit_synthesis,
+            commands::review::get_due_cards,
+            commands::review::submit_card_rating,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
