@@ -1,4 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function ReviewComplete({
   stats,
@@ -11,6 +12,7 @@ export function ReviewComplete({
     easy: number;
   };
 }) {
+  const navigate = useNavigate();
   return (
     <div className="flex h-full items-center justify-center">
       <div className="text-center">
@@ -39,6 +41,22 @@ export function ReviewComplete({
             )}
           </div>
         )}
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/review?practice=all")}
+            className="text-sm text-accent hover:underline"
+          >
+            Practice anyway
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/cards")}
+            className="text-xs text-text-muted hover:text-text"
+          >
+            Browse Cards
+          </button>
+        </div>
       </div>
     </div>
   );

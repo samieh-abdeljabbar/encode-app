@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ReviewCard } from "../components/review/ReviewCard";
 import { ReviewComplete } from "../components/review/ReviewComplete";
-import { getDueCards, submitCardRating } from "../lib/tauri";
+import { getDueCards, getPracticeCards, submitCardRating } from "../lib/tauri";
 import type { DueCard } from "../lib/tauri";
 
 interface SessionStats {
@@ -13,6 +14,8 @@ interface SessionStats {
 }
 
 export function Review() {
+  const [searchParams] = useSearchParams();
+  const practiceMode = searchParams.get("practice");
   const [cards, setCards] = useState<DueCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -27,14 +30,16 @@ export function Review() {
 
   const loadCards = useCallback(async () => {
     try {
-      const data = await getDueCards(50);
+      const data = practiceMode
+        ? await getPracticeCards(undefined, 50)
+        : await getDueCards(50);
       setCards(data);
     } catch {
       // Non-critical
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [practiceMode]);
 
   useEffect(() => {
     loadCards();
@@ -130,6 +135,7 @@ export function Review() {
           answer={card.answer}
           revealed={revealed}
           sourceType={card.source_type}
+          cardType={card.card_type}
           onReveal={() => setRevealed(true)}
         />
       </div>
