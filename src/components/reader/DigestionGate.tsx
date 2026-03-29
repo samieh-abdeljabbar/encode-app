@@ -1,150 +1,122 @@
+import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useState } from "react";
-import type { GatePromptType } from "../../lib/types";
 
-interface DigestionGateProps {
-  prompt: string;
-  promptType: GatePromptType;
-  sectionHeading: string | null;
-  onSubmit: (response: string) => Promise<void>;
-  generating?: boolean;
-  // Multi-question props
-  currentPhase: number;       // 0-indexed
-  totalQuestions: number;      // 2 or 3
-  lastFeedback?: string | null;
-  lastMastery?: number | null;
-  skipped?: boolean;
-}
+type Phase = "responding" | "self_check" | "result";
 
-export default function DigestionGate({
+export function DigestionGate({
   prompt,
-  promptType,
   sectionHeading,
   onSubmit,
-  generating = false,
-  currentPhase,
-  totalQuestions,
-  lastFeedback,
-  lastMastery,
-  skipped = false,
-}: DigestionGateProps) {
+  loading,
+}: {
+  prompt: string;
+  sectionHeading: string | null;
+  onSubmit: (response: string, rating: string) => void;
+  loading: boolean;
+}) {
+  const [phase, setPhase] = useState<Phase>("responding");
   const [response, setResponse] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [selectedRating, setSelectedRating] = useState<string | null>(null);
 
-  const label = promptType.charAt(0).toUpperCase() + promptType.slice(1);
-
-  const handleSubmit = async () => {
-    if (!response.trim()) return;
-    setSubmitting(true);
-    try {
-      await onSubmit(response.trim());
-      setResponse("");
-    } catch {
-      // Error handled by store
-    } finally {
-      setSubmitting(false);
-    }
+  const handleReveal = () => {
+    if (response.trim().length < 5) return;
+    setPhase("self_check");
   };
 
-  if (skipped) {
-    return (
-      <div className="border-t-2 border-teal bg-surface rounded-t-lg p-6 text-center space-y-2">
-        <p className="text-teal font-medium">Excellent understanding</p>
-        <p className="text-sm text-text-muted">Remaining questions skipped — moving to next section.</p>
-      </div>
-    );
-  }
+  const handleRate = (rating: string) => {
+    setSelectedRating(rating);
+    setPhase("result");
+    onSubmit(response, rating);
+  };
 
   return (
-    <div className="border-t-2 border-purple bg-surface rounded-t-lg p-6 space-y-4">
-      {/* Progress dots — hidden while generating to avoid flicker */}
-      <div className="flex items-center gap-3">
-        {!generating && totalQuestions > 0 && (
-          <div className="flex gap-1.5">
-            {Array.from({ length: totalQuestions }, (_, i) => (
-              <div
-                key={i}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  i < currentPhase
-                    ? "bg-teal"
-                    : i === currentPhase
-                      ? "bg-purple animate-pulse"
-                      : "bg-border"
-                }`}
-              />
-            ))}
-          </div>
-        )}
-        {!generating && (
-          <span className="text-xs font-medium text-purple px-2 py-0.5 bg-purple/10 rounded">
-            Q{currentPhase + 1} of {totalQuestions} — {label}
-          </span>
-        )}
-        {sectionHeading && (
-          <span className="text-xs text-text-muted truncate">
-            after: {sectionHeading}
-          </span>
-        )}
-      </div>
+    <div className="mx-auto max-w-3xl border-t border-border-subtle px-7 py-6">
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.15em] text-text-muted">
+        Comprehension Check
+      </p>
+      <p className="mb-4 text-sm font-medium text-text">{prompt}</p>
 
-      {/* Previous question feedback */}
-      {currentPhase > 0 && lastFeedback && (
-        <div className="p-3 bg-surface-2 border border-border rounded text-sm text-text">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-medium text-text-muted">Previous answer</span>
-            {lastMastery != null && (
-              <span className={`text-[10px] font-medium ${
-                (lastMastery ?? 0) >= 3 ? "text-teal" : (lastMastery ?? 0) >= 2 ? "text-amber" : "text-coral"
-              }`}>
-                {(lastMastery ?? 0) >= 3 ? "Solid" : (lastMastery ?? 0) >= 2 ? "Partial" : "Needs work"}
-              </span>
-            )}
-          </div>
-          <p>{lastFeedback}</p>
-        </div>
+      {phase === "responding" && (
+        <>
+          <textarea
+            value={response}
+            onChange={(e) => setResponse(e.target.value)}
+            placeholder="Type your response..."
+            rows={4}
+            className="mb-3 w-full rounded-xl border border-border bg-panel-alt px-4 py-3 text-sm leading-relaxed text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={handleReveal}
+            disabled={response.trim().length < 5}
+            className="h-10 rounded-xl bg-accent px-5 text-xs font-medium text-white shadow-sm transition-all hover:bg-accent/90 disabled:opacity-40"
+          >
+            Check Yourself
+          </button>
+        </>
       )}
 
-      {/* Current question */}
-      {generating ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 border-2 border-purple border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm text-text-muted">Preparing questions...</span>
+      {phase === "self_check" && (
+        <>
+          <div className="mb-4 rounded-xl border border-border-subtle bg-panel p-4 text-sm leading-relaxed text-text-muted">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-accent">
+              Key idea to check against
+            </p>
+            Re-read the section above — did your response capture the main point
+            {sectionHeading ? ` of "${sectionHeading}"` : ""}?
           </div>
-          <div className="h-1 w-full bg-surface-2 rounded-full overflow-hidden">
-            <div className="h-full bg-purple/40 rounded-full animate-pulse" style={{ width: "60%" }} />
+          <p className="mb-3 text-xs text-text-muted">
+            How well did you capture it?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleRate("correct")}
+              disabled={loading}
+              className="flex h-10 items-center gap-1.5 rounded-xl border border-teal/30 bg-teal/5 px-4 text-xs font-medium text-teal transition-all hover:bg-teal/10"
+            >
+              <CheckCircle2 size={14} />
+              Got it
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRate("partial")}
+              disabled={loading}
+              className="flex h-10 items-center gap-1.5 rounded-xl border border-amber/30 bg-amber/5 px-4 text-xs font-medium text-amber transition-all hover:bg-amber/10"
+            >
+              <RefreshCw size={14} />
+              Partially
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRate("off_track")}
+              disabled={loading}
+              className="flex h-10 items-center gap-1.5 rounded-xl border border-coral/30 bg-coral/5 px-4 text-xs font-medium text-coral transition-all hover:bg-coral/10"
+            >
+              <XCircle size={14} />
+              Missed it
+            </button>
           </div>
-        </div>
-      ) : (
-        <p className="text-text font-medium">{prompt}</p>
+        </>
       )}
 
-      <textarea
-        autoFocus
-        value={response}
-        onChange={(e) => setResponse(e.target.value)}
-        placeholder="Type your answer..."
-        rows={4}
-        className="w-full px-4 py-3 bg-surface-2 border border-border rounded text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-purple resize-none"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
-        }}
-      />
-
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-text-muted">Cmd+Enter to submit</span>
-        <button
-          onClick={handleSubmit}
-          disabled={!response.trim() || submitting || generating}
-          className="px-6 py-2 bg-purple text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {submitting ? (
-            <span className="flex items-center gap-2">
-              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Checking your answer...
+      {phase === "result" && selectedRating && (
+        <div className="flex items-center gap-2 text-sm">
+          {selectedRating === "correct" && (
+            <span className="text-teal">Nice — you've got it.</span>
+          )}
+          {selectedRating === "partial" && (
+            <span className="text-amber">
+              Close — review and try once more.
             </span>
-          ) : currentPhase + 1 >= totalQuestions ? "Submit & Continue" : "Submit"}
-        </button>
-      </div>
+          )}
+          {selectedRating === "off_track" && (
+            <span className="text-coral">
+              A repair card has been created for review later.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
