@@ -1,3 +1,4 @@
+pub mod cards;
 pub mod chunker;
 pub mod fsrs;
 pub mod config;
