@@ -278,9 +278,7 @@ export function Library() {
                 <button
                   key={`${result.chapter_id}-${result.section_heading ?? i}`}
                   type="button"
-                  onClick={() =>
-                    navigate(`/reader?chapter=${result.chapter_id}`)
-                  }
+                  onClick={() => navigate(`/chapter?id=${result.chapter_id}`)}
                   className="mb-3 w-full rounded-xl border border-border bg-panel p-5 text-left transition-all hover:border-accent/30 hover:shadow-sm"
                 >
                   <div className="text-sm font-medium text-text">
@@ -430,7 +428,7 @@ export function Library() {
                 <button
                   key={chapter.id}
                   type="button"
-                  onClick={() => navigate(`/reader?chapter=${chapter.id}`)}
+                  onClick={() => navigate(`/chapter?id=${chapter.id}`)}
                   className="mb-3 flex w-full items-center gap-4 rounded-xl border border-border bg-panel p-5 text-left transition-all hover:border-accent/25 hover:shadow-sm"
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/6">
@@ -448,6 +446,11 @@ export function Library() {
                         <span className="inline-flex items-center gap-1">
                           <Clock size={10} />
                           {chapter.estimated_minutes} min
+                        </span>
+                      )}
+                      {chapter.section_count > 0 && (
+                        <span className="inline-flex items-center gap-1 text-text-muted/50">
+                          {chapter.checked_count}/{chapter.section_count}
                         </span>
                       )}
                     </div>
