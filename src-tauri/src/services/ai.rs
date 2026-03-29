@@ -93,6 +93,9 @@ pub fn resolve_model(config: &AiConfig, policy: &str) -> (String, String) {
         // Ollama
         ("ollama", _) => return ("ollama".to_string(), config.ollama_model.clone()),
 
+        // CLI — model is the command itself
+        ("cli", _) => return ("cli".to_string(), config.cli_command.clone()),
+
         // Fallback
         _ => "unknown",
     };
@@ -291,6 +294,90 @@ async fn call_gemini(
     Ok((content, model.to_string()))
 }
 
+// ── CLI provider ──
+
+const CLI_ALLOWLIST: &[&str] = &[
+    "claude", "gemini", "sgpt", "ollama", "aichat", "llm", "chatgpt",
+];
+
+const CLI_BLOCKLIST: &[&str] = &[
+    "rm", "dd", "bash", "sh", "zsh", "curl", "wget", "python", "node",
+    "sudo", "chmod", "chown", "kill", "mkfs", "fdisk",
+];
+
+fn validate_cli_command(command: &str) -> Result<(), String> {
+    let base = command.split('/').last().unwrap_or(command);
+    if CLI_BLOCKLIST.contains(&base) {
+        return Err(format!("CLI command '{base}' is blocked for security"));
+    }
+    if !CLI_ALLOWLIST.contains(&base) {
+        return Err(format!(
+            "CLI command '{base}' is not in the allowlist. Allowed: {}",
+            CLI_ALLOWLIST.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn call_cli_blocking(
+    command: &str,
+    args: &[String],
+    system: &str,
+    user: &str,
+    timeout_ms: u64,
+) -> Result<(String, String), String> {
+    validate_cli_command(command)?;
+
+    let full_prompt = format!("{system}\n\n{user}");
+
+    let mut child = std::process::Command::new(command)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn CLI command '{command}': {e}"))?;
+
+    // Write prompt to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(full_prompt.as_bytes());
+        // stdin is dropped here, closing the pipe
+    }
+
+    // Wait with timeout
+    let timeout = std::time::Duration::from_millis(timeout_ms);
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Err(format!("CLI command timed out after {timeout_ms}ms"));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("Failed to wait for CLI: {e}")),
+        }
+    }
+
+    let output = child.wait_with_output()
+        .map_err(|e| format!("CLI command failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "CLI exited with {}: {}",
+            output.status,
+            &stderr[..stderr.len().min(200)]
+        ));
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok((content, format!("cli:{command}")))
+}
+
 // ── Main router ──
 
 /// Send an AI request to the configured provider.
@@ -351,6 +438,15 @@ pub async fn ai_request(
                 None, &model, &system, &request.user_prompt, request.timeout_ms,
             ).await
         }
+        "cli" => {
+            if config.cli_command.is_empty() {
+                return Err("No CLI command configured".to_string());
+            }
+            call_cli_blocking(
+                &config.cli_command, &config.cli_args,
+                &system, &request.user_prompt, request.timeout_ms,
+            )
+        }
         _ => Err(format!("Unknown provider: {provider}")),
     };
 
@@ -389,6 +485,7 @@ pub fn check_status(config: &AiConfig) -> AiStatus {
         "gemini" => !config.gemini_api_key.is_empty(),
         "deepseek" => !config.deepseek_api_key.is_empty(),
         "ollama" => true, // no key needed
+        "cli" => !config.cli_command.is_empty(),
         _ => false,
     };
     AiStatus { provider, configured, has_api_key }
@@ -520,5 +617,64 @@ mod tests {
         let status = check_status(&config);
         assert!(status.configured);
         assert!(status.has_api_key);
+    }
+
+    #[test]
+    fn test_cli_allowlist_accepts_claude() {
+        assert!(validate_cli_command("claude").is_ok());
+    }
+
+    #[test]
+    fn test_cli_allowlist_accepts_gemini() {
+        assert!(validate_cli_command("gemini").is_ok());
+    }
+
+    #[test]
+    fn test_cli_blocklist_rejects_rm() {
+        assert!(validate_cli_command("rm").is_err());
+    }
+
+    #[test]
+    fn test_cli_blocklist_rejects_bash() {
+        assert!(validate_cli_command("bash").is_err());
+    }
+
+    #[test]
+    fn test_cli_unknown_command_rejected() {
+        assert!(validate_cli_command("my_random_tool").is_err());
+    }
+
+    #[test]
+    fn test_cli_full_path_uses_basename() {
+        assert!(validate_cli_command("/usr/local/bin/claude").is_ok());
+    }
+
+    #[test]
+    fn test_check_status_cli_with_command() {
+        let mut config = default_config();
+        config.provider = "cli".to_string();
+        config.cli_command = "claude".to_string();
+        let status = check_status(&config);
+        assert!(status.configured);
+        assert!(status.has_api_key);
+    }
+
+    #[test]
+    fn test_check_status_cli_no_command() {
+        let mut config = default_config();
+        config.provider = "cli".to_string();
+        let status = check_status(&config);
+        assert!(status.configured);
+        assert!(!status.has_api_key);
+    }
+
+    #[test]
+    fn test_resolve_model_cli() {
+        let mut config = default_config();
+        config.provider = "cli".to_string();
+        config.cli_command = "claude".to_string();
+        let (provider, model) = resolve_model(&config, "balanced");
+        assert_eq!(provider, "cli");
+        assert_eq!(model, "claude");
     }
 }
