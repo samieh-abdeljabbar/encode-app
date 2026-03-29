@@ -1,6 +1,7 @@
 import {
   BookOpen,
   GraduationCap,
+  Layers,
   LayoutDashboard,
   Repeat,
   Settings,
@@ -11,6 +12,7 @@ const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Queue" },
   { path: "/library", icon: BookOpen, label: "Library" },
   { path: "/review", icon: Repeat, label: "Review" },
+  { path: "/cards", icon: Layers, label: "Cards" },
 ] as const;
 
 const SETTINGS_ITEM = {

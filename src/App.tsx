@@ -1,6 +1,7 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/layout/Shell";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
+import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
 import { Library } from "./pages/Library";
 import { Queue } from "./pages/Queue";
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/chapter" element={<ChapterView />} />
             <Route path="/reader" element={<Reader />} />
             <Route path="/review" element={<Review />} />
+            <Route path="/cards" element={<Cards />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>
