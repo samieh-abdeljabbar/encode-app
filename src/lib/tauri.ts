@@ -209,3 +209,30 @@ export const getDueCards = (limit: number) =>
 
 export const submitCardRating = (cardId: number, rating: number) =>
   invoke<RatingResult>("submit_card_rating", { cardId, rating });
+
+// Queue types
+export interface QueueItem {
+  item_type: string;
+  score: number;
+  title: string;
+  subtitle: string;
+  reason: string;
+  estimated_minutes: number;
+  target_id: number;
+  target_route: string;
+}
+
+export interface QueueSummary {
+  due_cards: number;
+  chapters_in_progress: number;
+  sections_studied_today: number;
+}
+
+export interface QueueDashboard {
+  summary: QueueSummary;
+  items: QueueItem[];
+}
+
+// Queue IPC
+export const getQueueDashboard = () =>
+  invoke<QueueDashboard>("get_queue_dashboard");
