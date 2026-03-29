@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod cards;
 pub mod chunker;
 pub mod fsrs;
