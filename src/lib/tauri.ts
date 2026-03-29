@@ -236,3 +236,61 @@ export interface QueueDashboard {
 // Queue IPC
 export const getQueueDashboard = () =>
   invoke<QueueDashboard>("get_queue_dashboard");
+
+// Card management types
+export interface CardInfo {
+  id: number;
+  subject_id: number;
+  chapter_id: number | null;
+  source_type: string;
+  prompt: string;
+  answer: string;
+  card_type: string;
+  status: string;
+  created_at: string;
+  next_review: string | null;
+  stability: number | null;
+  reps: number | null;
+  lapses: number | null;
+}
+
+// Card management IPC
+export const createCard = (
+  subjectId: number,
+  chapterId: number | null,
+  prompt: string,
+  answer: string,
+  cardType: string,
+) =>
+  invoke<CardInfo>("create_card", {
+    subjectId,
+    chapterId,
+    prompt,
+    answer,
+    cardType,
+  });
+
+export const listCards = (subjectId?: number, search?: string) =>
+  invoke<CardInfo[]>("list_cards", {
+    subjectId: subjectId ?? null,
+    search: search ?? null,
+  });
+
+export const updateCard = (
+  cardId: number,
+  prompt?: string,
+  answer?: string,
+  status?: string,
+) =>
+  invoke<CardInfo>("update_card", {
+    cardId,
+    prompt: prompt ?? null,
+    answer: answer ?? null,
+    status: status ?? null,
+  });
+
+export const getPracticeCards = (subjectId?: number, limit?: number) =>
+  invoke<DueCard[]>("get_practice_cards", {
+    subjectId: subjectId ?? null,
+    limit: limit ?? 50,
+  });
