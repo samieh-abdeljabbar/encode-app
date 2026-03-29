@@ -1,73 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b0d11;
-  --color-surface: #10141a;
-  --color-surface-2: #171c24;
-  --color-panel: #121821;
-  --color-panel-alt: #171d27;
-  --color-panel-active: #1c2430;
-  --color-border: #26303d;
-  --color-border-subtle: #1d2531;
-  --color-border-strong: #3a4657;
-  --color-text: #dce2ec;
-  --color-text-muted: #8791a3;
-  --color-purple: #8c82ff;
-  --color-accent: #8c82ff;
-  --color-accent-soft: rgba(140, 130, 255, 0.16);
-  --color-focus-ring: rgba(140, 130, 255, 0.32);
-  --color-teal: #30b38a;
-  --color-coral: #df725d;
-  --color-amber: #c8994d;
+  /* Papyrus / Parchment backgrounds */
+  --color-bg: #f4f0e8;
+  --color-surface: #ebe5d9;
+  --color-panel: #faf8f3;
+  --color-panel-alt: #f0ece3;
+  --color-panel-active: #e4dfd4;
+
+  /* Sage / Forest borders */
+  --color-border: #c8c1b0;
+  --color-border-subtle: #d6d0c3;
+  --color-border-strong: #a8b5a0;
+
+  /* Deep forest ink */
+  --color-text: #1a1f17;
+  --color-text-muted: #6b7265;
+
+  /* Forest green accent */
+  --color-accent: #2d6a4f;
+  --color-accent-soft: #d8e2dc;
+
+  /* Semantic colors */
+  --color-teal: #2d6a4f;
+  --color-coral: #b85c3a;
+  --color-amber: #a67c3d;
+  --color-focus-ring: #2d6a4f40;
 }
 
 :root {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Source Serif 4 Variable", "Source Serif 4", Georgia, serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
-  --editor-font-size: 16px;
-  --editor-max-width: 860px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
-  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.18);
-  --shadow-overlay: 0 18px 48px rgba(0, 0, 0, 0.28);
+  --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --font-reading: "Source Serif 4", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
-*,
-*::before,
-*::after {
+* {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  margin: 0;
-  background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 7%, transparent), transparent 34%),
-    var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-::selection {
-  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  line-height: 1.6;
   color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {
@@ -75,229 +61,36 @@ body {
   outline-offset: 2px;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
 }
 
-button {
-  cursor: pointer;
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
 }
 
-button:disabled {
-  cursor: not-allowed;
-}
-
-.no-select {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border-strong) transparent;
-}
-
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-*::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
 
-*::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-border-strong) 78%, transparent);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 100px;
 }
 
-.app-main-surface {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel) 92%, transparent), var(--color-bg));
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
 }
 
-.workspace-shell {
-  background: var(--color-panel);
-  border: 1px solid var(--color-border-subtle);
-  box-shadow: var(--shadow-panel);
+/* Drag region for custom title bar */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
 }
 
-.panel-muted {
-  background: color-mix(in srgb, var(--color-panel-alt) 92%, transparent);
-  border: 1px solid var(--color-border-subtle);
-}
-
-.input-reset {
-  background: transparent;
-  border: 0;
-  outline: 0;
-  color: var(--color-text);
-}
-
-.app-font-ui {
-  font-family: var(--font-sans);
-}
-
-.app-font-reading {
-  font-family: var(--font-serif);
-}
-
-.app-font-mono {
-  font-family: var(--font-mono);
-}
-
-/* Rendered markdown prose fallback styling */
-.prose {
-  font-family: var(--font-serif);
-  font-size: var(--editor-font-size);
-  line-height: 1.8;
-  color: var(--color-text);
-  max-width: var(--editor-max-width);
-}
-
-.prose h1 {
-  font-family: var(--font-sans);
-  font-size: 1.875rem;
-  font-weight: 700;
-  margin: 2rem 0 1rem;
-  color: var(--color-text);
-  border-bottom: 1px solid var(--color-border-subtle);
-  padding-bottom: 0.5rem;
-}
-
-.prose h2 {
-  font-family: var(--font-sans);
-  font-size: 1.4rem;
-  font-weight: 650;
-  margin: 1.75rem 0 0.75rem;
-  color: var(--color-text);
-}
-
-.prose h3 {
-  font-family: var(--font-sans);
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 1.5rem 0 0.5rem;
-  color: var(--color-text);
-}
-
-.prose h4 {
-  font-family: var(--font-sans);
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 1.25rem 0 0.5rem;
-  color: var(--color-text-muted);
-}
-
-.prose p {
-  margin: 0.875rem 0;
-}
-
-.prose strong {
-  color: var(--color-text);
-  font-weight: 650;
-}
-
-.prose em {
-  font-style: italic;
-}
-
-.prose a {
-  color: var(--color-accent);
-  text-decoration: none;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
-}
-
-.prose a:hover {
-  border-bottom-color: var(--color-accent);
-}
-
-.prose ul,
-.prose ol {
-  padding-left: 1.5rem;
-  margin: 0.875rem 0;
-}
-
-.prose li {
-  margin: 0.3rem 0;
-}
-
-.prose table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-}
-
-.prose thead th {
-  background-color: var(--color-panel-alt);
-  color: var(--color-text);
-  font-weight: 600;
-  text-align: left;
-  padding: 0.75rem 0.875rem;
-  border-bottom: 1px solid var(--color-border-strong);
-}
-
-.prose tbody td {
-  padding: 0.75rem 0.875rem;
-  border-bottom: 1px solid var(--color-border-subtle);
-  color: var(--color-text-muted);
-}
-
-.prose tbody tr:nth-child(even) {
-  background-color: color-mix(in srgb, var(--color-panel-alt) 64%, transparent);
-}
-
-.prose code {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  background-color: var(--color-panel-alt);
-  color: var(--color-coral);
-  padding: 0.15em 0.45em;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-subtle);
-}
-
-.prose pre {
-  background-color: var(--color-panel);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1rem;
-  overflow-x: auto;
-  margin: 1rem 0;
-}
-
-.prose pre code {
-  background: none;
-  color: var(--color-text);
-  padding: 0;
-  border: 0;
-  font-size: 0.8rem;
-  line-height: 1.6;
-}
-
-.prose blockquote {
-  border-left: 3px solid var(--color-border-strong);
-  padding-left: 1rem;
-  margin: 1rem 0;
-  color: var(--color-text-muted);
-  background: color-mix(in srgb, var(--color-panel-alt) 78%, transparent);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.prose hr {
-  border: none;
-  border-top: 1px solid var(--color-border-subtle);
-  margin: 2rem 0;
-}
-
-.prose img {
-  max-width: 100%;
-  border-radius: var(--radius-md);
-  margin: 1rem 0;
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input {
+  -webkit-app-region: no-drag;
 }
