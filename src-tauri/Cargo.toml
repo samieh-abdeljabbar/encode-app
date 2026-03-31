@@ -27,5 +27,8 @@ regex = "1"                                          # HTML-to-markdown import p
 walkdir = "2"                                        # vault directory scanning for indexer
 notify = "8"                                         # file watcher for incremental index
 
+[features]
+test-utils = []
+
 [dev-dependencies]
 tempfile = "3"

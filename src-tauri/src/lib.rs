@@ -1,6 +1,6 @@
 pub mod db;
 mod commands;
-mod services;
+pub mod services;
 
 use db::Database;
 use services::config::AppConfig;
