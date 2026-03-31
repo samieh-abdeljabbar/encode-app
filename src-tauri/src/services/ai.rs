@@ -298,6 +298,7 @@ async fn call_gemini(
 
 const CLI_ALLOWLIST: &[&str] = &[
     "claude", "gemini", "sgpt", "ollama", "aichat", "llm", "chatgpt",
+    "deepseek", "codex", "openai", "anthropic", "goose", "aider",
 ];
 
 const CLI_BLOCKLIST: &[&str] = &[

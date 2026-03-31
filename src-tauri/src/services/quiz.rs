@@ -1,9 +1,9 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-// AI prompt templates for quiz generation and evaluation.
-// These are used when AI is configured; the async wiring is a follow-up task.
-#[allow(dead_code)]
+use crate::services::ai::{self, AiRequest};
+use crate::services::config::AppConfig;
+
 pub const QUIZ_GENERATE_SYSTEM_PROMPT: &str = r#"You are a quiz question generator for a study tool. Generate quiz questions from the provided chapter sections.
 
 Return a JSON array of question objects. Each question must have:
@@ -21,7 +21,6 @@ Rules:
 - For multiple choice, include one clearly correct answer and three plausible distractors
 - Return ONLY valid JSON, no markdown fences"#;
 
-#[allow(dead_code)]
 pub const QUIZ_EVALUATE_SYSTEM_PROMPT: &str = r#"You are evaluating a student's answer to a quiz question.
 
 Return a JSON object with:
@@ -884,6 +883,184 @@ fn log_quiz_event(
         rusqlite::params![subject_id, chapter_id, quiz_id, event_type, payload.to_string()],
     )
     .map_err(|e| format!("Failed to log study event: {e}"))?;
+
+    Ok(())
+}
+
+// --- Public wrappers for command layer ---
+
+pub fn get_quiz_ids_pub(conn: &Connection, quiz_id: i64) -> Result<(i64, Option<i64>), String> {
+    get_quiz_ids(conn, quiz_id)
+}
+
+pub fn create_repair_card_pub(
+    conn: &Connection,
+    subject_id: i64,
+    chapter_id: Option<i64>,
+    prompt: &str,
+    correct_answer: &str,
+) -> Result<i64, String> {
+    let question = QuizQuestion {
+        question_type: "short_answer".to_string(),
+        prompt: prompt.to_string(),
+        options: None,
+        correct_answer: correct_answer.to_string(),
+        section_id: 0,
+        section_heading: None,
+    };
+    create_repair_card(conn, subject_id, chapter_id, &question, "")
+}
+
+// --- Async AI functions ---
+
+/// Try to generate quiz questions using AI. Returns Ok with questions on success,
+/// Err on failure (caller should fall back to deterministic).
+pub async fn enhance_with_ai(
+    http: &reqwest::Client,
+    config: &AppConfig,
+    sections: &[(i64, Option<String>, String)],
+) -> Result<Vec<QuizQuestion>, String> {
+    let mut user_prompt = String::from("Generate quiz questions from these chapter sections:\n\n");
+    for (idx, (section_id, heading, body)) in sections.iter().enumerate() {
+        let h = heading.as_deref().unwrap_or("Untitled");
+        let truncated = &body[..body.len().min(500)];
+        user_prompt.push_str(&format!(
+            "--- Section {} (id={}) ---\n## {}\n{}\n\n",
+            idx, section_id, h, truncated
+        ));
+    }
+
+    let request = AiRequest {
+        feature: "quiz.generate".to_string(),
+        system_prompt: QUIZ_GENERATE_SYSTEM_PROMPT.to_string(),
+        user_prompt,
+        model_policy: "balanced".to_string(),
+        timeout_ms: 30000,
+    };
+
+    let response = ai::ai_request(http, &config.ai, &config.profile, request).await?;
+
+    // Parse the JSON response
+    let content = response.content.trim();
+    // Strip markdown fences if present
+    let json_str = if content.starts_with("```") {
+        content
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else {
+        content
+    };
+
+    #[derive(Deserialize)]
+    struct AiQuestion {
+        question_type: String,
+        prompt: String,
+        options: Option<Vec<String>>,
+        correct_answer: String,
+        section_index: usize,
+    }
+
+    let ai_questions: Vec<AiQuestion> =
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse AI response: {e}"))?;
+
+    // Map AI questions to QuizQuestion, matching section_index to section data
+    let questions: Vec<QuizQuestion> = ai_questions
+        .into_iter()
+        .filter_map(|aq| {
+            let (section_id, heading, _) = sections.get(aq.section_index)?;
+            Some(QuizQuestion {
+                question_type: aq.question_type,
+                prompt: aq.prompt,
+                options: aq.options,
+                correct_answer: aq.correct_answer,
+                section_id: *section_id,
+                section_heading: heading.clone(),
+            })
+        })
+        .collect();
+
+    if questions.is_empty() {
+        return Err("AI returned no valid questions".to_string());
+    }
+
+    Ok(questions)
+}
+
+/// Try to evaluate a short-answer response using AI.
+/// Returns Ok((verdict, explanation)) on success, Err on failure.
+pub async fn evaluate_with_ai(
+    http: &reqwest::Client,
+    config: &AppConfig,
+    question_prompt: &str,
+    correct_answer: &str,
+    user_answer: &str,
+) -> Result<(String, String), String> {
+    let user_prompt = format!(
+        "Question: {}\n\nExpected answer: {}\n\nStudent's answer: {}",
+        question_prompt, correct_answer, user_answer
+    );
+
+    let request = AiRequest {
+        feature: "quiz.evaluate".to_string(),
+        system_prompt: QUIZ_EVALUATE_SYSTEM_PROMPT.to_string(),
+        user_prompt,
+        model_policy: "balanced".to_string(),
+        timeout_ms: 15000,
+    };
+
+    let response = ai::ai_request(http, &config.ai, &config.profile, request).await?;
+
+    let content = response.content.trim();
+    let json_str = if content.starts_with("```") {
+        content
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else {
+        content
+    };
+
+    #[derive(Deserialize)]
+    struct EvalResult {
+        verdict: String,
+        explanation: String,
+    }
+
+    let eval: EvalResult =
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse AI eval: {e}"))?;
+
+    // Validate verdict
+    if !["correct", "partial", "incorrect"].contains(&eval.verdict.as_str()) {
+        return Err(format!("Invalid verdict from AI: {}", eval.verdict));
+    }
+
+    Ok((eval.verdict, eval.explanation))
+}
+
+/// Replace quiz questions in the database after AI enhancement.
+pub fn replace_questions(
+    conn: &Connection,
+    quiz_id: i64,
+    questions: &[QuizQuestion],
+) -> Result<(), String> {
+    // Delete existing attempts
+    conn.execute("DELETE FROM quiz_attempts WHERE quiz_id = ?1", [quiz_id])
+        .map_err(|e| format!("Failed to clear attempts: {e}"))?;
+
+    // Insert new questions
+    for (idx, question) in questions.iter().enumerate() {
+        let qjson = serde_json::to_string(question)
+            .map_err(|e| format!("Failed to serialize question: {e}"))?;
+        conn.execute(
+            "INSERT INTO quiz_attempts (quiz_id, question_index, question_json, result, created_at)
+             VALUES (?1, ?2, ?3, 'unanswered', datetime('now'))",
+            rusqlite::params![quiz_id, idx as i64, qjson],
+        )
+        .map_err(|e| format!("Failed to insert AI question: {e}"))?;
+    }
 
     Ok(())
 }
