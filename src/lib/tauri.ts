@@ -248,6 +248,9 @@ export interface QueueSummary {
   due_cards: number;
   chapters_in_progress: number;
   sections_studied_today: number;
+  chapters_completed: number;
+  total_cards: number;
+  quizzes_passed: number;
 }
 
 export interface QueueDashboard {

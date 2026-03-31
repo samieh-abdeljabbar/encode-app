@@ -187,15 +187,24 @@ export function Reader() {
             Chapter Complete
           </p>
           <p className="mb-6 text-sm text-text-muted">
-            "{session.chapter.title}" is ready for quiz.
+            &ldquo;{session.chapter.title}&rdquo; is ready for quiz.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/library")}
-            className="h-10 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
-          >
-            Back to Library
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/library")}
+              className="h-10 rounded-xl border border-border bg-panel px-5 text-sm font-medium text-text transition-all hover:bg-panel-active"
+            >
+              Back to Library
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/quiz?chapter=${chapterId}`)}
+              className="h-10 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
+            >
+              Take Quiz
+            </button>
+          </div>
         </div>
       </div>
     );

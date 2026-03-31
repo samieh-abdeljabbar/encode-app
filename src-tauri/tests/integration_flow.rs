@@ -198,10 +198,18 @@ fn test_full_study_loop() {
         assert!(summary.correct > 0, "Should have some correct answers");
 
         // 10. Verify study events logged
-        let event_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM study_events", [], |r| r.get(0)
+        // Expected: 5 section_check_submitted (4 checks + 1 retry) + 1 synthesis_completed + quiz events
+        let check_events: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM study_events WHERE event_type = 'section_check_submitted'",
+            [], |r| r.get(0)
         ).unwrap();
-        assert!(event_count > 0, "Study events should be logged");
+        assert_eq!(check_events, 5, "Should have 5 section check events (4 sections + 1 retry)");
+
+        let synthesis_events: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM study_events WHERE event_type = 'synthesis_completed'",
+            [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(synthesis_events, 1, "Should have 1 synthesis event");
 
         Ok(())
     });
@@ -312,7 +320,7 @@ fn test_quiz_failure_and_retest() {
         let summary = quiz::complete_quiz(conn, quiz_id).unwrap();
         assert!(summary.score < 0.8, "Score should be below passing: {}", summary.score);
         assert!(summary.retest_scheduled);
-        assert_eq!(summary.incorrect + summary.partial, summary.total, "All should be wrong");
+        assert_eq!(summary.incorrect, summary.total, "All should be incorrect (no partials expected)");
 
         // Chapter should stay at ready_for_quiz
         let status: String = conn.query_row(
@@ -360,10 +368,11 @@ fn test_queue_ordering() {
              VALUES (1, 'manual', 'What is X?', 'Y', 'basic', 'active', datetime('now'))",
             [],
         ).unwrap();
+        let card_id = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO card_schedule (card_id, next_review, stability, difficulty, reps, lapses)
-             VALUES (1, datetime('now', '-1 hour'), 2.0, 5.0, 1, 0)",
-            [],
+             VALUES (?1, datetime('now', '-1 hour'), 2.0, 5.0, 1, 0)",
+            [card_id],
         ).unwrap();
 
         let dashboard = queue::get_dashboard(conn).unwrap();

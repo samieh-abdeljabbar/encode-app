@@ -18,6 +18,9 @@ pub struct QueueSummary {
     pub due_cards: i64,
     pub chapters_in_progress: i64,
     pub sections_studied_today: i64,
+    pub chapters_completed: i64,
+    pub total_cards: i64,
+    pub quizzes_passed: i64,
 }
 
 #[derive(Serialize)]
@@ -51,10 +54,37 @@ fn get_summary(conn: &Connection) -> Result<QueueSummary, String> {
         )
         .unwrap_or(0);
 
+    let chapters_completed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chapters WHERE status IN ('mastering', 'stable')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let total_cards: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE status = 'active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let quizzes_passed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM quizzes WHERE score >= 0.8",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     Ok(QueueSummary {
         due_cards,
         chapters_in_progress,
         sections_studied_today,
+        chapters_completed,
+        total_cards,
+        quizzes_passed,
     })
 }
 
