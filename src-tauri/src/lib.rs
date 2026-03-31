@@ -168,6 +168,12 @@ pub fn run() {
             commands::reader::submit_synthesis,
             commands::review::get_due_cards,
             commands::review::submit_card_rating,
+            commands::quiz::list_quizzes,
+            commands::quiz::generate_quiz,
+            commands::quiz::submit_quiz_answer,
+            commands::quiz::submit_quiz_self_rating,
+            commands::quiz::get_quiz,
+            commands::quiz::complete_quiz,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

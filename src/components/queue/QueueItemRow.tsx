@@ -1,9 +1,11 @@
 import {
   BookOpen,
   ChevronRight,
+  ClipboardCheck,
   Clock,
   FileText,
   Repeat,
+  RotateCcw,
   Wrench,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -22,6 +24,12 @@ const TYPE_CONFIG: Record<
     label: "Synthesis",
   },
   new_chapter: { icon: BookOpen, color: "text-text-muted", label: "New" },
+  quiz_available: {
+    icon: ClipboardCheck,
+    color: "text-accent",
+    label: "Quiz",
+  },
+  quiz_retake: { icon: RotateCcw, color: "text-amber", label: "Retake" },
 };
 
 export function QueueItemRow({ item }: { item: QueueItem }) {

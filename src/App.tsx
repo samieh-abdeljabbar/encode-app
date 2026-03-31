@@ -6,6 +6,8 @@ import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
 import { Library } from "./pages/Library";
 import { Queue } from "./pages/Queue";
+import { Quiz } from "./pages/Quiz";
+import { Quizzes } from "./pages/Quizzes";
 import { Reader } from "./pages/Reader";
 import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
@@ -27,6 +29,8 @@ export default function App() {
               <Route path="/reader" element={<Reader />} />
               <Route path="/review" element={<Review />} />
               <Route path="/cards" element={<Cards />} />
+              <Route path="/quiz" element={<Quiz />} />
+              <Route path="/quizzes" element={<Quizzes />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
           </Routes>

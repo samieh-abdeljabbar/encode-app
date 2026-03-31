@@ -8,6 +8,7 @@ pub mod exporter;
 pub mod importer;
 pub mod indexer;
 pub mod queue;
+pub mod quiz;
 pub mod reader;
 pub mod review;
 pub mod snapshot;

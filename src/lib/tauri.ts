@@ -301,3 +301,90 @@ export const updateChapterContent = (chapterId: number, markdown: string) =>
 
 export const saveImage = (data: number[], extension: string) =>
   invoke<string>("save_image", { data, extension });
+
+// Quiz types
+export interface QuizQuestion {
+  question_type: string;
+  prompt: string;
+  options: string[] | null;
+  correct_answer: string;
+  section_id: number;
+  section_heading: string | null;
+}
+
+export interface QuestionResult {
+  verdict: string;
+  correct_answer: string;
+  explanation: string | null;
+  repair_card_id: number | null;
+  needs_self_rating: boolean;
+}
+
+export interface QuizAttemptInfo {
+  question_index: number;
+  result: string;
+}
+
+export interface QuizState {
+  id: number;
+  chapter_id: number;
+  chapter_title: string;
+  questions: QuizQuestion[];
+  attempts: QuizAttemptInfo[];
+  score: number | null;
+}
+
+export interface QuizSummary {
+  score: number;
+  total: number;
+  correct: number;
+  partial: number;
+  incorrect: number;
+  repair_cards_created: number;
+  retest_scheduled: boolean;
+}
+
+export interface QuizListItem {
+  id: number;
+  chapter_id: number | null;
+  chapter_title: string;
+  subject_name: string;
+  score: number | null;
+  question_count: number;
+  generated_at: string;
+}
+
+// Quiz IPC
+export const listQuizzes = (subjectId?: number) =>
+  invoke<QuizListItem[]>("list_quizzes", { subjectId: subjectId ?? null });
+
+export const generateQuiz = (chapterId: number) =>
+  invoke<QuizState>("generate_quiz", { chapterId });
+
+export const submitQuizAnswer = (
+  quizId: number,
+  questionIndex: number,
+  answer: string,
+) =>
+  invoke<QuestionResult>("submit_quiz_answer", {
+    quizId,
+    questionIndex,
+    answer,
+  });
+
+export const submitQuizSelfRating = (
+  quizId: number,
+  questionIndex: number,
+  selfRating: string,
+) =>
+  invoke<QuestionResult>("submit_quiz_self_rating", {
+    quizId,
+    questionIndex,
+    selfRating,
+  });
+
+export const getQuiz = (quizId: number) =>
+  invoke<QuizState>("get_quiz", { quizId });
+
+export const completeQuiz = (quizId: number) =>
+  invoke<QuizSummary>("complete_quiz", { quizId });

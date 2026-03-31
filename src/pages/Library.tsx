@@ -1,6 +1,7 @@
 import {
   BookOpen,
   ChevronRight,
+  ClipboardCheck,
   Clock,
   FileText,
   Globe,
@@ -448,6 +449,21 @@ export function Library() {
                       )}
                     </div>
                   </div>
+                  {["ready_for_quiz", "mastering", "stable"].includes(
+                    chapter.status,
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/quiz?chapter=${chapter.id}`);
+                      }}
+                      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-3 text-[11px] font-medium text-accent transition-all hover:bg-accent/10"
+                    >
+                      <ClipboardCheck size={12} />
+                      Take Quiz
+                    </button>
+                  )}
                   <ChevronRight size={14} className="text-text-muted/40" />
                 </button>
               ))}

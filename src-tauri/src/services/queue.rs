@@ -176,12 +176,102 @@ fn get_chapter_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
     Ok(items)
 }
 
+fn get_quiz_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
+    let mut items = Vec::new();
+
+    // Chapters at ready_for_quiz without a passing quiz
+    let mut stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status = 'ready_for_quiz'
+               AND NOT EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id AND q.score >= 0.8
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let available = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "quiz_available".to_string(),
+                score: 45,
+                title,
+                subtitle: subject_name,
+                reason: "Ready for quiz".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/quiz?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    items.extend(available);
+
+    // Failed quizzes past 48-hour cooldown
+    let mut retake_stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status = 'ready_for_quiz'
+               AND EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id
+                     AND q.score IS NOT NULL
+                     AND q.score < 0.8
+                     AND datetime(q.generated_at, '+2 days') <= datetime('now')
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id AND q.score >= 0.8
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let retakes = retake_stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "quiz_retake".to_string(),
+                score: 60, // 45 base + 15 cooldown elapsed
+                title,
+                subtitle: subject_name,
+                reason: "Cooldown elapsed — retake available".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/quiz?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    items.extend(retakes);
+
+    Ok(items)
+}
+
 pub fn get_dashboard(conn: &Connection) -> Result<QueueDashboard, String> {
     let summary = get_summary(conn)?;
 
     let mut items = Vec::new();
     items.extend(get_due_card_items(conn)?);
     items.extend(get_chapter_items(conn)?);
+    items.extend(get_quiz_items(conn)?);
 
     // Sort by score descending, then by estimated_minutes ascending (tie-breaker)
     items.sort_by(|a, b| {

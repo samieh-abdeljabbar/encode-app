@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  ClipboardCheck,
   GraduationCap,
   Layers,
   LayoutDashboard,
@@ -13,6 +14,7 @@ const NAV_ITEMS = [
   { path: "/library", icon: BookOpen, label: "Library" },
   { path: "/review", icon: Repeat, label: "Review" },
   { path: "/cards", icon: Layers, label: "Cards" },
+  { path: "/quizzes", icon: ClipboardCheck, label: "Quizzes" },
 ] as const;
 
 const SETTINGS_ITEM = {
