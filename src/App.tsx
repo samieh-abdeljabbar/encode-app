@@ -1,5 +1,6 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/layout/Shell";
+import { ThemeProvider } from "./components/layout/ThemeProvider";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
@@ -16,19 +17,21 @@ import "@fontsource/inter/700.css";
 export default function App() {
   return (
     <ErrorBoundary>
-      <MemoryRouter initialEntries={["/library"]}>
-        <Routes>
-          <Route element={<Shell />}>
-            <Route path="/" element={<Queue />} />
-            <Route path="/library" element={<Library />} />
-            <Route path="/chapter" element={<ChapterView />} />
-            <Route path="/reader" element={<Reader />} />
-            <Route path="/review" element={<Review />} />
-            <Route path="/cards" element={<Cards />} />
-            <Route path="/settings" element={<Settings />} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/library"]}>
+          <Routes>
+            <Route element={<Shell />}>
+              <Route path="/" element={<Queue />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/chapter" element={<ChapterView />} />
+              <Route path="/reader" element={<Reader />} />
+              <Route path="/review" element={<Review />} />
+              <Route path="/cards" element={<Cards />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

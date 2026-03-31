@@ -1,0 +1,98 @@
+export interface Theme {
+  name: string;
+  label: string;
+  colors: Record<string, string>;
+}
+
+export const THEMES: Theme[] = [
+  {
+    name: "parchment",
+    label: "Parchment",
+    colors: {
+      "--color-bg": "#f4f0e8",
+      "--color-surface": "#ebe5d9",
+      "--color-panel": "#faf8f3",
+      "--color-panel-alt": "#f0ece3",
+      "--color-panel-active": "#e4dfd4",
+      "--color-border": "#c8c1b0",
+      "--color-border-subtle": "#d6d0c3",
+      "--color-border-strong": "#a8b5a0",
+      "--color-text": "#1a1f17",
+      "--color-text-muted": "#6b7265",
+      "--color-accent": "#2d6a4f",
+      "--color-accent-soft": "#d8e2dc",
+    },
+  },
+  {
+    name: "dark",
+    label: "Dark",
+    colors: {
+      "--color-bg": "#1e1e1e",
+      "--color-surface": "#252526",
+      "--color-panel": "#2d2d2d",
+      "--color-panel-alt": "#333333",
+      "--color-panel-active": "#3c3c3c",
+      "--color-border": "#404040",
+      "--color-border-subtle": "#353535",
+      "--color-border-strong": "#505050",
+      "--color-text": "#d4d4d4",
+      "--color-text-muted": "#808080",
+      "--color-accent": "#4ec9b0",
+      "--color-accent-soft": "#2d4a44",
+    },
+  },
+  {
+    name: "nord",
+    label: "Nord",
+    colors: {
+      "--color-bg": "#2e3440",
+      "--color-surface": "#3b4252",
+      "--color-panel": "#434c5e",
+      "--color-panel-alt": "#4c566a",
+      "--color-panel-active": "#4c566a",
+      "--color-border": "#4c566a",
+      "--color-border-subtle": "#434c5e",
+      "--color-border-strong": "#d8dee9",
+      "--color-text": "#eceff4",
+      "--color-text-muted": "#81a1c1",
+      "--color-accent": "#88c0d0",
+      "--color-accent-soft": "#3b4a5a",
+    },
+  },
+  {
+    name: "dracula",
+    label: "Dracula",
+    colors: {
+      "--color-bg": "#282a36",
+      "--color-surface": "#21222c",
+      "--color-panel": "#343746",
+      "--color-panel-alt": "#3e4152",
+      "--color-panel-active": "#44475a",
+      "--color-border": "#44475a",
+      "--color-border-subtle": "#383a4a",
+      "--color-border-strong": "#6272a4",
+      "--color-text": "#f8f8f2",
+      "--color-text-muted": "#6272a4",
+      "--color-accent": "#bd93f9",
+      "--color-accent-soft": "#3d3566",
+    },
+  },
+  {
+    name: "solarized",
+    label: "Solarized Light",
+    colors: {
+      "--color-bg": "#fdf6e3",
+      "--color-surface": "#eee8d5",
+      "--color-panel": "#fdf6e3",
+      "--color-panel-alt": "#eee8d5",
+      "--color-panel-active": "#e0dbc8",
+      "--color-border": "#d0c8b0",
+      "--color-border-subtle": "#ddd6c1",
+      "--color-border-strong": "#93a1a1",
+      "--color-text": "#073642",
+      "--color-text-muted": "#586e75",
+      "--color-accent": "#268bd2",
+      "--color-accent-soft": "#d5e8f0",
+    },
+  },
+];
