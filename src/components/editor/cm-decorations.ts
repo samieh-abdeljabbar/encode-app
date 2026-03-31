@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, RangeSetBuilder } from "@codemirror/state";
+import type { EditorState } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -109,10 +109,9 @@ const HEADING_CLASSES: Record<string, string> = {
 };
 
 function buildDecorations(state: EditorState): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
   const tree = syntaxTree(state);
 
-  // Collect decorations unsorted, then sort before adding to builder
+  // Collect decorations, then use Decoration.set() which sorts automatically
   const decorations: { from: number; to: number; decoration: Decoration }[] =
     [];
 
@@ -328,14 +327,11 @@ function buildDecorations(state: EditorState): DecorationSet {
     },
   });
 
-  // Sort decorations by position (required by RangeSetBuilder)
-  decorations.sort((a, b) => a.from - b.from || a.to - b.to);
-
-  for (const { from, to, decoration } of decorations) {
-    builder.add(from, to, decoration);
-  }
-
-  return builder.finish();
+  // Use Decoration.set with sort=true to handle ordering automatically
+  return Decoration.set(
+    decorations.map(({ from, to, decoration }) => decoration.range(from, to)),
+    true, // sort
+  );
 }
 
 // ---------------------------------------------------------------------------

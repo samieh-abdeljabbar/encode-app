@@ -2,15 +2,21 @@ import { EditorView } from "@codemirror/view";
 
 export const parchmentTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#faf8f3",
+    backgroundColor: "#f4f0e8",
     color: "#1a1f17",
-    fontSize: "14px",
+    fontSize: "15px",
     fontFamily: "'Inter', system-ui, sans-serif",
-    lineHeight: "1.7",
+    lineHeight: "1.8",
+    height: "100%",
+  },
+  ".cm-scroller": {
+    padding: "0 60px",
+    overflow: "auto",
   },
   ".cm-content": {
-    padding: "24px 0",
+    padding: "32px 0",
     caretColor: "#2d6a4f",
+    maxWidth: "720px",
   },
   ".cm-cursor": {
     borderLeftColor: "#2d6a4f",
@@ -23,30 +29,26 @@ export const parchmentTheme = EditorView.theme({
     backgroundColor: "rgba(45, 106, 79, 0.03)",
   },
   ".cm-gutters": {
-    backgroundColor: "#faf8f3",
-    color: "#6b7265",
-    border: "none",
-    paddingRight: "8px",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "rgba(45, 106, 79, 0.05)",
-    color: "#1a1f17",
+    display: "none",
   },
   // Markdown heading styles
   ".cm-heading-1": {
-    fontSize: "1.5em",
-    fontWeight: "600",
+    fontSize: "1.8em",
+    fontWeight: "700",
     lineHeight: "1.3",
+    marginTop: "0.5em",
   },
   ".cm-heading-2": {
-    fontSize: "1.25em",
+    fontSize: "1.4em",
     fontWeight: "600",
     lineHeight: "1.3",
+    marginTop: "0.4em",
   },
   ".cm-heading-3": {
-    fontSize: "1.1em",
+    fontSize: "1.15em",
     fontWeight: "600",
     lineHeight: "1.3",
+    marginTop: "0.3em",
   },
   // Code
   ".cm-code": {
@@ -92,8 +94,9 @@ export const parchmentTheme = EditorView.theme({
   },
   // Horizontal rule
   ".cm-hr": {
-    borderTop: "1px solid #c8c1b0",
+    borderTop: "1px solid #d6d0c3",
     display: "block",
-    margin: "16px 0",
+    margin: "24px 0",
+    width: "100%",
   },
 });
