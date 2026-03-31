@@ -347,6 +347,26 @@ pub async fn import_url(
 }
 
 #[tauri::command]
+pub fn update_chapter_content(
+    state: tauri::State<'_, AppState>,
+    chapter_id: i64,
+    markdown: String,
+) -> Result<(), String> {
+    state.db.with_conn(|conn| {
+        crate::services::chapter::update_content(conn, chapter_id, &markdown)
+    })
+}
+
+#[tauri::command]
+pub fn save_image(
+    state: tauri::State<'_, AppState>,
+    data: Vec<u8>,
+    extension: String,
+) -> Result<String, String> {
+    crate::services::chapter::save_image(&state.vault_path, &data, &extension)
+}
+
+#[tauri::command]
 pub fn search(
     state: tauri::State<'_, AppState>,
     query: String,

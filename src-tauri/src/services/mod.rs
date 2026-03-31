@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod cards;
+pub mod chapter;
 pub mod chunker;
 pub mod fsrs;
 pub mod config;

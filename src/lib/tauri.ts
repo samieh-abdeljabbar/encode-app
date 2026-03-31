@@ -294,3 +294,10 @@ export const getPracticeCards = (subjectId?: number, limit?: number) =>
     subjectId: subjectId ?? null,
     limit: limit ?? 50,
   });
+
+// Editor IPC
+export const updateChapterContent = (chapterId: number, markdown: string) =>
+  invoke<void>("update_chapter_content", { chapterId, markdown });
+
+export const saveImage = (data: number[], extension: string) =>
+  invoke<string>("save_image", { data, extension });
