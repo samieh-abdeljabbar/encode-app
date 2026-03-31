@@ -24,12 +24,20 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeName, setThemeName] = useState(
-    () => localStorage.getItem("encode-theme") ?? "parchment",
-  );
-  const [customCSS, setCustomCSS] = useState(
-    () => localStorage.getItem("encode-custom-css") ?? "",
-  );
+  const [themeName, setThemeName] = useState(() => {
+    try {
+      return localStorage.getItem("encode-theme") ?? "parchment";
+    } catch {
+      return "parchment";
+    }
+  });
+  const [customCSS, setCustomCSS] = useState(() => {
+    try {
+      return localStorage.getItem("encode-custom-css") ?? "";
+    } catch {
+      return "";
+    }
+  });
 
   const theme = THEMES.find((t) => t.name === themeName) ?? THEMES[0];
 
@@ -54,12 +62,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const handleSetTheme = (name: string) => {
     setThemeName(name);
-    localStorage.setItem("encode-theme", name);
+    try {
+      localStorage.setItem("encode-theme", name);
+    } catch {
+      /* test env */
+    }
   };
 
   const handleSetCustomCSS = (css: string) => {
     setCustomCSS(css);
-    localStorage.setItem("encode-custom-css", css);
+    try {
+      localStorage.setItem("encode-custom-css", css);
+    } catch {
+      /* test env */
+    }
   };
 
   return (
