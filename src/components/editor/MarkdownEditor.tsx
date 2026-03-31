@@ -1,12 +1,12 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 import { livePreviewDecorations } from "./cm-decorations";
 import { imageDropHandler } from "./cm-images";
 import { slashCommands } from "./cm-slash";
-import { tableKeymap } from "./cm-tables";
+import { tableKeymap, tableRendering } from "./cm-tables";
 import { parchmentTheme } from "./cm-theme";
 
 export function MarkdownEditor({
@@ -28,10 +28,11 @@ export function MarkdownEditor({
       doc: value,
       extensions: [
         parchmentTheme,
-        markdown(),
+        markdown({ base: markdownLanguage }),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...tableKeymap]),
         livePreviewDecorations,
+        tableRendering,
         slashCommands(),
         imageDropHandler,
         EditorView.updateListener.of((update) => {
