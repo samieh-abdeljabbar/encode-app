@@ -2,14 +2,17 @@ import {
   Archive,
   CheckCircle2,
   Clock,
+  Code,
   Database,
   Download,
   HardDrive,
+  Palette,
   RefreshCw,
   Shield,
   User,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useTheme } from "../components/layout/ThemeProvider";
 import {
   createSnapshot,
   exportAll,
@@ -17,6 +20,7 @@ import {
   listSnapshots,
 } from "../lib/tauri";
 import type { ExportStatus, SnapshotInfo } from "../lib/tauri";
+import { THEMES } from "../lib/themes";
 
 function StatusDot({ status }: { status: "ok" | "stale" | "none" }) {
   const color = {
@@ -234,6 +238,9 @@ export function Settings() {
         </section>
       )}
 
+      {/* Theme */}
+      <ThemeSection />
+
       {/* Profile placeholder */}
       <section className="mb-10">
         <div className="mb-4 flex items-center gap-2.5">
@@ -247,5 +254,83 @@ export function Settings() {
         </div>
       </section>
     </div>
+  );
+}
+
+function ThemeSection() {
+  const { theme, setTheme, customCSS, setCustomCSS } = useTheme();
+
+  return (
+    <section className="mb-10">
+      <div className="mb-4 flex items-center gap-2.5">
+        <Palette size={14} className="text-accent" />
+        <h2 className="text-sm font-semibold text-text">Theme</h2>
+      </div>
+      <p className="mb-6 max-w-2xl text-sm leading-relaxed text-text-muted">
+        Choose a built-in theme or add custom CSS overrides.
+      </p>
+
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
+        {THEMES.map((t) => {
+          const active = t.name === theme.name;
+          return (
+            <button
+              key={t.name}
+              type="button"
+              onClick={() => setTheme(t.name)}
+              className={`group rounded-xl border-2 p-3 text-left transition-all ${
+                active
+                  ? "border-accent shadow-[0_0_0_1px_var(--color-accent)]"
+                  : "border-border hover:border-border-strong"
+              }`}
+            >
+              <div className="mb-2.5 flex gap-1">
+                <span
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: t.colors["--color-bg"] }}
+                />
+                <span
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: t.colors["--color-accent"] }}
+                />
+                <span
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: t.colors["--color-text"] }}
+                />
+                <span
+                  className="h-4 w-4 rounded-full"
+                  style={{ backgroundColor: t.colors["--color-panel"] }}
+                />
+              </div>
+              <span
+                className={`text-xs font-medium ${active ? "text-accent" : "text-text-muted group-hover:text-text"}`}
+              >
+                {t.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div>
+        <div className="mb-3 flex items-center gap-2">
+          <Code size={13} className="text-text-muted" />
+          <span className="text-xs font-semibold text-text">Custom CSS</span>
+        </div>
+        <textarea
+          value={customCSS}
+          onChange={(e) => setCustomCSS(e.target.value)}
+          placeholder={
+            "/* Override any CSS variable or add custom styles */\n:root {\n  --color-accent: #e06c75;\n}"
+          }
+          spellCheck={false}
+          className="h-36 w-full resize-y rounded-xl border border-border bg-panel p-4 font-mono text-xs leading-relaxed text-text placeholder:text-text-muted/40 focus:border-accent focus:outline-none"
+        />
+        <p className="mt-2 text-[11px] text-text-muted/60">
+          Paste CSS snippets to customize colors, fonts, or spacing. Changes
+          apply immediately.
+        </p>
+      </div>
+    </section>
   );
 }

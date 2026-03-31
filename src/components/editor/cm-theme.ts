@@ -2,8 +2,8 @@ import { EditorView } from "@codemirror/view";
 
 export const parchmentTheme = EditorView.theme({
   "&": {
-    backgroundColor: "#f4f0e8",
-    color: "#1a1f17",
+    backgroundColor: "var(--color-bg, #f4f0e8)",
+    color: "var(--color-text, #1a1f17)",
     fontSize: "15px",
     fontFamily: "'Inter', system-ui, sans-serif",
     lineHeight: "1.8",
@@ -15,21 +15,35 @@ export const parchmentTheme = EditorView.theme({
   },
   ".cm-content": {
     padding: "32px 0",
-    caretColor: "#2d6a4f",
+    caretColor: "var(--color-accent, #2d6a4f)",
     maxWidth: "720px",
   },
   ".cm-cursor": {
-    borderLeftColor: "#2d6a4f",
+    borderLeftColor: "var(--color-accent, #2d6a4f)",
     borderLeftWidth: "2px",
   },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "#d8e2dc !important",
+    backgroundColor: "var(--color-accent-soft, #d8e2dc) !important",
   },
   ".cm-activeLine": {
     backgroundColor: "rgba(45, 106, 79, 0.03)",
   },
   ".cm-gutters": {
+    backgroundColor: "var(--color-bg, #f4f0e8)",
+    border: "none",
+    width: "24px",
+  },
+  ".cm-gutter-lint, .cm-lineNumbers": {
     display: "none",
+  },
+  ".cm-foldGutter": {
+    width: "16px",
+  },
+  ".cm-foldGutter .cm-gutterElement": {
+    padding: "0 2px",
+    cursor: "pointer",
+    color: "var(--color-text-muted, #6b7265)",
+    fontSize: "12px",
   },
   // Markdown heading styles
   ".cm-heading-1": {
@@ -54,24 +68,24 @@ export const parchmentTheme = EditorView.theme({
   ".cm-code": {
     fontFamily: "'JetBrains Mono', ui-monospace, monospace",
     fontSize: "0.9em",
-    backgroundColor: "#f0ece3",
+    backgroundColor: "var(--color-panel-alt, #f0ece3)",
     padding: "1px 4px",
     borderRadius: "3px",
   },
   ".cm-fencedCode": {
-    backgroundColor: "#f0ece3",
+    backgroundColor: "var(--color-panel-alt, #f0ece3)",
     padding: "12px",
     borderRadius: "8px",
   },
   // Blockquote
   ".cm-blockquote": {
-    borderLeft: "3px solid #2d6a4f",
+    borderLeft: "3px solid var(--color-accent, #2d6a4f)",
     paddingLeft: "12px",
-    color: "#6b7265",
+    color: "var(--color-text-muted, #6b7265)",
   },
   // Links
   ".cm-link": {
-    color: "#2d6a4f",
+    color: "var(--color-accent, #2d6a4f)",
     textDecoration: "underline",
   },
   // Bold/italic
@@ -94,7 +108,7 @@ export const parchmentTheme = EditorView.theme({
   },
   // Horizontal rule
   ".cm-hr": {
-    borderTop: "1px solid #d6d0c3",
+    borderTop: "1px solid var(--color-border-subtle, #d6d0c3)",
     display: "block",
     margin: "24px 0",
     width: "100%",

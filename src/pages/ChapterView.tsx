@@ -1,8 +1,16 @@
+import type { EditorView } from "@codemirror/view";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { MarkdownEditor } from "../components/editor/MarkdownEditor";
-import { loadReaderSession, updateChapterContent } from "../lib/tauri";
+import { OutlinePanel } from "../components/editor/OutlinePanel";
+import { StatusBar } from "../components/editor/StatusBar";
+import {
+  getChapterWithSections,
+  listSubjects,
+  loadReaderSession,
+  updateChapterContent,
+} from "../lib/tauri";
 import type { ReaderSession } from "../lib/tauri";
 
 export function ChapterView() {
@@ -11,13 +19,29 @@ export function ChapterView() {
   const chapterId = Number(searchParams.get("id"));
 
   const [session, setSession] = useState<ReaderSession | null>(null);
+  const [subjectName, setSubjectName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
     "idle",
   );
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+
+  const handleNavigateLine = useCallback((line: number) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    const lineInfo = view.state.doc.line(
+      Math.max(1, Math.min(line, view.state.doc.lines)),
+    );
+    view.dispatch({
+      selection: { anchor: lineInfo.from },
+      scrollIntoView: true,
+    });
+    view.focus();
+  }, []);
 
   const load = useCallback(async () => {
     if (!chapterId) return;
@@ -35,6 +59,25 @@ export function ChapterView() {
     } catch (e) {
       setError(String(e));
     }
+  }, [chapterId]);
+
+  // Load subject name for breadcrumb
+  useEffect(() => {
+    if (!chapterId) return;
+    (async () => {
+      try {
+        const [chapterData, subjects] = await Promise.all([
+          getChapterWithSections(chapterId),
+          listSubjects(),
+        ]);
+        const subject = subjects.find(
+          (s) => s.id === chapterData.chapter.subject_id,
+        );
+        if (subject) setSubjectName(subject.name);
+      } catch {
+        // breadcrumb is non-critical; silently ignore
+      }
+    })();
   }, [chapterId]);
 
   useEffect(() => {
@@ -111,6 +154,12 @@ export function ChapterView() {
               <ArrowLeft size={16} />
             </button>
             <div className="min-w-0 flex-1">
+              {/* Breadcrumb */}
+              {subjectName && (
+                <p className="mb-0.5 text-[11px] text-text-muted">
+                  {subjectName}
+                </p>
+              )}
               <h1 className="truncate text-lg font-semibold tracking-tight text-text">
                 {session.chapter.title}
               </h1>
@@ -123,6 +172,10 @@ export function ChapterView() {
                 {saveStatus === "saving" ? "Saving..." : "Saved"}
               </span>
             )}
+            <OutlinePanel
+              content={editorContent}
+              onNavigate={handleNavigateLine}
+            />
             <button
               type="button"
               onClick={() => navigate(`/reader?chapter=${chapterId}`)}
@@ -137,8 +190,18 @@ export function ChapterView() {
 
       {/* Editor — always active, Obsidian-style */}
       <div className="flex-1 overflow-hidden">
-        <MarkdownEditor value={editorContent} onChange={handleEditorChange} />
+        <MarkdownEditor
+          value={editorContent}
+          onChange={handleEditorChange}
+          onViewReady={(view) => {
+            editorViewRef.current = view;
+            setEditorView(view);
+          }}
+        />
       </div>
+
+      {/* Status bar */}
+      <StatusBar view={editorView} />
     </div>
   );
 }
