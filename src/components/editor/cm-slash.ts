@@ -134,27 +134,6 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     description: "Current date and time",
     insert: nowTimestamp,
   },
-  {
-    name: "columns2",
-    label: "2 Columns",
-    description: "Two-column layout",
-    insert: () =>
-      ":::columns-2\nColumn 1 content\n\n---\n\nColumn 2 content\n:::\n",
-  },
-  {
-    name: "columns3",
-    label: "3 Columns",
-    description: "Three-column layout",
-    insert: () =>
-      ":::columns-3\nColumn 1\n\n---\n\nColumn 2\n\n---\n\nColumn 3\n:::\n",
-  },
-  {
-    name: "columns4",
-    label: "4 Columns",
-    description: "Four-column layout",
-    insert: () =>
-      ":::columns-4\nCol 1\n\n---\n\nCol 2\n\n---\n\nCol 3\n\n---\n\nCol 4\n:::\n",
-  },
 ];
 
 // ---------------------------------------------------------------------------

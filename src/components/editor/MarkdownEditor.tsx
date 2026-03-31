@@ -14,7 +14,6 @@ import {
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useEffect, useRef } from "react";
-import { columnRendering } from "./cm-columns";
 import { livePreviewDecorations } from "./cm-decorations";
 import { markdownFoldService } from "./cm-fold";
 import { imageDropHandler } from "./cm-images";
@@ -100,7 +99,6 @@ export function MarkdownEditor({
         livePreviewDecorations,
         tableRendering,
         mathRendering,
-        columnRendering,
         slashCommands(),
         imageDropHandler,
         EditorView.updateListener.of((update) => {
