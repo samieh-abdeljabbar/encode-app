@@ -13,12 +13,14 @@ import {
 } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FlashcardInlineForm } from "./FlashcardInlineForm";
 import { livePreviewDecorations } from "./cm-decorations";
 import { markdownFoldService } from "./cm-fold";
 import { imageDropHandler } from "./cm-images";
 import { mathRendering } from "./cm-math";
 import { slashCommands } from "./cm-slash";
+import type { SlashActionHandler } from "./cm-slash";
 import { tableKeymap, tableRendering } from "./cm-tables";
 import { parchmentTheme } from "./cm-theme";
 
@@ -26,10 +28,14 @@ export function MarkdownEditor({
   value,
   onChange,
   onViewReady,
+  subjectId,
+  chapterId,
 }: {
   value: string;
   onChange: (value: string) => void;
   onViewReady?: (view: EditorView) => void;
+  subjectId?: number;
+  chapterId?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -37,6 +43,31 @@ export function MarkdownEditor({
   const onViewReadyRef = useRef(onViewReady);
   onChangeRef.current = onChange;
   onViewReadyRef.current = onViewReady;
+
+  const [flashcardForm, setFlashcardForm] = useState<{
+    top: number;
+    left: number;
+    insertPos: number;
+  } | null>(null);
+
+  const flashcardFormRef = useRef(flashcardForm);
+  flashcardFormRef.current = flashcardForm;
+
+  const handleSlashAction: SlashActionHandler = useCallback(
+    (action, view, pos) => {
+      if (action === "flashcard") {
+        const coords = view.coordsAtPos(pos);
+        if (coords) {
+          setFlashcardForm({
+            top: coords.bottom + 4,
+            left: coords.left,
+            insertPos: pos,
+          });
+        }
+      }
+    },
+    [],
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once — value used only for initial doc
   useEffect(() => {
@@ -99,7 +130,7 @@ export function MarkdownEditor({
         livePreviewDecorations,
         tableRendering,
         mathRendering,
-        slashCommands(),
+        slashCommands(handleSlashAction),
         imageDropHandler,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -136,5 +167,35 @@ export function MarkdownEditor({
     }
   }, [value]);
 
-  return <div ref={containerRef} className="h-full overflow-auto" />;
+  const handleFlashcardCreated = useCallback(
+    (prompt: string, answer: string) => {
+      const view = viewRef.current;
+      const form = flashcardFormRef.current;
+      if (view && form) {
+        const text = `Q: ${prompt}\nA: ${answer}\n`;
+        view.dispatch({
+          changes: { from: form.insertPos, insert: text },
+          selection: { anchor: form.insertPos + text.length },
+        });
+        view.focus();
+      }
+      setFlashcardForm(null);
+    },
+    [],
+  );
+
+  return (
+    <>
+      <div ref={containerRef} className="h-full overflow-auto" />
+      {flashcardForm && subjectId != null && chapterId != null && (
+        <FlashcardInlineForm
+          position={{ top: flashcardForm.top, left: flashcardForm.left }}
+          subjectId={subjectId}
+          chapterId={chapterId}
+          onCreated={handleFlashcardCreated}
+          onCancel={() => setFlashcardForm(null)}
+        />
+      )}
+    </>
+  );
 }
