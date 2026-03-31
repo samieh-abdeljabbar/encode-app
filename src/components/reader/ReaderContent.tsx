@@ -1,6 +1,9 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 
+// Enable breaks so single newlines render as <br> (preserves tree structures, lists, etc.)
+marked.use({ breaks: true, gfm: true });
+
 export function ReaderContent({
   heading,
   bodyMarkdown,

@@ -130,6 +130,8 @@ body {
   border-radius: 8px;
   overflow-x: auto;
   margin-bottom: 1em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 .prose-encode pre code {
   background: none;

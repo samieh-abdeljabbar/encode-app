@@ -6,6 +6,7 @@ import { QuizQuestion } from "../components/quiz/QuizQuestion";
 import { QuizSidebar } from "../components/quiz/QuizSidebar";
 import { SelfRatePanel } from "../components/quiz/SelfRatePanel";
 import {
+  checkAiStatus,
   completeQuiz,
   generateQuiz,
   getQuiz,
@@ -36,6 +37,14 @@ export function Quiz() {
     try {
       let data: QuizState;
       if (chapterParam) {
+        // Check if AI is configured before generating
+        const aiStatus = await checkAiStatus();
+        if (!aiStatus.configured || !aiStatus.has_api_key) {
+          setError(
+            "Quiz generation requires an AI provider. Go to Settings to configure one.",
+          );
+          return;
+        }
         data = await generateQuiz(Number(chapterParam));
       } else if (quizParam) {
         data = await getQuiz(Number(quizParam));

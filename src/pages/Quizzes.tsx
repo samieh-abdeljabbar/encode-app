@@ -1,8 +1,8 @@
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listQuizzes, listSubjects } from "../lib/tauri";
-import type { QuizListItem, Subject } from "../lib/tauri";
+import { listChapters, listQuizzes, listSubjects } from "../lib/tauri";
+import type { Chapter, QuizListItem, Subject } from "../lib/tauri";
 
 function formatRelativeDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -59,10 +59,17 @@ function QuizRow({
         </p>
       </div>
 
-      {/* Date */}
-      <p className="shrink-0 text-xs text-text-muted">
-        {formatRelativeDate(quiz.generated_at)}
-      </p>
+      {/* Date + Retake */}
+      <div className="flex shrink-0 items-center gap-3">
+        <p className="text-xs text-text-muted">
+          {formatRelativeDate(quiz.generated_at)}
+        </p>
+        {quiz.score != null && quiz.chapter_id != null && (
+          <span className="text-[10px] font-medium text-accent">
+            Retake &rarr;
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -74,6 +81,8 @@ export function Quizzes() {
   const [filterSubjectId, setFilterSubjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showChapterPicker, setShowChapterPicker] = useState(false);
+  const [availableChapters, setAvailableChapters] = useState<Chapter[]>([]);
 
   const loadQuizzes = useCallback(async () => {
     try {
@@ -116,28 +125,102 @@ export function Quizzes() {
             )}
           </div>
 
-          <select
-            value={filterSubjectId ?? ""}
-            onChange={(e) =>
-              setFilterSubjectId(
-                e.target.value === "" ? null : Number(e.target.value),
-              )
-            }
-            className="h-11 rounded-xl border border-border bg-panel px-4 text-sm text-text focus:border-accent/40 focus:outline-none"
-          >
-            <option value="">All subjects</option>
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-3">
+            <select
+              value={filterSubjectId ?? ""}
+              onChange={(e) =>
+                setFilterSubjectId(
+                  e.target.value === "" ? null : Number(e.target.value),
+                )
+              }
+              className="h-11 rounded-xl border border-border bg-panel px-4 text-sm text-text focus:border-accent/40 focus:outline-none"
+            >
+              <option value="">All subjects</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={async () => {
+                // Load chapters that are ready for quiz
+                try {
+                  const allChapters: Chapter[] = [];
+                  for (const s of subjects) {
+                    const ch = await listChapters(s.id);
+                    allChapters.push(
+                      ...ch.filter((c) =>
+                        ["ready_for_quiz", "mastering", "stable"].includes(
+                          c.status,
+                        ),
+                      ),
+                    );
+                  }
+                  setAvailableChapters(allChapters);
+                  setShowChapterPicker(true);
+                } catch {
+                  setError("Failed to load chapters");
+                }
+              }}
+              className="flex h-11 items-center gap-1.5 rounded-xl bg-accent px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90"
+            >
+              <Plus size={14} />
+              New Quiz
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto">
         <div className="mx-auto max-w-3xl px-7 py-7">
+          {/* Chapter picker for new quiz */}
+          {showChapterPicker && (
+            <div className="mb-6 rounded-xl border border-border bg-panel p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-medium text-text">
+                  Select a chapter to quiz
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowChapterPicker(false)}
+                  className="text-xs text-text-muted hover:text-text"
+                >
+                  Cancel
+                </button>
+              </div>
+              {availableChapters.length === 0 ? (
+                <p className="py-4 text-center text-xs text-text-muted">
+                  No chapters are ready for quiz yet. Complete reading and
+                  synthesis first.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {availableChapters.map((ch) => (
+                    <button
+                      type="button"
+                      key={ch.id}
+                      onClick={() => navigate(`/quiz?chapter=${ch.id}`)}
+                      className="flex items-center justify-between rounded-lg border border-border-subtle px-4 py-3 text-left transition-all hover:border-accent/30 hover:bg-panel-alt"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-text">
+                          {ch.title}
+                        </p>
+                        <p className="text-[10px] text-text-muted">
+                          {ch.status} &middot; {ch.section_count} sections
+                        </p>
+                      </div>
+                      <span className="text-xs text-accent">Start &rarr;</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Error */}
           {error && (
             <div className="mb-5 rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-coral">
@@ -166,7 +249,15 @@ export function Quizzes() {
                 <QuizRow
                   key={quiz.id}
                   quiz={quiz}
-                  onClick={() => navigate(`/quiz?id=${quiz.id}`)}
+                  onClick={() => {
+                    if (quiz.score != null && quiz.chapter_id != null) {
+                      // Completed quiz — retake with new questions
+                      navigate(`/quiz?chapter=${quiz.chapter_id}`);
+                    } else {
+                      // Incomplete quiz — resume
+                      navigate(`/quiz?id=${quiz.id}`);
+                    }
+                  }}
                 />
               ))}
             </div>
