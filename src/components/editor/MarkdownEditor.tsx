@@ -38,6 +38,7 @@ export function MarkdownEditor({
   onChangeRef.current = onChange;
   onViewReadyRef.current = onViewReady;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once — value used only for initial doc
   useEffect(() => {
     if (!containerRef.current) return;
 
