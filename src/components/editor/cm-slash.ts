@@ -371,13 +371,15 @@ class SlashMenuPlugin {
 
   private openMenu(): void {
     renderMenu(this.menuEl, this.filteredCommands, this.selectedIndex);
-    positionMenu(this.menuEl, this.view);
     this.menuEl.style.display = "block";
+    // Defer layout read to avoid "Reading editor layout during update" error
+    requestAnimationFrame(() => positionMenu(this.menuEl, this.view));
   }
 
   private refreshMenu(): void {
     renderMenu(this.menuEl, this.filteredCommands, this.selectedIndex);
-    positionMenu(this.menuEl, this.view);
+    // Defer layout read
+    requestAnimationFrame(() => positionMenu(this.menuEl, this.view));
   }
 
   private insertCommand(cmd: SlashCommand): void {
