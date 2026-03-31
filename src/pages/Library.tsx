@@ -34,7 +34,6 @@ export function Library() {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [importUrlValue, setImportUrlValue] = useState("");
   const [newChapterTitle, setNewChapterTitle] = useState("");
-  const [newChapterContent, setNewChapterContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,13 +133,11 @@ export function Library() {
       const chapter = await createChapter(
         selectedSubject.id,
         newChapterTitle,
-        newChapterContent,
+        "",
       );
-      setChapters((prev) => [...prev, chapter]);
       setNewChapterTitle("");
-      setNewChapterContent("");
       setActiveModal(null);
-      await loadSubjects();
+      navigate(`/chapter?id=${chapter.id}&edit=true`);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -392,16 +389,12 @@ export function Library() {
                     type="text"
                     value={newChapterTitle}
                     onChange={(e) => setNewChapterTitle(e.target.value)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleCreateChapter()
+                    }
                     placeholder="Chapter title..."
                     autoFocus
-                    className="mb-3 h-11 w-full rounded-xl border border-border bg-panel-alt px-4 text-sm text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
-                  />
-                  <textarea
-                    value={newChapterContent}
-                    onChange={(e) => setNewChapterContent(e.target.value)}
-                    placeholder="Paste or write markdown content..."
-                    rows={6}
-                    className="w-full rounded-xl border border-border bg-panel-alt px-4 py-3 text-sm leading-relaxed text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
+                    className="h-11 w-full rounded-xl border border-border bg-panel-alt px-4 text-sm text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
                   />
                   <div className="mt-3 flex gap-2">
                     <button

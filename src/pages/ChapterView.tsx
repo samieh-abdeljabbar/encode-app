@@ -3,12 +3,15 @@ import {
   BookOpen,
   CheckCircle2,
   Circle,
+  Eye,
+  Pencil,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { MarkdownEditor } from "../components/editor/MarkdownEditor";
 import { ReaderContent } from "../components/reader/ReaderContent";
-import { loadReaderSession } from "../lib/tauri";
+import { loadReaderSession, updateChapterContent } from "../lib/tauri";
 import type { ReaderSession } from "../lib/tauri";
 
 function StatusDot({ status }: { status: string }) {
@@ -33,6 +36,13 @@ export function ChapterView() {
 
   const [session, setSession] = useState<ReaderSession | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(searchParams.get("edit") === "true");
+  const [editorContent, setEditorContent] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
+    "idle",
+  );
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     if (!chapterId) return;
@@ -47,6 +57,40 @@ export function ChapterView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const enterEditMode = useCallback((currentSession: ReaderSession) => {
+    const markdown = currentSession.sections
+      .map((s) => {
+        const heading = s.heading ? `## ${s.heading}\n\n` : "";
+        return heading + s.body_markdown;
+      })
+      .join("\n\n");
+    setEditorContent(markdown);
+    setEditMode(true);
+  }, []);
+
+  // Auto-enter edit mode when ?edit=true and session has loaded
+  useEffect(() => {
+    if (session && searchParams.get("edit") === "true" && !editMode) {
+      enterEditMode(session);
+    }
+  }, [session, searchParams, editMode, enterEditMode]);
+
+  const handleEditorChange = (value: string) => {
+    setEditorContent(value);
+    setSaveStatus("saving");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await updateChapterContent(chapterId, value);
+        setSaveStatus("saved");
+        // Reload session to update section list
+        load();
+      } catch {
+        setSaveStatus("idle");
+      }
+    }, 2000);
+  };
 
   if (!chapterId) {
     return (
@@ -109,6 +153,20 @@ export function ChapterView() {
                 {checkedCount}/{session.sections.length} sections studied
               </p>
             </div>
+            {editMode && saveStatus !== "idle" && (
+              <span className="text-[10px] text-text-muted">
+                {saveStatus === "saving" ? "Saving..." : "Saved"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                editMode ? setEditMode(false) : enterEditMode(session)
+              }
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-text"
+            >
+              {editMode ? <Eye size={16} /> : <Pencil size={16} />}
+            </button>
             <button
               type="button"
               onClick={() => navigate(`/reader?chapter=${chapterId}`)}
@@ -121,25 +179,32 @@ export function ChapterView() {
         </div>
       </div>
 
-      {/* Scrollable content — all sections */}
-      <div className="flex-1 overflow-auto">
-        {session.sections.map((section) => (
-          <div key={section.id} className="border-b border-border-subtle/40">
-            {section.heading && (
-              <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-7 pt-7">
-                <StatusDot status={section.status} />
-                <h2 className="text-lg font-semibold tracking-tight text-text">
-                  {section.heading}
-                </h2>
-              </div>
-            )}
-            <ReaderContent
-              heading={null}
-              bodyMarkdown={section.body_markdown}
-            />
-          </div>
-        ))}
-      </div>
+      {/* Content area */}
+      {editMode ? (
+        <div className="h-full">
+          <MarkdownEditor value={editorContent} onChange={handleEditorChange} />
+        </div>
+      ) : (
+        /* Scrollable content — all sections */
+        <div className="flex-1 overflow-auto">
+          {session.sections.map((section) => (
+            <div key={section.id} className="border-b border-border-subtle/40">
+              {section.heading && (
+                <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-7 pt-7">
+                  <StatusDot status={section.status} />
+                  <h2 className="text-lg font-semibold tracking-tight text-text">
+                    {section.heading}
+                  </h2>
+                </div>
+              )}
+              <ReaderContent
+                heading={null}
+                bodyMarkdown={section.body_markdown}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
