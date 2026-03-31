@@ -491,6 +491,48 @@ pub fn check_status(config: &AiConfig) -> AiStatus {
     AiStatus { provider, configured, has_api_key }
 }
 
+#[derive(Serialize)]
+pub struct AiRunInfo {
+    pub id: i64,
+    pub feature: String,
+    pub provider: String,
+    pub model: String,
+    pub status: String,
+    pub latency_ms: i64,
+    pub error_summary: Option<String>,
+    pub created_at: String,
+}
+
+pub fn list_ai_runs(conn: &rusqlite::Connection) -> Result<Vec<AiRunInfo>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, feature, provider, model, status, latency_ms, error_summary, created_at
+             FROM ai_runs
+             ORDER BY created_at DESC
+             LIMIT 20",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let runs = stmt
+        .query_map([], |row| {
+            Ok(AiRunInfo {
+                id: row.get(0)?,
+                feature: row.get(1)?,
+                provider: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                latency_ms: row.get(5)?,
+                error_summary: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(runs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

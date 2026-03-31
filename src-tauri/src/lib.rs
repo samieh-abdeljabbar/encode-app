@@ -142,6 +142,7 @@ pub fn run() {
             read_file,
             write_file,
             commands::ai::check_ai_status,
+            commands::ai::list_ai_runs,
             commands::cards::create_card,
             commands::cards::list_cards,
             commands::cards::update_card,

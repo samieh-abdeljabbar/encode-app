@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Brain,
   ClipboardCheck,
   GraduationCap,
   Layers,
@@ -7,7 +8,10 @@ import {
   Repeat,
   Settings,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { checkAiStatus } from "../../lib/tauri";
+import { AiLogPanel } from "./AiLogPanel";
 
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Queue" },
@@ -28,6 +32,25 @@ type NavItem = (typeof NAV_ITEMS)[number] | typeof SETTINGS_ITEM;
 export function Ribbon() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [aiStatus, setAiStatus] = useState<{
+    configured: boolean;
+    has_api_key: boolean;
+  } | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+
+  useEffect(() => {
+    checkAiStatus()
+      .then(setAiStatus)
+      .catch(() => {});
+  }, []);
+
+  const dotColor = !aiStatus
+    ? "bg-text-muted/30"
+    : aiStatus.configured && aiStatus.has_api_key
+      ? "bg-teal"
+      : aiStatus.configured
+        ? "bg-amber"
+        : "bg-text-muted/30";
 
   const renderNavButton = (item: NavItem, key?: string) => {
     const isActive = location.pathname === item.path;
@@ -53,16 +76,36 @@ export function Ribbon() {
   };
 
   return (
-    <nav className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border-subtle bg-panel px-1 pb-3 pt-14">
-      <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-        <GraduationCap size={16} className="text-accent" />
-      </div>
+    <>
+      <nav className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border-subtle bg-panel px-1 pb-3 pt-14">
+        <div className="mb-4 flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+          <GraduationCap size={16} className="text-accent" />
+        </div>
 
-      <div className="flex flex-1 flex-col items-center gap-1">
-        {NAV_ITEMS.map((item) => renderNavButton(item))}
-      </div>
+        <div className="flex flex-1 flex-col items-center gap-1">
+          {NAV_ITEMS.map((item) => renderNavButton(item))}
+        </div>
 
-      <div className="mt-auto">{renderNavButton(SETTINGS_ITEM)}</div>
-    </nav>
+        <div className="mt-auto flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setLogOpen(true)}
+            aria-label="AI Activity"
+            className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-all duration-150 hover:bg-panel-active hover:text-text"
+          >
+            <Brain size={16} strokeWidth={1.8} />
+            <span
+              className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border border-panel ${dotColor}`}
+            />
+            <span className="pointer-events-none absolute left-full ml-2 hidden rounded-md bg-text px-2 py-1 text-[11px] font-medium text-panel shadow-lg group-hover:block">
+              AI Status
+            </span>
+          </button>
+          {renderNavButton(SETTINGS_ITEM)}
+        </div>
+      </nav>
+
+      <AiLogPanel open={logOpen} onClose={() => setLogOpen(false)} />
+    </>
   );
 }

@@ -67,6 +67,24 @@ export interface AppConfig {
   };
 }
 
+// AI status types
+export interface AiStatus {
+  provider: string;
+  configured: boolean;
+  has_api_key: boolean;
+}
+
+export interface AiRunInfo {
+  id: number;
+  feature: string;
+  provider: string;
+  model: string;
+  status: string;
+  latency_ms: number;
+  error_summary: string | null;
+  created_at: string;
+}
+
 // --- Foundation commands ---
 
 export const getConfig = () => invoke<AppConfig>("get_config");
@@ -78,6 +96,10 @@ export const readFile = (relativePath: string) =>
   invoke<string>("read_file", { relativePath });
 export const writeFile = (relativePath: string, content: string) =>
   invoke<void>("write_file", { relativePath, content });
+
+// AI IPC
+export const checkAiStatus = () => invoke<AiStatus>("check_ai_status");
+export const listAiRuns = () => invoke<AiRunInfo[]>("list_ai_runs");
 
 // --- Library commands ---
 
