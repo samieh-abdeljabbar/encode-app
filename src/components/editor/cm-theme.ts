@@ -113,4 +113,45 @@ export const parchmentTheme = EditorView.theme({
     margin: "24px 0",
     width: "100%",
   },
+  // Strikethrough
+  ".cm-strikethrough": {
+    textDecoration: "line-through",
+    color: "var(--color-text-muted, #6b7265)",
+  },
+  // Task checkbox
+  ".cm-task-checkbox": {
+    cursor: "pointer",
+    verticalAlign: "middle",
+    width: "16px",
+    height: "16px",
+    accentColor: "var(--color-accent, #2d6a4f)",
+  },
+  // Callout blocks
+  ".cm-callout": {
+    borderLeft: "3px solid",
+    paddingLeft: "12px",
+    borderRadius: "4px",
+    padding: "8px 12px",
+    marginBottom: "8px",
+  },
+  ".cm-callout-note, .cm-callout-info": {
+    borderColor: "#4a90d9",
+    backgroundColor: "rgba(74, 144, 217, 0.06)",
+  },
+  ".cm-callout-warning": {
+    borderColor: "#d4a32a",
+    backgroundColor: "rgba(212, 163, 42, 0.06)",
+  },
+  ".cm-callout-tip": {
+    borderColor: "#2d6a4f",
+    backgroundColor: "rgba(45, 106, 79, 0.06)",
+  },
+  ".cm-callout-example": {
+    borderColor: "#7c3aed",
+    backgroundColor: "rgba(124, 58, 237, 0.06)",
+  },
+  ".cm-callout-danger": {
+    borderColor: "#b85c3a",
+    backgroundColor: "rgba(184, 92, 58, 0.06)",
+  },
 });

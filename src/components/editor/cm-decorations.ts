@@ -13,6 +13,40 @@ import {
 // Widget types
 // ---------------------------------------------------------------------------
 
+class CheckboxWidget extends WidgetType {
+  constructor(
+    private readonly checked: boolean,
+    private readonly pos: number,
+  ) {
+    super();
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = this.checked;
+    input.className = "cm-task-checkbox";
+    input.style.cursor = "pointer";
+    input.style.marginRight = "4px";
+    input.addEventListener("click", (e) => {
+      e.preventDefault();
+      const newText = this.checked ? "[ ]" : "[x]";
+      view.dispatch({
+        changes: { from: this.pos, to: this.pos + 3, insert: newText },
+      });
+    });
+    return input;
+  }
+
+  eq(other: CheckboxWidget): boolean {
+    return this.checked === other.checked;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
 class ImageWidget extends WidgetType {
   constructor(
     private readonly url: string,
@@ -51,23 +85,6 @@ class HorizontalRuleWidget extends WidgetType {
     const hr = document.createElement("hr");
     hr.className = "cm-hr";
     return hr;
-  }
-
-  eq(): boolean {
-    return true;
-  }
-
-  ignoreEvent(): boolean {
-    return false;
-  }
-}
-
-class BulletWidget extends WidgetType {
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.textContent = "\u2022";
-    span.style.marginRight = "4px";
-    return span;
   }
 
   eq(): boolean {
@@ -203,9 +220,20 @@ function buildDecorations(state: EditorState): DecorationSet {
         return;
       }
 
-      // --- Blockquote ---
+      // --- Blockquote / Callout ---
       if (name === "Blockquote") {
-        addDeco(from, to, Decoration.mark({ class: "cm-blockquote" }));
+        const firstLine = state.doc.lineAt(from).text;
+        const calloutMatch = />\s*\[!(\w+)\]/.exec(firstLine);
+        if (calloutMatch) {
+          const calloutType = calloutMatch[1].toLowerCase();
+          addDeco(
+            from,
+            to,
+            Decoration.mark({ class: `cm-callout cm-callout-${calloutType}` }),
+          );
+        } else {
+          addDeco(from, to, Decoration.mark({ class: "cm-blockquote" }));
+        }
         return;
       }
 
@@ -311,18 +339,64 @@ function buildDecorations(state: EditorState): DecorationSet {
         return;
       }
 
-      // --- Bullet list markers ---
+      // --- Task checkboxes ---
+      if (name === "TaskMarker") {
+        const text = state.doc.sliceString(from, to);
+        const isChecked = text.includes("x") || text.includes("X");
+        addDeco(
+          from,
+          to,
+          Decoration.replace({
+            widget: new CheckboxWidget(isChecked, from),
+          }),
+        );
+        return;
+      }
+
+      // --- Strikethrough ---
+      if (name === "Strikethrough") {
+        addDeco(from, to, Decoration.mark({ class: "cm-strikethrough" }));
+        const cursor = node.node.cursor();
+        if (cursor.firstChild()) {
+          do {
+            if (cursor.name === "StrikethroughMark") {
+              addDeco(cursor.from, cursor.to, Decoration.replace({}));
+            }
+          } while (cursor.nextSibling());
+        }
+        return;
+      }
+
+      // --- Bullet list markers (with nested level detection) ---
       if (name === "ListMark") {
         const markText = state.doc.sliceString(from, to);
         if (markText === "-" || markText === "*" || markText === "+") {
+          const line = state.doc.lineAt(from);
+          const indent = from - line.from;
+          const level = Math.floor(indent / 2);
+          const bullets = ["\u2022", "\u25e6", "\u25aa"];
+          const bullet = bullets[Math.min(level, bullets.length - 1)];
+          const bulletLevel = level;
           addDeco(
             from,
             to,
             Decoration.replace({
-              widget: new BulletWidget(),
+              widget: new (class extends WidgetType {
+                toDOM(): HTMLElement {
+                  const span = document.createElement("span");
+                  span.textContent = bullet;
+                  span.style.marginRight = "4px";
+                  span.style.color = bulletLevel === 0 ? "#1a1f17" : "#6b7265";
+                  return span;
+                }
+                eq(): boolean {
+                  return true;
+                }
+              })(),
             }),
           );
         }
+        return;
       }
     },
   });
