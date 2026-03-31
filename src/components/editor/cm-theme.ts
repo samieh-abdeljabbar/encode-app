@@ -10,13 +10,12 @@ export const parchmentTheme = EditorView.theme({
     height: "100%",
   },
   ".cm-scroller": {
-    padding: "0 60px",
+    padding: "0 48px",
     overflow: "auto",
   },
   ".cm-content": {
     padding: "32px 0",
     caretColor: "var(--color-accent, #2d6a4f)",
-    maxWidth: "720px",
   },
   ".cm-cursor": {
     borderLeftColor: "var(--color-accent, #2d6a4f)",
