@@ -148,6 +148,35 @@ body {
   color: var(--color-accent);
   text-decoration: underline;
 }
+.prose-encode table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+  font-size: 0.9em;
+}
+.prose-encode th,
+.prose-encode td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.prose-encode th {
+  background: var(--color-panel-alt);
+  font-weight: 600;
+}
+.prose-encode tr:nth-child(even) {
+  background: var(--color-panel-alt);
+}
+.prose-encode hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
+}
+.prose-encode img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-bottom: 1em;
+}
 
 /* Drag region for custom title bar */
 [data-tauri-drag-region] {
