@@ -43,7 +43,7 @@ class CheckboxWidget extends WidgetType {
   }
 
   ignoreEvent(): boolean {
-    return false;
+    return true; // Let the checkbox handle its own click events
   }
 }
 

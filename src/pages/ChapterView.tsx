@@ -92,8 +92,6 @@ export function ChapterView() {
       try {
         await updateChapterContent(chapterId, value);
         setSaveStatus("saved");
-        // Reload session to update section list
-        load();
       } catch {
         setSaveStatus("idle");
       }
