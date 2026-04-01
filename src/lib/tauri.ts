@@ -262,6 +262,28 @@ export interface QueueDashboard {
 export const getQueueDashboard = () =>
   invoke<QueueDashboard>("get_queue_dashboard");
 
+// Progress types
+export interface SubjectProgress {
+  subject_id: number;
+  subject_name: string;
+  total_chapters: number;
+  chapters_completed: number;
+  total_cards: number;
+  cards_mastered: number;
+  quiz_average: number | null;
+  quizzes_taken: number;
+}
+
+export interface ProgressReport {
+  subjects: SubjectProgress[];
+  overall_quiz_average: number | null;
+  total_study_events: number;
+  streak_days: number;
+}
+
+export const getProgressReport = () =>
+  invoke<ProgressReport>("get_progress_report");
+
 // Card management types
 export interface CardInfo {
   id: number;

@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   BookOpen,
   Brain,
   ClipboardCheck,
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { path: "/review", icon: Repeat, label: "Review" },
   { path: "/cards", icon: Layers, label: "Cards" },
   { path: "/quizzes", icon: ClipboardCheck, label: "Quizzes" },
+  { path: "/progress", icon: BarChart3, label: "Progress" },
 ] as const;
 
 const SETTINGS_ITEM = {

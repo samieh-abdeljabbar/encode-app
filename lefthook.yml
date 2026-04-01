@@ -7,3 +7,5 @@ pre-commit:
       run: npx tsc --noEmit
     cargo-check:
       run: cd src-tauri && cargo check
+    cargo-test:
+      run: cd src-tauri && cargo test --features test-utils

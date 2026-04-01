@@ -29,6 +29,105 @@ pub struct QueueDashboard {
     pub items: Vec<QueueItem>,
 }
 
+#[derive(Serialize)]
+pub struct SubjectProgress {
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub total_chapters: i64,
+    pub chapters_completed: i64,
+    pub total_cards: i64,
+    pub cards_mastered: i64,
+    pub quiz_average: Option<f64>,
+    pub quizzes_taken: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProgressReport {
+    pub subjects: Vec<SubjectProgress>,
+    pub overall_quiz_average: Option<f64>,
+    pub total_study_events: i64,
+    pub streak_days: i64,
+}
+
+pub fn get_progress(conn: &Connection) -> Result<ProgressReport, String> {
+    // Per-subject progress
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name,
+                    (SELECT COUNT(*) FROM chapters c WHERE c.subject_id = s.id),
+                    (SELECT COUNT(*) FROM chapters c WHERE c.subject_id = s.id AND c.status IN ('mastering', 'stable')),
+                    (SELECT COUNT(*) FROM cards cd WHERE cd.subject_id = s.id AND cd.status = 'active'),
+                    (SELECT COUNT(*) FROM cards cd
+                     JOIN card_schedule cs ON cs.card_id = cd.id
+                     WHERE cd.subject_id = s.id AND cd.status = 'active' AND cs.stability >= 10.0),
+                    (SELECT AVG(q.score) FROM quizzes q WHERE q.subject_id = s.id AND q.score IS NOT NULL),
+                    (SELECT COUNT(*) FROM quizzes q WHERE q.subject_id = s.id AND q.score IS NOT NULL)
+             FROM subjects s
+             WHERE s.archived_at IS NULL
+             ORDER BY s.name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let subjects: Vec<SubjectProgress> = stmt
+        .query_map([], |row| {
+            Ok(SubjectProgress {
+                subject_id: row.get(0)?,
+                subject_name: row.get(1)?,
+                total_chapters: row.get(2)?,
+                chapters_completed: row.get(3)?,
+                total_cards: row.get(4)?,
+                cards_mastered: row.get(5)?,
+                quiz_average: row.get(6)?,
+                quizzes_taken: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Overall quiz average
+    let overall_quiz_average: Option<f64> = conn
+        .query_row(
+            "SELECT AVG(score) FROM quizzes WHERE score IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
+
+    // Total study events
+    let total_study_events: i64 = conn
+        .query_row("SELECT COUNT(*) FROM study_events", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    // Streak: count consecutive days with study events going back from today
+    let streak_days: i64 = conn
+        .query_row(
+            "WITH RECURSIVE dates AS (
+                SELECT date('now') as d
+                UNION ALL
+                SELECT date(d, '-1 day') FROM dates
+                WHERE EXISTS (
+                    SELECT 1 FROM study_events
+                    WHERE date(created_at) = date(d, '-1 day')
+                )
+                AND d > date('now', '-365 days')
+            )
+            SELECT COUNT(*) - 1 FROM dates
+            WHERE EXISTS (SELECT 1 FROM study_events WHERE date(created_at) = dates.d)
+               OR dates.d = date('now')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    Ok(ProgressReport {
+        subjects,
+        overall_quiz_average,
+        total_study_events,
+        streak_days,
+    })
+}
+
 fn get_summary(conn: &Connection) -> Result<QueueSummary, String> {
     let due_cards: i64 = conn
         .query_row(

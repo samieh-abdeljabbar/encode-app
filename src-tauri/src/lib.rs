@@ -164,6 +164,7 @@ pub fn run() {
             commands::export::get_export_status,
             commands::export::list_snapshots_cmd,
             commands::queue::get_queue_dashboard,
+            commands::queue::get_progress_report,
             commands::reader::load_reader_session,
             commands::reader::mark_section_read,
             commands::reader::submit_section_check,
