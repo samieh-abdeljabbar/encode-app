@@ -55,6 +55,19 @@ fn insert_card_with_schedule(
     Ok(card_id)
 }
 
+/// Public wrapper for other services to create cards with schedule.
+pub fn insert_card_with_schedule_pub(
+    conn: &Connection,
+    subject_id: i64,
+    chapter_id: Option<i64>,
+    source_type: &str,
+    prompt: &str,
+    answer: &str,
+    card_type: &str,
+) -> Result<i64, String> {
+    insert_card_with_schedule(conn, subject_id, chapter_id, source_type, prompt, answer, card_type)
+}
+
 fn get_card_info(conn: &Connection, card_id: i64) -> Result<CardInfo, String> {
     conn.query_row(
         "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer,

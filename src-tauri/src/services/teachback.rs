@@ -1,6 +1,8 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::services::cards;
+
 pub const TEACHBACK_GENERATE_PROMPT: &str = r#"You are generating a teach-back prompt for a student. Given the chapter content below, create a single focused question that asks the student to explain a key concept in their own words. The question should require demonstrating understanding, not just recall. Ask them to include a concrete example. Return ONLY the question text, nothing else."#;
 
 pub const TEACHBACK_EVALUATE_PROMPT: &str = r#"You are evaluating a student's teach-back explanation. Score each criterion 0-100:
@@ -107,6 +109,85 @@ pub fn start_teachback(conn: &Connection, chapter_id: i64) -> Result<TeachbackSt
     })
 }
 
+/// Core function that writes the evaluation result to DB and optionally creates a repair card.
+/// Called by both AI evaluation path and self-rating path.
+pub fn finalize_teachback(
+    conn: &Connection,
+    teachback_id: i64,
+    response: &str,
+    scores: &RubricScores,
+    strongest: &str,
+    biggest_gap: &str,
+    chapter_id_override: Option<i64>,
+) -> Result<TeachbackResult, String> {
+    let overall = (scores.accuracy + scores.clarity + scores.completeness + scores.example + scores.jargon) / 5;
+    let mastery = mastery_band(overall).to_string();
+
+    // Create repair card if weak or developing
+    let mut repair_card_id = None;
+    if mastery == "weak" || mastery == "developing" {
+        let (subject_id, chapter_id): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT subject_id, chapter_id FROM teachbacks WHERE id = ?1",
+                [teachback_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| format!("Teachback not found: {e}"))?;
+
+        let ch_id = chapter_id_override.or(chapter_id);
+        let card_id = cards::insert_card_with_schedule_pub(
+            conn, subject_id, ch_id, "teachback_miss",
+            biggest_gap, &format!("Review: {}", biggest_gap), "basic",
+        )?;
+        repair_card_id = Some(card_id);
+    }
+
+    let eval_json = serde_json::json!({
+        "scores": {
+            "accuracy": scores.accuracy,
+            "clarity": scores.clarity,
+            "completeness": scores.completeness,
+            "example": scores.example,
+            "jargon": scores.jargon,
+        },
+        "overall": overall,
+        "strongest": strongest,
+        "biggest_gap": biggest_gap,
+        "repair_card_id": repair_card_id,
+    });
+
+    conn.execute(
+        "UPDATE teachbacks SET response = ?2, evaluation_json = ?3, mastery = ?4 WHERE id = ?1",
+        rusqlite::params![teachback_id, response, eval_json.to_string(), mastery],
+    )
+    .map_err(|e| format!("Failed to update teachback: {e}"))?;
+
+    // Log study event
+    let subject_id: i64 = conn
+        .query_row(
+            "SELECT subject_id FROM teachbacks WHERE id = ?1",
+            [teachback_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    conn.execute(
+        "INSERT INTO study_events (subject_id, event_type, created_at) VALUES (?1, 'teachback', datetime('now'))",
+        [subject_id],
+    )
+    .map_err(|e| format!("Failed to log study event: {e}"))?;
+
+    Ok(TeachbackResult {
+        mastery,
+        scores: scores.clone(),
+        overall,
+        strongest: strongest.to_string(),
+        biggest_gap: biggest_gap.to_string(),
+        repair_card_id,
+        needs_self_rating: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +231,73 @@ mod tests {
                 |row| row.get(0),
             ).unwrap();
             assert!(mastery.is_none());
+            Ok(())
+        }).expect("test failed");
+    }
+
+    #[test]
+    fn test_submit_teachback_solid_no_repair_card() {
+        let db = setup();
+        db.with_conn(|conn| {
+            let start = start_teachback(conn, 1).unwrap();
+            let scores = RubricScores {
+                accuracy: 80, clarity: 75, completeness: 65, example: 70, jargon: 60,
+            };
+            let result = finalize_teachback(
+                conn, start.id, "My explanation of arrays...", &scores,
+                "Good accuracy", "Missing linked list comparison", None,
+            ).unwrap();
+            assert_eq!(result.mastery, "solid"); // avg = 70
+            assert!(result.repair_card_id.is_none());
+            assert!(!result.needs_self_rating);
+
+            let mastery: String = conn.query_row(
+                "SELECT mastery FROM teachbacks WHERE id = ?1",
+                [start.id], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(mastery, "solid");
+            Ok(())
+        }).expect("test failed");
+    }
+
+    #[test]
+    fn test_submit_teachback_weak_creates_repair_card() {
+        let db = setup();
+        db.with_conn(|conn| {
+            let start = start_teachback(conn, 1).unwrap();
+            let scores = RubricScores {
+                accuracy: 30, clarity: 20, completeness: 25, example: 10, jargon: 15,
+            };
+            let result = finalize_teachback(
+                conn, start.id, "I don't remember", &scores,
+                "Attempted", "Missed all key concepts", None,
+            ).unwrap();
+            assert_eq!(result.mastery, "weak"); // avg = 20
+            assert!(result.repair_card_id.is_some());
+
+            let card_source: String = conn.query_row(
+                "SELECT source_type FROM cards WHERE id = ?1",
+                [result.repair_card_id.unwrap()], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(card_source, "teachback_miss");
+            Ok(())
+        }).expect("test failed");
+    }
+
+    #[test]
+    fn test_submit_teachback_developing_creates_repair_card() {
+        let db = setup();
+        db.with_conn(|conn| {
+            let start = start_teachback(conn, 1).unwrap();
+            let scores = RubricScores {
+                accuracy: 55, clarity: 50, completeness: 45, example: 40, jargon: 50,
+            };
+            let result = finalize_teachback(
+                conn, start.id, "Arrays are data structures", &scores,
+                "Basic understanding", "No concrete example", None,
+            ).unwrap();
+            assert_eq!(result.mastery, "developing"); // avg = 48
+            assert!(result.repair_card_id.is_some());
             Ok(())
         }).expect("test failed");
     }

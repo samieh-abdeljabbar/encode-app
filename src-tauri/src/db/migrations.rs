@@ -4,6 +4,7 @@ use rusqlite::Connection;
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../../migrations/001_foundation.sql")),
     (2, include_str!("../../migrations/002_section_status.sql")),
+    (3, include_str!("../../migrations/003_teachback_miss_source.sql")),
 ];
 
 pub fn read_user_version(conn: &Connection) -> Result<u32, String> {
@@ -54,7 +55,7 @@ mod tests {
         run_all(&conn).expect("second run (idempotent)");
 
         let version = read_user_version(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
