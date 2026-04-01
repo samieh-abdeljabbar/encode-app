@@ -326,15 +326,19 @@ fn call_cli_blocking(
 
     let full_prompt = format!("{system}\n\n{user}");
 
+    // Build args: configured args + the prompt as the final argument
+    let mut full_args: Vec<String> = args.to_vec();
+    full_args.push(full_prompt.clone());
+
     let mut child = std::process::Command::new(command)
-        .args(args)
+        .args(&full_args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn CLI command '{command}': {e}"))?;
 
-    // Write prompt to stdin
+    // Also write prompt to stdin for tools that read from stdin
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
         let _ = stdin.write_all(full_prompt.as_bytes());
