@@ -15,6 +15,7 @@ import { Quizzes } from "./pages/Quizzes";
 import { Reader } from "./pages/Reader";
 import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
+import { Teachback } from "./pages/Teachback";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
@@ -74,6 +75,7 @@ function AppContent() {
           <Route path="/quizzes" element={<Quizzes />} />
           <Route path="/progress" element={<Progress />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/teachback" element={<Teachback />} />
         </Route>
       </Routes>
     </MemoryRouter>

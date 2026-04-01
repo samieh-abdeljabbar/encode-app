@@ -441,3 +441,61 @@ export const getQuiz = (quizId: number) =>
 
 export const completeQuiz = (quizId: number) =>
   invoke<QuizSummary>("complete_quiz", { quizId });
+
+// Teach-back types
+export interface TeachbackStart {
+  id: number;
+  prompt: string;
+  chapter_title: string;
+  subject_name: string;
+}
+
+export interface RubricScores {
+  accuracy: number;
+  clarity: number;
+  completeness: number;
+  example: number;
+  jargon: number;
+}
+
+export interface TeachbackResult {
+  mastery: string;
+  scores: RubricScores;
+  overall: number;
+  strongest: string;
+  biggest_gap: string;
+  repair_card_id: number | null;
+  needs_self_rating: boolean;
+}
+
+export interface TeachbackListItem {
+  id: number;
+  chapter_id: number | null;
+  chapter_title: string;
+  subject_name: string;
+  mastery: string | null;
+  created_at: string;
+}
+
+// Teach-back IPC
+export const startTeachback = (chapterId: number) =>
+  invoke<TeachbackStart>("start_teachback", { chapterId });
+
+export const submitTeachback = (teachbackId: number, response: string) =>
+  invoke<TeachbackResult>("submit_teachback", { teachbackId, response });
+
+export const submitTeachbackSelfRating = (
+  teachbackId: number,
+  response: string,
+  ratings: RubricScores,
+) =>
+  invoke<TeachbackResult>("submit_teachback_self_rating", {
+    teachbackId,
+    response,
+    ratings,
+  });
+
+export const listTeachbacks = (subjectId?: number) =>
+  invoke<TeachbackListItem[]>("list_teachbacks", {
+    subjectId: subjectId ?? null,
+  });
