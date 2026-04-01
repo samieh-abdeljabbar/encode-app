@@ -6,3 +6,4 @@ pub mod queue;
 pub mod quiz;
 pub mod reader;
 pub mod review;
+pub mod teachback;

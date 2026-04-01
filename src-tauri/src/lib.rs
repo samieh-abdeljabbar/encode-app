@@ -178,6 +178,10 @@ pub fn run() {
             commands::quiz::submit_quiz_self_rating,
             commands::quiz::get_quiz,
             commands::quiz::complete_quiz,
+            commands::teachback::start_teachback,
+            commands::teachback::submit_teachback,
+            commands::teachback::submit_teachback_self_rating,
+            commands::teachback::list_teachbacks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
