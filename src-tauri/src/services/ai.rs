@@ -296,26 +296,21 @@ async fn call_gemini(
 
 // ── CLI provider ──
 
-const CLI_ALLOWLIST: &[&str] = &[
-    "claude", "gemini", "sgpt", "ollama", "aichat", "llm", "chatgpt",
-    "deepseek", "codex", "openai", "anthropic", "goose", "aider",
-];
-
 const CLI_BLOCKLIST: &[&str] = &[
     "rm", "dd", "bash", "sh", "zsh", "curl", "wget", "python", "node",
     "sudo", "chmod", "chown", "kill", "mkfs", "fdisk",
 ];
 
 fn validate_cli_command(command: &str) -> Result<(), String> {
-    let base = command.split('/').last().unwrap_or(command);
+    let base = command
+        .split('/')
+        .last()
+        .unwrap_or(command)
+        .split('.')
+        .next()
+        .unwrap_or(command);
     if CLI_BLOCKLIST.contains(&base) {
         return Err(format!("CLI command '{base}' is blocked for security"));
-    }
-    if !CLI_ALLOWLIST.contains(&base) {
-        return Err(format!(
-            "CLI command '{base}' is not in the allowlist. Allowed: {}",
-            CLI_ALLOWLIST.join(", ")
-        ));
     }
     Ok(())
 }
@@ -663,13 +658,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_allowlist_accepts_claude() {
+    fn test_cli_accepts_claude() {
         assert!(validate_cli_command("claude").is_ok());
     }
 
     #[test]
-    fn test_cli_allowlist_accepts_gemini() {
-        assert!(validate_cli_command("gemini").is_ok());
+    fn test_cli_accepts_custom_scripts() {
+        assert!(validate_cli_command("encode-claude.sh").is_ok());
+        assert!(validate_cli_command("/usr/local/bin/my-ai-tool").is_ok());
     }
 
     #[test]
@@ -683,8 +679,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_unknown_command_rejected() {
-        assert!(validate_cli_command("my_random_tool").is_err());
+    fn test_cli_accepts_unknown_commands() {
+        // Any non-blocklisted command is allowed (user configured it themselves)
+        assert!(validate_cli_command("my_random_tool").is_ok());
     }
 
     #[test]

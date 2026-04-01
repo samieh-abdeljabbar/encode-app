@@ -671,8 +671,8 @@ function AiConfigSection() {
                   className={inputClass}
                 />
                 <p className="mt-1.5 text-[11px] text-text-muted/60">
-                  Allowed: claude, gemini, sgpt, ollama, aichat, llm, chatgpt,
-                  deepseek, codex, openai, anthropic, goose, aider
+                  Any CLI tool or script that accepts a prompt and returns text.
+                  Common: claude, gemini, ollama, sgpt, aichat, llm
                 </p>
               </div>
             )}
