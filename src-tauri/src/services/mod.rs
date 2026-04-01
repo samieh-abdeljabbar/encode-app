@@ -12,4 +12,5 @@ pub mod quiz;
 pub mod reader;
 pub mod review;
 pub mod snapshot;
+pub mod teachback;
 pub mod vault_fs;
