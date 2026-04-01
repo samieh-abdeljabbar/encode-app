@@ -188,6 +188,90 @@ pub fn finalize_teachback(
     })
 }
 
+/// No-AI mode: user rates themselves on each rubric criterion.
+pub fn submit_self_rating(
+    conn: &Connection,
+    teachback_id: i64,
+    response: &str,
+    ratings: &RubricScores,
+) -> Result<TeachbackResult, String> {
+    let criteria = [
+        ("Accuracy", ratings.accuracy),
+        ("Clarity", ratings.clarity),
+        ("Completeness", ratings.completeness),
+        ("Concrete example", ratings.example),
+        ("Jargon explanation", ratings.jargon),
+    ];
+    let (weakest_name, _) = criteria.iter().min_by_key(|(_, score)| score).unwrap();
+    let (strongest_name, _) = criteria.iter().max_by_key(|(_, score)| score).unwrap();
+
+    finalize_teachback(
+        conn,
+        teachback_id,
+        response,
+        ratings,
+        &format!("{strongest_name} was your strongest area"),
+        &format!("{weakest_name} needs more work"),
+        None,
+    )
+}
+
+pub fn list_teachbacks(
+    conn: &Connection,
+    subject_id: Option<i64>,
+) -> Result<Vec<TeachbackListItem>, String> {
+    let query = if subject_id.is_some() {
+        "SELECT t.id, t.chapter_id, COALESCE(ch.title, 'Unknown'), s.name, t.mastery, t.created_at
+         FROM teachbacks t
+         JOIN subjects s ON s.id = t.subject_id
+         LEFT JOIN chapters ch ON ch.id = t.chapter_id
+         WHERE t.subject_id = ?1
+         ORDER BY t.created_at DESC
+         LIMIT 50"
+    } else {
+        "SELECT t.id, t.chapter_id, COALESCE(ch.title, 'Unknown'), s.name, t.mastery, t.created_at
+         FROM teachbacks t
+         JOIN subjects s ON s.id = t.subject_id
+         LEFT JOIN chapters ch ON ch.id = t.chapter_id
+         ORDER BY t.created_at DESC
+         LIMIT 50"
+    };
+
+    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
+
+    let rows = if let Some(sid) = subject_id {
+        stmt.query_map([sid], |row| {
+            Ok(TeachbackListItem {
+                id: row.get(0)?,
+                chapter_id: row.get(1)?,
+                chapter_title: row.get(2)?,
+                subject_name: row.get(3)?,
+                mastery: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+    } else {
+        stmt.query_map([], |row| {
+            Ok(TeachbackListItem {
+                id: row.get(0)?,
+                chapter_id: row.get(1)?,
+                chapter_title: row.get(2)?,
+                subject_name: row.get(3)?,
+                mastery: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+    };
+
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +382,48 @@ mod tests {
             ).unwrap();
             assert_eq!(result.mastery, "developing"); // avg = 48
             assert!(result.repair_card_id.is_some());
+            Ok(())
+        }).expect("test failed");
+    }
+
+    #[test]
+    fn test_self_rating_computes_mastery() {
+        let db = setup();
+        db.with_conn(|conn| {
+            let start = start_teachback(conn, 1).unwrap();
+            let ratings = RubricScores {
+                accuracy: 100,
+                clarity: 50,
+                completeness: 100,
+                example: 0,
+                jargon: 50,
+            };
+            let result = submit_self_rating(conn, start.id, "My explanation", &ratings).unwrap();
+            // avg = (100+50+100+0+50)/5 = 60 → solid
+            assert_eq!(result.overall, 60);
+            assert_eq!(result.mastery, "solid");
+            Ok(())
+        }).expect("test failed");
+    }
+
+    #[test]
+    fn test_list_teachbacks() {
+        let db = setup();
+        db.with_conn(|conn| {
+            let start = start_teachback(conn, 1).unwrap();
+            let scores = RubricScores { accuracy: 80, clarity: 80, completeness: 80, example: 80, jargon: 80 };
+            finalize_teachback(conn, start.id, "Great explanation", &scores, "All good", "Minor gaps", None).unwrap();
+
+            let all = list_teachbacks(conn, None).unwrap();
+            assert_eq!(all.len(), 1);
+            assert_eq!(all[0].chapter_title, "Data Structures");
+            assert_eq!(all[0].mastery, Some("ready".to_string()));
+
+            let filtered = list_teachbacks(conn, Some(1)).unwrap();
+            assert_eq!(filtered.len(), 1);
+
+            let empty = list_teachbacks(conn, Some(999)).unwrap();
+            assert_eq!(empty.len(), 0);
             Ok(())
         }).expect("test failed");
     }
