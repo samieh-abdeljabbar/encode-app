@@ -314,6 +314,9 @@ export const updateCard = (
     status: status ?? null,
   });
 
+export const deleteCard = (cardId: number) =>
+  invoke<void>("delete_card", { cardId });
+
 export const getPracticeCards = (subjectId?: number, limit?: number) =>
   invoke<DueCard[]>("get_practice_cards", {
     subjectId: subjectId ?? null,
@@ -382,6 +385,9 @@ export interface QuizListItem {
 // Quiz IPC
 export const listQuizzes = (subjectId?: number) =>
   invoke<QuizListItem[]>("list_quizzes", { subjectId: subjectId ?? null });
+
+export const deleteQuiz = (quizId: number) =>
+  invoke<void>("delete_quiz", { quizId });
 
 export const generateQuiz = (chapterId: number) =>
   invoke<QuizState>("generate_quiz", { chapterId });

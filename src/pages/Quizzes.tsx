@@ -1,7 +1,12 @@
-import { ClipboardCheck, Plus } from "lucide-react";
+import { ClipboardCheck, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listChapters, listQuizzes, listSubjects } from "../lib/tauri";
+import {
+  deleteQuiz,
+  listChapters,
+  listQuizzes,
+  listSubjects,
+} from "../lib/tauri";
 import type { Chapter, QuizListItem, Subject } from "../lib/tauri";
 
 function formatRelativeDate(dateStr: string): string {
@@ -34,7 +39,8 @@ function scoreColorClass(score: number | null): string {
 function QuizRow({
   quiz,
   onClick,
-}: { quiz: QuizListItem; onClick: () => void }) {
+  onDelete,
+}: { quiz: QuizListItem; onClick: () => void; onDelete: () => void }) {
   return (
     <button
       type="button"
@@ -59,8 +65,8 @@ function QuizRow({
         </p>
       </div>
 
-      {/* Date + Retake */}
-      <div className="flex shrink-0 items-center gap-3">
+      {/* Date + Actions */}
+      <div className="flex shrink-0 items-center gap-2">
         <p className="text-xs text-text-muted">
           {formatRelativeDate(quiz.generated_at)}
         </p>
@@ -69,6 +75,17 @@ function QuizRow({
             Retake &rarr;
           </span>
         )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-text-muted/40 opacity-0 transition-all hover:bg-coral/10 hover:text-coral group-hover:opacity-100"
+          aria-label="Delete quiz"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
     </button>
   );
@@ -251,11 +268,17 @@ export function Quizzes() {
                   quiz={quiz}
                   onClick={() => {
                     if (quiz.score != null && quiz.chapter_id != null) {
-                      // Completed quiz — retake with new questions
                       navigate(`/quiz?chapter=${quiz.chapter_id}`);
                     } else {
-                      // Incomplete quiz — resume
                       navigate(`/quiz?id=${quiz.id}`);
+                    }
+                  }}
+                  onDelete={async () => {
+                    try {
+                      await deleteQuiz(quiz.id);
+                      loadQuizzes();
+                    } catch {
+                      setError("Failed to delete quiz");
                     }
                   }}
                 />

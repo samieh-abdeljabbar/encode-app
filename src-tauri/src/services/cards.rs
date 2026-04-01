@@ -209,6 +209,16 @@ pub fn update_card(
     get_card_info(conn, card_id)
 }
 
+pub fn delete_card(conn: &Connection, card_id: i64) -> Result<(), String> {
+    conn.execute("DELETE FROM card_reviews WHERE card_id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card reviews: {e}"))?;
+    conn.execute("DELETE FROM card_schedule WHERE card_id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card schedule: {e}"))?;
+    conn.execute("DELETE FROM cards WHERE id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card: {e}"))?;
+    Ok(())
+}
+
 pub fn get_practice_cards(
     conn: &Connection,
     subject_id: Option<i64>,

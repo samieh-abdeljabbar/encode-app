@@ -131,6 +131,15 @@ pub fn list_quizzes(conn: &Connection, subject_id: Option<i64>) -> Result<Vec<Qu
     Ok(items)
 }
 
+pub fn delete_quiz(conn: &Connection, quiz_id: i64) -> Result<(), String> {
+    // Delete attempts first (FK constraint)
+    conn.execute("DELETE FROM quiz_attempts WHERE quiz_id = ?1", [quiz_id])
+        .map_err(|e| format!("Failed to delete quiz attempts: {e}"))?;
+    conn.execute("DELETE FROM quizzes WHERE id = ?1", [quiz_id])
+        .map_err(|e| format!("Failed to delete quiz: {e}"))?;
+    Ok(())
+}
+
 pub fn generate_quiz(conn: &Connection, chapter_id: i64) -> Result<QuizState, String> {
     // Query chapter
     let (subject_id, title, status): (i64, String, String) = conn

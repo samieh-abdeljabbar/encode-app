@@ -10,6 +10,14 @@ pub fn list_quizzes(
 }
 
 #[tauri::command]
+pub fn delete_quiz(
+    state: tauri::State<'_, AppState>,
+    quiz_id: i64,
+) -> Result<(), String> {
+    state.db.with_conn(|conn| quiz::delete_quiz(conn, quiz_id))
+}
+
+#[tauri::command]
 pub async fn generate_quiz(
     state: tauri::State<'_, AppState>,
     chapter_id: i64,

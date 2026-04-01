@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { updateCard } from "../../lib/tauri";
+import { deleteCard, updateCard } from "../../lib/tauri";
 import type { CardInfo } from "../../lib/tauri";
 
 interface CardRowProps {
@@ -197,7 +197,7 @@ export function CardRow({ card, onUpdated }: CardRowProps) {
                 if (!saving) {
                   setSaving(true);
                   try {
-                    await updateCard(card.id, undefined, undefined, "buried");
+                    await deleteCard(card.id);
                     onUpdated();
                   } catch {
                     // error handled by parent refresh
