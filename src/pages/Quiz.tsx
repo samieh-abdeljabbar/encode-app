@@ -194,9 +194,30 @@ export function Quiz() {
   if (phase === "loading" || !quiz) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-text-muted">
-          {chapterParam ? "Generating quiz..." : "Loading quiz..."}
-        </p>
+        <div className="text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-border border-t-accent" />
+          </div>
+          <p className="mb-2 text-sm font-medium text-text">
+            {chapterParam ? "Generating Quiz" : "Loading Quiz"}
+          </p>
+          <p className="text-xs text-text-muted">
+            {chapterParam
+              ? "AI is crafting questions from your chapter..."
+              : "Loading your quiz..."}
+          </p>
+          {chapterParam && (
+            <div className="mx-auto mt-4 h-1 w-48 overflow-hidden rounded-full bg-border">
+              <div
+                className="h-full animate-pulse rounded-full bg-accent/60"
+                style={{
+                  width: "60%",
+                  animation: "indeterminate 1.5s ease-in-out infinite",
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
     );
   }

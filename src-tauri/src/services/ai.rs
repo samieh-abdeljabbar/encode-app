@@ -326,9 +326,16 @@ fn call_cli_blocking(
 
     let full_prompt = format!("{system}\n\n{user}");
 
-    // Build args: configured args + the prompt as the final argument
+    // Pass prompt via stdin pipe (not as CLI arg — prompts can exceed OS arg length limits)
+    // Use configured args + "-p" flag with "-" to read from stdin for claude CLI
     let mut full_args: Vec<String> = args.to_vec();
-    full_args.push(full_prompt.clone());
+    // Add the prompt as a short positional arg hint, truncated to avoid arg limits
+    let short_hint = if full_prompt.len() > 1000 {
+        format!("{}...", &full_prompt[..1000])
+    } else {
+        full_prompt.clone()
+    };
+    full_args.push(short_hint);
 
     let mut child = std::process::Command::new(command)
         .args(&full_args)
@@ -338,7 +345,7 @@ fn call_cli_blocking(
         .spawn()
         .map_err(|e| format!("Failed to spawn CLI command '{command}': {e}"))?;
 
-    // Also write prompt to stdin for tools that read from stdin
+    // Write full prompt to stdin
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
         let _ = stdin.write_all(full_prompt.as_bytes());
