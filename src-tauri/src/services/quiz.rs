@@ -935,7 +935,7 @@ pub async fn enhance_with_ai(
         system_prompt: QUIZ_GENERATE_SYSTEM_PROMPT.to_string(),
         user_prompt,
         model_policy: "balanced".to_string(),
-        timeout_ms: 30000,
+        timeout_ms: 90000, // 90s — CLI providers can be slow
     };
 
     let response = ai::ai_request(http, &config.ai, &config.profile, request).await?;
@@ -1007,7 +1007,7 @@ pub async fn evaluate_with_ai(
         system_prompt: QUIZ_EVALUATE_SYSTEM_PROMPT.to_string(),
         user_prompt,
         model_policy: "balanced".to_string(),
-        timeout_ms: 15000,
+        timeout_ms: 60000, // 60s — CLI providers can be slow
     };
 
     let response = ai::ai_request(http, &config.ai, &config.profile, request).await?;
