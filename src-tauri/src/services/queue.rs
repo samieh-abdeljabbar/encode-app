@@ -394,6 +394,45 @@ fn get_quiz_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
     Ok(items)
 }
 
+fn get_teachback_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status IN ('mastering', 'stable')
+               AND NOT EXISTS (
+                   SELECT 1 FROM teachbacks t
+                   WHERE t.chapter_id = ch.id AND t.mastery IN ('solid', 'ready')
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "teachback_available".to_string(),
+                score: 35,
+                title,
+                subtitle: subject_name,
+                reason: "Practice explaining what you learned".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/teachback?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(items)
+}
+
 pub fn get_dashboard(conn: &Connection) -> Result<QueueDashboard, String> {
     let summary = get_summary(conn)?;
 
@@ -401,6 +440,7 @@ pub fn get_dashboard(conn: &Connection) -> Result<QueueDashboard, String> {
     items.extend(get_due_card_items(conn)?);
     items.extend(get_chapter_items(conn)?);
     items.extend(get_quiz_items(conn)?);
+    items.extend(get_teachback_items(conn)?);
 
     // Sort by score descending, then by estimated_minutes ascending (tie-breaker)
     items.sort_by(|a, b| {
@@ -553,6 +593,23 @@ mod tests {
             assert_eq!(dash.summary.sections_studied_today, 2);
             Ok(())
         }).expect("test_summary_counts_sections_studied_today failed");
+    }
+
+    #[test]
+    fn test_teachback_item_appears_for_mastering_chapter() {
+        let db = setup_test_db();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO chapters (subject_id, title, slug, status, estimated_minutes, created_at, updated_at)
+                 VALUES (1, 'Mastering Ch', 'mastering-ch', 'mastering', 10, datetime('now'), datetime('now'))",
+                [],
+            ).unwrap();
+            let dash = get_dashboard(conn).unwrap();
+            let tb_items: Vec<_> = dash.items.iter().filter(|i| i.item_type == "teachback_available").collect();
+            assert_eq!(tb_items.len(), 1);
+            assert_eq!(tb_items[0].score, 35);
+            Ok(())
+        }).expect("test failed");
     }
 
     #[test]

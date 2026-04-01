@@ -199,6 +199,13 @@ export function Reader() {
             </button>
             <button
               type="button"
+              onClick={() => navigate(`/teachback?chapter=${chapterId}`)}
+              className="h-10 rounded-xl bg-purple-600 px-5 text-sm font-medium text-white shadow-sm hover:bg-purple-500"
+            >
+              Teach Back
+            </button>
+            <button
+              type="button"
               onClick={() => navigate(`/quiz?chapter=${chapterId}`)}
               className="h-10 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
             >

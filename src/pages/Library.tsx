@@ -5,6 +5,7 @@ import {
   Clock,
   FileText,
   Globe,
+  MessageSquare,
   Plus,
   Search,
   Trash2,
@@ -462,6 +463,19 @@ export function Library() {
                     >
                       <ClipboardCheck size={12} />
                       Take Quiz
+                    </button>
+                  )}
+                  {["mastering", "stable"].includes(chapter.status) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/teachback?chapter=${chapter.id}`);
+                      }}
+                      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/5 px-3 text-[11px] font-medium text-purple-400 transition-all hover:bg-purple-500/10"
+                    >
+                      <MessageSquare size={12} />
+                      Teach Back
                     </button>
                   )}
                   <ChevronRight size={14} className="text-text-muted/40" />
