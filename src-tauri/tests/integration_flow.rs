@@ -2,7 +2,7 @@
 //! These exercise the full backend service layer with an in-memory SQLite database.
 
 use app_lib::db::Database;
-use app_lib::services::{cards, chunker, quiz, queue, reader, review};
+use app_lib::services::{cards, chunker, quiz, queue, reader, review, teachback};
 
 fn setup() -> Database {
     let db = Database::open_memory().expect("Failed to create in-memory DB");
@@ -438,4 +438,74 @@ fn test_quiz_list() {
 
         Ok(())
     });
+}
+
+// ──────────────────────────────────────────────
+// Test 6: Teach-Back Flow
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_teachback_flow() {
+    let db = setup();
+    let chapter_id = insert_chapter(&db, 1, "Trees", SAMPLE_MARKDOWN);
+
+    db.with_conn(|conn| {
+        // 1. Start teachback
+        let start = teachback::start_teachback(conn, chapter_id).unwrap();
+        assert!(!start.prompt.is_empty());
+        assert_eq!(start.chapter_title, "Trees");
+
+        // 2. Submit with weak scores → should create repair card
+        let scores = teachback::RubricScores {
+            accuracy: 20,
+            clarity: 30,
+            completeness: 10,
+            example: 25,
+            jargon: 15,
+        };
+        let result = teachback::finalize_teachback(
+            conn,
+            start.id,
+            "Trees have branches",
+            &scores,
+            "Attempted an answer",
+            "Missing all key concepts about BST properties",
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(result.mastery, "weak");
+        assert!(result.repair_card_id.is_some());
+
+        // 3. Verify study event logged
+        let event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM study_events WHERE event_type = 'teachback'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_count, 1);
+
+        // 4. List teachbacks
+        let list = teachback::list_teachbacks(conn, None).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].mastery, Some("weak".to_string()));
+
+        // 5. Start another one with self-rating → solid
+        let start2 = teachback::start_teachback(conn, chapter_id).unwrap();
+        let ratings = teachback::RubricScores {
+            accuracy: 100,
+            clarity: 100,
+            completeness: 50,
+            example: 50,
+            jargon: 50,
+        };
+        let result2 = teachback::submit_self_rating(conn, start2.id, "Better explanation", &ratings).unwrap();
+        assert_eq!(result2.mastery, "solid"); // avg = 70
+        assert!(result2.repair_card_id.is_none());
+
+        Ok(())
+    })
+    .expect("test_teachback_flow failed");
 }
