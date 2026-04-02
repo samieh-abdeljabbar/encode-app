@@ -377,7 +377,7 @@ export interface QuizAttemptInfo {
 
 export interface QuizState {
   id: number;
-  chapter_id: number;
+  chapter_id: number | null;
   chapter_title: string;
   questions: QuizQuestion[];
   attempts: QuizAttemptInfo[];

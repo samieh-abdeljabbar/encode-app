@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 export function ShortAnswerInput({
   onSubmit,
@@ -8,7 +8,6 @@ export function ShortAnswerInput({
   disabled: boolean;
 }) {
   const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
@@ -29,7 +28,6 @@ export function ShortAnswerInput({
   return (
     <div>
       <textarea
-        ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}

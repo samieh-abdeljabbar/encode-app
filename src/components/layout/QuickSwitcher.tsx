@@ -50,7 +50,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
               id: ch.id,
               name: ch.title,
               subjectName: subjects[i].name,
-              path: `/reader?chapter=${ch.id}`,
+              path: `/chapter?id=${ch.id}`,
             });
           }
         }

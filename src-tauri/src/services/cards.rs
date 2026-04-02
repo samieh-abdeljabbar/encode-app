@@ -237,32 +237,18 @@ pub fn get_practice_cards(
     subject_id: Option<i64>,
     limit: i64,
 ) -> Result<Vec<crate::services::review::DueCard>, String> {
-    let sql = if let Some(sid) = subject_id {
-        format!(
-            "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
+    let sql = "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
                     cs.stability, cs.difficulty, cs.reps, cs.lapses
              FROM cards c
              JOIN card_schedule cs ON cs.card_id = c.id
-             WHERE c.status = 'active' AND c.subject_id = {sid}
+             WHERE c.status = 'active' AND (?1 IS NULL OR c.subject_id = ?1)
              ORDER BY cs.last_reviewed ASC NULLS FIRST
-             LIMIT {limit}"
-        )
-    } else {
-        format!(
-            "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
-                    cs.stability, cs.difficulty, cs.reps, cs.lapses
-             FROM cards c
-             JOIN card_schedule cs ON cs.card_id = c.id
-             WHERE c.status = 'active'
-             ORDER BY cs.last_reviewed ASC NULLS FIRST
-             LIMIT {limit}"
-        )
-    };
+             LIMIT ?2";
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
 
     let cards = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params![subject_id, limit], |row| {
             Ok(crate::services::review::DueCard {
                 id: row.get(0)?,
                 subject_id: row.get(1)?,

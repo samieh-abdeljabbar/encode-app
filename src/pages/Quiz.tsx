@@ -191,21 +191,6 @@ export function Quiz() {
     }
   }, [quiz, currentIndex]);
 
-  // Keyboard: Enter or Shift+Enter to advance from feedback/selfrating
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (
-        phase === "feedback" &&
-        (e.key === "Enter" || e.key === "ArrowRight")
-      ) {
-        e.preventDefault();
-        handleNext();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [phase, handleNext]);
-
   if (error) {
     return (
       <div className="flex h-full items-center justify-center">

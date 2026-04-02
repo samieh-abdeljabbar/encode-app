@@ -88,6 +88,13 @@ export function ChapterView() {
     load();
   }, [load]);
 
+  // Cleanup debounced save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
   const handleEditorChange = (value: string) => {
     setEditorContent(value);
     setSaveStatus("saving");

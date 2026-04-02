@@ -36,7 +36,7 @@ export function Pathway() {
   const [topic, setTopic] = useState("");
   const [mastery, setMastery] = useState("intermediate");
   const [scope, setScope] = useState("standard");
-  const [_outline, setOutline] = useState<PathwayOutline | null>(null);
+  const [, setOutline] = useState<PathwayOutline | null>(null);
   const [editableChapters, setEditableChapters] = useState<ChapterOutline[]>(
     [],
   );

@@ -87,7 +87,7 @@ pub struct QuizAttemptInfo {
 #[derive(Serialize)]
 pub struct QuizState {
     pub id: i64,
-    pub chapter_id: i64,
+    pub chapter_id: Option<i64>,
     pub chapter_title: String,
     pub questions: Vec<QuizQuestion>,
     pub attempts: Vec<QuizAttemptInfo>,
@@ -251,7 +251,7 @@ pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, quest
 
     Ok(QuizState {
         id: quiz_id,
-        chapter_id,
+        chapter_id: Some(chapter_id),
         chapter_title: title,
         questions,
         attempts,
@@ -435,21 +435,21 @@ fn generate_true_false(
     section_index: usize,
 ) -> QuizQuestion {
     let sentence = first_sentence(body);
+    let is_true = section_index % 2 == 0;
 
-    let prompt = if section_index % 2 == 0 {
+    let prompt = if is_true {
         format!("True or False: {sentence}")
     } else {
         format!(
-            "True or False: The section '{heading_display}' primarily discusses {sentence}"
+            "True or False: The following statement is FALSE: The section '{heading_display}' primarily discusses {sentence}"
         )
     };
 
-    // Keep it simple for deterministic mode — always true
     QuizQuestion {
         question_type: "true_false".to_string(),
         prompt,
         options: None,
-        correct_answer: "True".to_string(),
+        correct_answer: if is_true { "True" } else { "False" }.to_string(),
         section_id,
         section_heading: heading.clone(),
     }
@@ -492,7 +492,7 @@ fn create_repair_card(
     subject_id: i64,
     chapter_id: Option<i64>,
     question: &QuizQuestion,
-    user_answer: &str,
+    _user_answer: &str,
 ) -> Result<i64, String> {
     let prompt = question.prompt.clone();
     let answer = question.correct_answer.clone();
@@ -820,7 +820,7 @@ pub fn complete_quiz(conn: &Connection, quiz_id: i64) -> Result<QuizSummary, Str
 
 pub fn get_quiz(conn: &Connection, quiz_id: i64) -> Result<QuizState, String> {
     // Load quiz
-    let (chapter_id, score): (i64, Option<f64>) = conn
+    let (chapter_id, score): (Option<i64>, Option<f64>) = conn
         .query_row(
             "SELECT chapter_id, score FROM quizzes WHERE id = ?1",
             [quiz_id],
@@ -829,13 +829,16 @@ pub fn get_quiz(conn: &Connection, quiz_id: i64) -> Result<QuizState, String> {
         .map_err(|e| format!("Quiz not found: {e}"))?;
 
     // Load chapter title
-    let chapter_title: String = conn
-        .query_row(
+    let chapter_title: String = if let Some(cid) = chapter_id {
+        conn.query_row(
             "SELECT title FROM chapters WHERE id = ?1",
-            [chapter_id],
+            [cid],
             |row| row.get(0),
         )
-        .map_err(|e| format!("Chapter not found: {e}"))?;
+        .map_err(|e| format!("Chapter not found: {e}"))?
+    } else {
+        "Unknown".to_string()
+    };
 
     // Load all attempts
     let mut stmt = conn
