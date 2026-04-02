@@ -283,7 +283,7 @@ mod tests {
                 [],
             ).unwrap();
             Ok(())
-        });
+        }).expect("test setup");
         db
     }
 
@@ -304,7 +304,7 @@ mod tests {
             assert_eq!(card.source_type, "manual");
             assert!(card.next_review.is_some());
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
             ).unwrap();
             assert_eq!(reversed, "Back");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -347,7 +347,7 @@ mod tests {
             assert_eq!(card.card_type, "cloze");
             assert!(card.prompt.contains("{{mitochondria}}"));
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].prompt, "A");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -398,7 +398,7 @@ mod tests {
             let empty = list_cards(conn, None, Some("quantum")).unwrap();
             assert_eq!(empty.len(), 0);
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod tests {
             assert_eq!(updated.prompt, "New");
             assert_eq!(updated.answer, "Answer");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -431,7 +431,7 @@ mod tests {
             let updated = update_card(conn, card.id, None, None, Some("suspended")).unwrap();
             assert_eq!(updated.status, "suspended");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -455,6 +455,6 @@ mod tests {
             let practice = get_practice_cards(conn, None, 50).unwrap();
             assert_eq!(practice.len(), 2);
             Ok(())
-        });
+        }).expect("test setup");
     }
 }

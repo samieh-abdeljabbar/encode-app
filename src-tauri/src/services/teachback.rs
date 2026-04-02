@@ -123,17 +123,18 @@ pub fn finalize_teachback(
     let overall = (scores.accuracy + scores.clarity + scores.completeness + scores.example + scores.jargon) / 5;
     let mastery = mastery_band(overall).to_string();
 
+    // Query subject_id and chapter_id once for both repair card and study event
+    let (subject_id, chapter_id): (i64, Option<i64>) = conn
+        .query_row(
+            "SELECT subject_id, chapter_id FROM teachbacks WHERE id = ?1",
+            [teachback_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Teachback not found: {e}"))?;
+
     // Create repair card if weak or developing
     let mut repair_card_id = None;
     if mastery == "weak" || mastery == "developing" {
-        let (subject_id, chapter_id): (i64, Option<i64>) = conn
-            .query_row(
-                "SELECT subject_id, chapter_id FROM teachbacks WHERE id = ?1",
-                [teachback_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| format!("Teachback not found: {e}"))?;
-
         let ch_id = chapter_id_override.or(chapter_id);
         let card_id = cards::insert_card_with_schedule_pub(
             conn, subject_id, ch_id, "teachback_miss",
@@ -162,15 +163,7 @@ pub fn finalize_teachback(
     )
     .map_err(|e| format!("Failed to update teachback: {e}"))?;
 
-    // Log study event
-    let subject_id: i64 = conn
-        .query_row(
-            "SELECT subject_id FROM teachbacks WHERE id = ?1",
-            [teachback_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
-
+    // Log study event (reuse subject_id from above)
     conn.execute(
         "INSERT INTO study_events (subject_id, event_type, created_at) VALUES (?1, 'teachback', datetime('now'))",
         [subject_id],

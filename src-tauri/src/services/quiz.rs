@@ -399,9 +399,9 @@ fn generate_multiple_choice(
 
     // Pad with generic alternatives if not enough distractors
     let generic = [
-        "None of the above",
-        "All of the above",
-        "This topic is not covered",
+        "This concept is unrelated to the topic",
+        "The opposite relationship applies",
+        "This applies only in specific edge cases",
     ];
     let mut gi = 0;
     while distractors.len() < 3 && gi < generic.len() {
@@ -1135,7 +1135,7 @@ mod tests {
                 ).unwrap();
             }
             Ok(())
-        });
+        }).expect("test setup");
         db
     }
 
@@ -1148,7 +1148,7 @@ mod tests {
             assert_eq!(quiz.attempts.len(), 4);
             assert!(quiz.attempts.iter().all(|a| a.result == "unanswered"));
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1159,7 +1159,7 @@ mod tests {
             let result = generate_quiz(conn, 1, "intermediate", 8, "mixed");
             assert!(result.is_err());
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1174,7 +1174,7 @@ mod tests {
                 assert!(result.repair_card_id.is_none());
             }
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1188,7 +1188,7 @@ mod tests {
                 assert!(result.repair_card_id.is_some());
             }
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1201,7 +1201,7 @@ mod tests {
                 assert!(result.needs_self_rating);
             }
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1228,7 +1228,7 @@ mod tests {
             ).unwrap();
             assert_eq!(status, "mastering");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1255,7 +1255,7 @@ mod tests {
             ).unwrap();
             assert_eq!(status, "ready_for_quiz");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -1268,6 +1268,6 @@ mod tests {
             assert_eq!(state.chapter_title, "Test Chapter");
             assert_eq!(state.questions.len(), 4);
             Ok(())
-        });
+        }).expect("test setup");
     }
 }

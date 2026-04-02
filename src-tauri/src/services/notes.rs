@@ -465,6 +465,17 @@ pub fn list_notes(
 }
 
 pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<NoteSearchResult>, String> {
+    // Sanitize: wrap each term in quotes to prevent FTS5 syntax injection
+    let safe_query: String = query
+        .split_whitespace()
+        .map(|term| format!("\"{}\"", term.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if safe_query.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut stmt = conn
         .prepare(
             "SELECT f.note_id, n.title, snippet(note_fts, 2, '<mark>', '</mark>', '...', 32), n.file_path
@@ -477,7 +488,7 @@ pub fn search_notes(conn: &Connection, query: &str) -> Result<Vec<NoteSearchResu
         .map_err(|e| format!("Search prepare failed: {e}"))?;
 
     let results = stmt
-        .query_map([query], |row| {
+        .query_map([&safe_query], |row| {
             Ok(NoteSearchResult {
                 note_id: row.get(0)?,
                 title: row.get(1)?,
