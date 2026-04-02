@@ -198,6 +198,8 @@ pub fn run() {
             commands::notes::get_local_graph,
             commands::notes::list_note_folders,
             commands::notes::create_note_folder,
+            commands::notes::move_note,
+            commands::notes::delete_note_folder,
             commands::notes::get_note_titles,
             commands::pathway::generate_pathway_outline,
             commands::pathway::generate_pathway_chapter,

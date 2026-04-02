@@ -635,6 +635,109 @@ pub fn rename_note(
     ))
 }
 
+pub fn move_note(
+    conn: &Connection,
+    vault: &Path,
+    note_id: i64,
+    target_folder: Option<&str>,
+) -> Result<NoteInfo, String> {
+    let (title, old_file_path, subject_id, created_at): (
+        String,
+        String,
+        Option<i64>,
+        String,
+    ) = conn
+        .query_row(
+            "SELECT title, file_path, subject_id, created_at
+             FROM notes WHERE id = ?1",
+            [note_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|e| format!("Note not found: {e}"))?;
+
+    // Determine filename from old path
+    let old_path = PathBuf::from(&old_file_path);
+    let filename = old_path
+        .file_name()
+        .ok_or("No filename")?
+        .to_string_lossy()
+        .to_string();
+
+    let new_rel_path = match target_folder {
+        Some(f) if !f.is_empty() => format!("{f}/{filename}"),
+        _ => filename.clone(),
+    };
+
+    // If the path is the same, nothing to do
+    if new_rel_path == old_file_path {
+        return Ok(note_info_from_row(
+            conn, note_id, title, old_file_path, subject_id, created_at.clone(), created_at,
+        ));
+    }
+
+    // Read existing file content
+    let old_full_path = notes_dir(vault).join(&old_file_path);
+    let content = std::fs::read_to_string(&old_full_path)
+        .map_err(|e| format!("Failed to read note file: {e}"))?;
+    let hash = content_hash(&content);
+
+    // Write to new location
+    let new_full_path = notes_dir(vault).join(&new_rel_path);
+    let parent = new_full_path.parent().ok_or("No parent dir")?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {e}"))?;
+
+    let slug = new_full_path
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let tmp_path = parent.join(format!(".{slug}.md.tmp"));
+    std::fs::write(&tmp_path, &content)
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    std::fs::rename(&tmp_path, &new_full_path)
+        .map_err(|e| format!("Failed to rename temp file: {e}"))?;
+
+    // Delete old file (if different)
+    if old_full_path != new_full_path && old_full_path.exists() {
+        std::fs::remove_file(&old_full_path)
+            .map_err(|e| format!("Failed to remove old file: {e}"))?;
+    }
+
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+    // Update SQLite
+    conn.execute(
+        "UPDATE notes SET file_path = ?2, content_hash = ?3, modified_at = ?4 WHERE id = ?1",
+        rusqlite::params![note_id, new_rel_path, hash, now],
+    )
+    .map_err(|e| format!("Failed to update note: {e}"))?;
+
+    Ok(note_info_from_row(
+        conn, note_id, title, new_rel_path, subject_id, created_at, now,
+    ))
+}
+
+pub fn delete_folder(vault: &Path, folder: &str) -> Result<(), String> {
+    let dir = notes_dir(vault).join(folder);
+    if !dir.exists() {
+        return Ok(());
+    }
+    // Only delete if empty (no files inside)
+    let has_files = std::fs::read_dir(&dir)
+        .map_err(|e| format!("Failed to read folder: {e}"))?
+        .any(|entry| {
+            entry
+                .ok()
+                .map(|e| e.file_type().ok().map(|ft| ft.is_file()).unwrap_or(false))
+                .unwrap_or(false)
+        });
+    if has_files {
+        return Err("Folder is not empty — move or delete its notes first".to_string());
+    }
+    std::fs::remove_dir_all(&dir).map_err(|e| format!("Failed to delete folder: {e}"))?;
+    Ok(())
+}
+
 pub fn list_folders(vault: &Path) -> Result<Vec<String>, String> {
     let base = notes_dir(vault);
     if !base.exists() {

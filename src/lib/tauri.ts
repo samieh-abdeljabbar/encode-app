@@ -615,6 +615,12 @@ export const listNoteFolders = () => invoke<string[]>("list_note_folders");
 export const createNoteFolder = (path: string) =>
   invoke<void>("create_note_folder", { path });
 
+export const moveNote = (noteId: number, targetFolder: string | null) =>
+  invoke<NoteInfo>("move_note", { noteId, targetFolder });
+
+export const deleteNoteFolder = (path: string) =>
+  invoke<void>("delete_note_folder", { path });
+
 export const getNoteTitles = () =>
   invoke<[number, string][]>("get_note_titles");
 

@@ -21,6 +21,8 @@ import {
   createNote,
   createNoteFolder,
   createSubject,
+  deleteNote,
+  deleteNoteFolder,
   deleteSubject,
   importUrl,
   listChapters,
@@ -29,6 +31,7 @@ import {
   listSubjects,
   loadReaderSession,
   moveChapter,
+  moveNote,
   updateChapterContent,
 } from "../lib/tauri";
 import type { Chapter, NoteInfo, ReaderSession, Subject } from "../lib/tauri";
@@ -249,6 +252,8 @@ function ChapterEditor({
 // --- Main Workspace Page ---
 
 export function Workspace() {
+  const navigate = useNavigate();
+
   // Selection
   const [selection, setSelection] = useState<Selection>(null);
 
@@ -279,6 +284,15 @@ export function Workspace() {
   // Plus dropdown
   const [plusDropdownOpen, setPlusDropdownOpen] = useState(false);
   const plusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Context menu
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: "subject" | "chapter" | "note-folder" | "note";
+    id: number | string;
+    extra?: { subjectId?: number; subjectName?: string };
+  } | null>(null);
 
   // Track loaded subjects for chapters
   const loadedSubjects = useRef<Set<number>>(new Set());
@@ -345,6 +359,15 @@ export function Workspace() {
       return () => document.removeEventListener("mousedown", handler);
     }
   }, [plusDropdownOpen]);
+
+  // Close context menu on click anywhere
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    if (contextMenu) {
+      window.addEventListener("click", close);
+      return () => window.removeEventListener("click", close);
+    }
+  }, [contextMenu]);
 
   // --- Study Handlers ---
 
@@ -477,6 +500,39 @@ export function Workspace() {
       setExpandedFolders((prev) => new Set(prev).add(newFolderName.trim()));
     } catch {
       /* silent */
+    }
+  };
+
+  const handleDeleteFolder = async (folder: string) => {
+    try {
+      await deleteNoteFolder(folder);
+      await loadNotes();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleMoveNote = async (
+    noteId: number,
+    targetFolder: string | null,
+  ) => {
+    try {
+      await moveNote(noteId, targetFolder);
+      await loadNotes();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    try {
+      await deleteNote(noteId);
+      if (selection?.type === "note" && selection.noteId === noteId) {
+        setSelection(null);
+      }
+      await loadNotes();
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -627,6 +683,15 @@ export function Workspace() {
                         loadChaptersForSubject(subject.id, true);
                         loadSubjects();
                       }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        type: "subject",
+                        id: subject.id,
+                      });
                     }}
                   >
                     <button
@@ -789,6 +854,19 @@ export function Workspace() {
                               subjectName: subject.name,
                             })
                           }
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              type: "chapter",
+                              id: chapter.id,
+                              extra: {
+                                subjectId: subject.id,
+                                subjectName: subject.name,
+                              },
+                            });
+                          }}
                           className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
                             isChapterSelected
                               ? "bg-accent/10 font-medium text-accent"
@@ -836,7 +914,26 @@ export function Workspace() {
 
           {/* ===== NOTES SECTION ===== */}
           <div className="px-1 pb-2">
-            <div className="flex items-center justify-between px-2 pb-1">
+            <div
+              className="flex items-center justify-between px-2 pb-1"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.outline = "2px solid #a78bfa";
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.style.outline = "none";
+              }}
+              onDrop={async (e) => {
+                e.preventDefault();
+                e.currentTarget.style.outline = "none";
+                const noteId = Number(e.dataTransfer.getData("note-id"));
+                const sourceFolder =
+                  e.dataTransfer.getData("note-source-folder");
+                if (noteId && sourceFolder !== "") {
+                  await handleMoveNote(noteId, null);
+                }
+              }}
+            >
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
                 <FolderOpen size={10} />
                 Notes
@@ -889,10 +986,30 @@ export function Workspace() {
                 <button
                   key={note.id}
                   type="button"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("note-id", String(note.id));
+                    e.dataTransfer.setData(
+                      "note-source-folder",
+                      note.file_path.includes("/")
+                        ? note.file_path.split("/").slice(0, -1).join("/")
+                        : "",
+                    );
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
                   onClick={() =>
                     setSelection({ type: "note", noteId: note.id })
                   }
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      type: "note",
+                      id: note.id,
+                    });
+                  }}
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
                     isNoteSelected
                       ? "bg-purple-400/10 text-purple-400"
                       : "text-text-muted hover:bg-panel-active hover:text-text"
@@ -915,7 +1032,35 @@ export function Workspace() {
               const items = folderNotes(folder);
               return (
                 <div key={folder}>
-                  <div className="group flex items-center">
+                  <div
+                    className="group flex items-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.style.outline = "2px solid #a78bfa";
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.style.outline = "none";
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      e.currentTarget.style.outline = "none";
+                      const noteId = Number(e.dataTransfer.getData("note-id"));
+                      const sourceFolder =
+                        e.dataTransfer.getData("note-source-folder");
+                      if (noteId && sourceFolder !== folder) {
+                        await handleMoveNote(noteId, folder);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        type: "note-folder",
+                        id: folder,
+                      });
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => toggleFolder(folder)}
@@ -943,17 +1088,31 @@ export function Workspace() {
                         {items.length}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCreateNote(folder);
-                      }}
-                      className="mr-1 rounded p-0.5 text-text-muted/30 opacity-0 transition-opacity group-hover:opacity-100 hover:text-purple-400"
-                      aria-label={`New note in ${folder}`}
-                    >
-                      <Plus size={11} />
-                    </button>
+                    <div className="mr-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCreateNote(folder);
+                        }}
+                        className="rounded p-0.5 text-text-muted/30 hover:text-purple-400"
+                        aria-label={`New note in ${folder}`}
+                      >
+                        <Plus size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFolder(folder);
+                        }}
+                        className="rounded p-0.5 text-text-muted/30 hover:text-coral"
+                        aria-label={`Delete ${folder}`}
+                        title="Delete folder"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </div>
                   </div>
                   {isOpen &&
                     items.map((note) => {
@@ -964,10 +1123,28 @@ export function Workspace() {
                         <button
                           key={note.id}
                           type="button"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("note-id", String(note.id));
+                            e.dataTransfer.setData(
+                              "note-source-folder",
+                              folder,
+                            );
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           onClick={() =>
                             setSelection({ type: "note", noteId: note.id })
                           }
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors ${
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              type: "note",
+                              id: note.id,
+                            });
+                          }}
+                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
                             isNoteSelected
                               ? "bg-purple-400/10 text-purple-400"
                               : "text-text-muted hover:bg-panel-active hover:text-text"
@@ -1046,6 +1223,129 @@ export function Workspace() {
           </div>
         )}
       </div>
+
+      {/* ========== CONTEXT MENU ========== */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[160px] rounded-lg border border-border bg-panel py-1 shadow-xl"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          {contextMenu.type === "subject" && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  setModalSubjectId(contextMenu.id as number);
+                  if (!expandedSubjects.has(contextMenu.id as number)) {
+                    setExpandedSubjects((prev) =>
+                      new Set(prev).add(contextMenu.id as number),
+                    );
+                  }
+                  setSidebarModal("create-chapter");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <Plus size={12} />
+                New Chapter
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  setModalSubjectId(contextMenu.id as number);
+                  if (!expandedSubjects.has(contextMenu.id as number)) {
+                    setExpandedSubjects((prev) =>
+                      new Set(prev).add(contextMenu.id as number),
+                    );
+                  }
+                  setSidebarModal("import-url");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <Globe size={12} />
+                Import URL
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  handleDeleteSubject(contextMenu.id as number);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
+              >
+                <Trash2 size={12} />
+                Delete Subject
+              </button>
+            </>
+          )}
+          {contextMenu.type === "chapter" && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  navigate(`/reader?chapter=${contextMenu.id}`);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <BookOpen size={12} />
+                Start Study
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  navigate(`/quiz?chapter=${contextMenu.id}`);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <ClipboardCheck size={12} />
+                Take Quiz
+              </button>
+            </>
+          )}
+          {contextMenu.type === "note-folder" && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  handleCreateNote(contextMenu.id as string);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <FileText size={12} />
+                New Note
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  handleDeleteFolder(contextMenu.id as string);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
+              >
+                <Trash2 size={12} />
+                Delete Folder
+              </button>
+            </>
+          )}
+          {contextMenu.type === "note" && (
+            <button
+              type="button"
+              onClick={() => {
+                setContextMenu(null);
+                handleDeleteNote(contextMenu.id as number);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
+            >
+              <Trash2 size={12} />
+              Delete Note
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

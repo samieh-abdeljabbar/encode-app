@@ -141,6 +141,25 @@ pub fn create_note_folder(
 }
 
 #[tauri::command]
+pub fn move_note(
+    state: tauri::State<'_, AppState>,
+    note_id: i64,
+    target_folder: Option<String>,
+) -> Result<notes::NoteInfo, String> {
+    state.db.with_conn(|conn| {
+        notes::move_note(conn, &state.vault_path, note_id, target_folder.as_deref())
+    })
+}
+
+#[tauri::command]
+pub fn delete_note_folder(
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    notes::delete_folder(&state.vault_path, &path)
+}
+
+#[tauri::command]
 pub fn get_note_titles(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<(i64, String)>, String> {
