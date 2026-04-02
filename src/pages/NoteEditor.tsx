@@ -17,8 +17,15 @@ import { ArrowLeft, Check, Pencil, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { parchmentTheme } from "../components/editor/cm-theme";
+import { wikilinkExtension } from "../components/editor/cm-wikilink";
 import { BacklinksPanel } from "../components/notes/BacklinksPanel";
-import { deleteNote, getNote, renameNote, updateNote } from "../lib/tauri";
+import {
+  deleteNote,
+  getNote,
+  getNoteTitles,
+  renameNote,
+  updateNote,
+} from "../lib/tauri";
 import type { NoteDetail } from "../lib/tauri";
 
 export function NoteEditor() {
@@ -95,6 +102,7 @@ export function NoteEditor() {
       doc: note.content,
       extensions: [
         parchmentTheme,
+        wikilinkExtension(() => getNoteTitles()),
         markdown({
           base: markdownLanguage,
           codeLanguages: [
