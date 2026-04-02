@@ -844,7 +844,9 @@ export function Workspace() {
                           key={chapter.id}
                           type="button"
                           draggable
-                          onDragStart={() => {
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", "drag");
+                            e.dataTransfer.effectAllowed = "move";
                             dragRef.current = {
                               type: "chapter",
                               id: chapter.id,
@@ -992,7 +994,9 @@ export function Workspace() {
                   role="button"
                   tabIndex={0}
                   draggable="true"
-                  onDragStart={() => {
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", "drag");
+                    e.dataTransfer.effectAllowed = "move";
                     dragRef.current = {
                       type: "note",
                       id: note.id,
@@ -1134,7 +1138,9 @@ export function Workspace() {
                           role="button"
                           tabIndex={0}
                           draggable="true"
-                          onDragStart={() => {
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", "drag");
+                            e.dataTransfer.effectAllowed = "move";
                             dragRef.current = {
                               type: "note",
                               id: note.id,
