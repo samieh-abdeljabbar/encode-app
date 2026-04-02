@@ -13,5 +13,5 @@ pub fn check_ai_status(
 pub fn list_ai_runs(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<ai::AiRunInfo>, String> {
-    state.db.with_conn(|conn| ai::list_ai_runs(conn))
+    state.db.with_conn(ai::list_ai_runs)
 }

@@ -111,7 +111,7 @@ pub fn get_graph_data(
 ) -> Result<note_links::GraphData, String> {
     state
         .db
-        .with_conn(note_links::get_graph_data)
+        .with_conn(|conn| note_links::get_graph_data(conn))
 }
 
 #[tauri::command]
@@ -165,5 +165,5 @@ pub fn get_note_titles(
 ) -> Result<Vec<(i64, String)>, String> {
     state
         .db
-        .with_conn(notes::get_note_titles)
+        .with_conn(|conn| notes::get_note_titles(conn))
 }

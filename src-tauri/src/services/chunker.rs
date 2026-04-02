@@ -17,11 +17,7 @@ fn parse_heading(line: &str) -> Option<(u8, String)> {
         Some((3, rest.trim().to_string()))
     } else if let Some(rest) = trimmed.strip_prefix("## ") {
         Some((2, rest.trim().to_string()))
-    } else if let Some(rest) = trimmed.strip_prefix("# ") {
-        Some((1, rest.trim().to_string()))
-    } else {
-        None
-    }
+    } else { trimmed.strip_prefix("# ").map(|rest| (1, rest.trim().to_string())) }
 }
 
 /// Split markdown content into sections on heading boundaries (H1, H2, H3).

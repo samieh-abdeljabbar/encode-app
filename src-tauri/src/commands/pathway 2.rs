@@ -4,10 +4,10 @@ use crate::AppState;
 /// Strip markdown code fences from AI responses (```json ... ```)
 fn strip_fences(s: &str) -> &str {
     let trimmed = s.trim();
-    let without_start = if let Some(rest) = trimmed.strip_prefix("```json") {
-        rest
-    } else if let Some(rest) = trimmed.strip_prefix("```") {
-        rest
+    let without_start = if trimmed.starts_with("```json") {
+        &trimmed[7..]
+    } else if trimmed.starts_with("```") {
+        &trimmed[3..]
     } else {
         return trimmed;
     };

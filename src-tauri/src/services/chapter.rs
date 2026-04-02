@@ -80,7 +80,7 @@ mod tests {
 
     fn setup_db() -> Database {
         let db = Database::open_memory().expect("open");
-        db.with_conn(|conn| {
+        let _ = db.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO subjects (slug, name, created_at) VALUES ('test', 'Test', datetime('now'))",
                 [],
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn test_update_content_replaces_sections() {
         let db = setup_db();
-        db.with_conn(|conn| {
+        let _ = db.with_conn(|conn| {
             let markdown = "## New Section 1\n\nNew content here.\n\n## New Section 2\n\nMore content.";
             update_content(conn, 1, markdown).unwrap();
 
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_update_content_resets_status_to_unseen() {
         let db = setup_db();
-        db.with_conn(|conn| {
+        let _ = db.with_conn(|conn| {
             let markdown = "## Fresh\n\nNew stuff.";
             update_content(conn, 1, markdown).unwrap();
 
@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn test_update_content_recalculates_minutes() {
         let db = setup_db();
-        db.with_conn(|conn| {
+        let _ = db.with_conn(|conn| {
             // ~200 words = ~1 minute
             let words: Vec<String> = (0..200).map(|i| format!("word{i}")).collect();
             let markdown = format!("## Section\n\n{}", words.join(" "));

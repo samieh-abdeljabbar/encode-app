@@ -1,6 +1,5 @@
 /// Simplified FSRS-5 spaced repetition scheduler.
 /// Pure math — no database access, no side effects.
-
 pub struct ScheduleState {
     pub stability: f64,
     pub difficulty: f64,

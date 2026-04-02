@@ -304,7 +304,7 @@ const CLI_BLOCKLIST: &[&str] = &[
 fn validate_cli_command(command: &str) -> Result<(), String> {
     let base = command
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or(command)
         .split('.')
         .next()

@@ -5,12 +5,12 @@ use crate::services::queue;
 pub fn get_queue_dashboard(
     state: tauri::State<'_, AppState>,
 ) -> Result<queue::QueueDashboard, String> {
-    state.db.with_conn(|conn| queue::get_dashboard(conn))
+    state.db.with_conn(queue::get_dashboard)
 }
 
 #[tauri::command]
 pub fn get_progress_report(
     state: tauri::State<'_, AppState>,
 ) -> Result<queue::ProgressReport, String> {
-    state.db.with_conn(|conn| queue::get_progress(conn))
+    state.db.with_conn(queue::get_progress)
 }
