@@ -1,6 +1,24 @@
 use crate::services::{ai, pathway};
 use crate::AppState;
 
+/// Strip markdown code fences from AI responses (```json ... ```)
+fn strip_fences(s: &str) -> &str {
+    let trimmed = s.trim();
+    let without_start = if trimmed.starts_with("```json") {
+        &trimmed[7..]
+    } else if trimmed.starts_with("```") {
+        &trimmed[3..]
+    } else {
+        return trimmed;
+    };
+    let without_end = if let Some(pos) = without_start.rfind("```") {
+        &without_start[..pos]
+    } else {
+        without_start
+    };
+    without_end.trim()
+}
+
 #[tauri::command]
 pub async fn generate_pathway_outline(
     state: tauri::State<'_, AppState>,
@@ -29,14 +47,13 @@ pub async fn generate_pathway_outline(
         Ok(())
     })?;
 
-    let outline: pathway::PathwayOutline = serde_json::from_str(&response.content).map_err(
-        |e| {
-            format!(
-                "Failed to parse outline: {e}. Raw: {}",
-                &response.content[..200.min(response.content.len())]
-            )
-        },
-    )?;
+    let clean = strip_fences(&response.content);
+    let outline: pathway::PathwayOutline = serde_json::from_str(clean).map_err(|e| {
+        format!(
+            "Failed to parse outline: {e}. Raw: {}",
+            &clean[..200.min(clean.len())]
+        )
+    })?;
 
     Ok(outline)
 }
@@ -76,7 +93,8 @@ pub async fn generate_pathway_chapter(
         Ok(())
     })?;
 
-    let content: pathway::ChapterContent = serde_json::from_str(&response.content)
+    let clean = strip_fences(&response.content);
+    let content: pathway::ChapterContent = serde_json::from_str(clean)
         .map_err(|e| format!("Failed to parse chapter content: {e}"))?;
 
     Ok(content)
