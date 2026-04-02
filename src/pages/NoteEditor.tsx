@@ -45,7 +45,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [backlinksPanelCollapsed, setBacklinksPanelCollapsed] = useState(false);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState(true);
   const [currentContent, setCurrentContent] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -308,15 +308,15 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
             <button
               type="button"
               onClick={() => setPreviewMode((v) => !v)}
-              aria-label={previewMode ? "Edit mode" : "Preview mode"}
+              aria-label={previewMode ? "Edit mode" : "Reading mode"}
               className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
-                previewMode
+                !previewMode
                   ? "bg-accent/10 text-accent"
                   : "text-text-muted hover:bg-panel-active hover:text-text"
               }`}
             >
               {previewMode ? <Pencil size={12} /> : <Eye size={12} />}
-              {previewMode ? "Edit" : "Preview"}
+              {previewMode ? "Edit" : "Reading"}
             </button>
 
             <button
