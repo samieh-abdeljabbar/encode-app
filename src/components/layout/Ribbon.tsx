@@ -1,14 +1,13 @@
 import {
   BarChart3,
-  BookOpen,
   Brain,
   ClipboardCheck,
+  FolderOpen,
   GraduationCap,
   Layers,
   LayoutDashboard,
   Repeat,
   Settings,
-  StickyNote,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -17,12 +16,11 @@ import { AiLogPanel } from "./AiLogPanel";
 
 const NAV_ITEMS = [
   { path: "/", icon: LayoutDashboard, label: "Queue" },
-  { path: "/library", icon: BookOpen, label: "Library" },
+  { path: "/workspace", icon: FolderOpen, label: "Workspace" },
   { path: "/review", icon: Repeat, label: "Review" },
   { path: "/cards", icon: Layers, label: "Cards" },
   { path: "/quizzes", icon: ClipboardCheck, label: "Quizzes" },
   { path: "/progress", icon: BarChart3, label: "Progress" },
-  { path: "/notes", icon: StickyNote, label: "Notes" },
 ] as const;
 
 const SETTINGS_ITEM = {

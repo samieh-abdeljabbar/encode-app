@@ -19,6 +19,7 @@ import { Reader } from "./pages/Reader";
 import { Review } from "./pages/Review";
 import { Settings } from "./pages/Settings";
 import { Teachback } from "./pages/Teachback";
+import { Workspace } from "./pages/Workspace";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
@@ -65,10 +66,11 @@ function AppContent() {
   }
 
   return (
-    <MemoryRouter initialEntries={["/library"]}>
+    <MemoryRouter initialEntries={["/workspace"]}>
       <Routes>
         <Route element={<Shell />}>
           <Route path="/" element={<Queue />} />
+          <Route path="/workspace" element={<Workspace />} />
           <Route path="/library" element={<Library />} />
           <Route path="/chapter" element={<ChapterView />} />
           <Route path="/reader" element={<Reader />} />
