@@ -17,6 +17,7 @@ import { Check, Pencil, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { livePreviewDecorations } from "../components/editor/cm-decorations";
+import { slashCommands } from "../components/editor/cm-slash";
 import { parchmentTheme } from "../components/editor/cm-theme";
 import { wikilinkExtension } from "../components/editor/cm-wikilink";
 import { BacklinksPanel } from "../components/notes/BacklinksPanel";
@@ -119,6 +120,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
       extensions: [
         parchmentTheme,
         livePreviewDecorations,
+        slashCommands(),
         wikilinkExtension(() => getNoteTitles()),
         markdown({
           base: markdownLanguage,
