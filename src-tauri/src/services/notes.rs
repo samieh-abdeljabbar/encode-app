@@ -55,9 +55,10 @@ pub fn parse_frontmatter(content: &str) -> (Option<Frontmatter>, &str) {
         let yaml_str = &rest[..end];
         let body_start = end + 4;
         let body = rest[body_start..].trim_start_matches(['\n', '\r']);
+        // Always strip the frontmatter text from body, even if YAML parsing fails
         match serde_yaml_ng::from_str::<Frontmatter>(yaml_str) {
             Ok(fm) => (Some(fm), body),
-            Err(_) => (None, content),
+            Err(_) => (None, body), // Still return body WITHOUT frontmatter
         }
     } else {
         (None, content)
@@ -281,12 +282,23 @@ pub fn get_note(conn: &Connection, vault: &Path, note_id: i64) -> Result<NoteDet
         .map_err(|e| format!("Note not found: {e}"))?;
 
     let full_path = notes_dir(vault).join(&file_path);
-    let content = std::fs::read_to_string(&full_path)
+    let raw_content = std::fs::read_to_string(&full_path)
         .map_err(|e| format!("Failed to read note file: {e}"))?;
+
+    // Strip frontmatter — only return the body to the editor.
+    // Also handle corrupted files with multiple frontmatter blocks by stripping repeatedly.
+    let mut body = raw_content.as_str();
+    loop {
+        let (_, stripped) = parse_frontmatter(body);
+        if stripped.len() == body.len() {
+            break; // No more frontmatter to strip
+        }
+        body = stripped;
+    }
 
     let info = note_info_from_row(conn, note_id, title, file_path, subject_id, created_at, modified_at);
 
-    Ok(NoteDetail { info, content })
+    Ok(NoteDetail { info, content: body.to_string() })
 }
 
 pub fn update_note(

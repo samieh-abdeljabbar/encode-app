@@ -13,7 +13,9 @@ import {
 } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { Check, Pencil, Tag, Trash2 } from "lucide-react";
+import DOMPurify from "dompurify";
+import { Check, Eye, Pencil, Tag, Trash2 } from "lucide-react";
+import { marked } from "marked";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { parchmentTheme } from "../components/editor/cm-theme";
@@ -43,6 +45,8 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [backlinksPanelCollapsed, setBacklinksPanelCollapsed] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [currentContent, setCurrentContent] = useState("");
 
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -105,6 +109,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   useEffect(() => {
     if (note && initialContentRef.current === null) {
       initialContentRef.current = note.content;
+      setCurrentContent(note.content);
     }
   }, [note]);
 
@@ -168,7 +173,9 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
         ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            debouncedSave(update.state.doc.toString());
+            const content = update.state.doc.toString();
+            setCurrentContent(content);
+            debouncedSave(content);
           }
         }),
         EditorView.lineWrapping,
@@ -300,6 +307,20 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
 
             <button
               type="button"
+              onClick={() => setPreviewMode((v) => !v)}
+              aria-label={previewMode ? "Edit mode" : "Preview mode"}
+              className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
+                previewMode
+                  ? "bg-accent/10 text-accent"
+                  : "text-text-muted hover:bg-panel-active hover:text-text"
+              }`}
+            >
+              {previewMode ? <Pencil size={12} /> : <Eye size={12} />}
+              {previewMode ? "Edit" : "Preview"}
+            </button>
+
+            <button
+              type="button"
               onClick={handleDelete}
               aria-label="Delete note"
               className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-coral/8 hover:text-coral"
@@ -309,8 +330,27 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
           </div>
         </div>
 
-        {/* Editor */}
-        <div ref={containerRef} className="flex-1 overflow-auto" />
+        {/* Editor or Preview */}
+        {previewMode ? (
+          <div className="flex-1 overflow-auto">
+            <div className="mx-auto max-w-3xl px-7 py-7">
+              <div
+                className="prose-encode text-sm leading-relaxed text-text"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(
+                    marked.parse(currentContent, {
+                      breaks: true,
+                      gfm: true,
+                    }) as string,
+                  ),
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div ref={containerRef} className="flex-1 overflow-auto" />
+        )}
       </div>
 
       {/* Backlinks panel */}
