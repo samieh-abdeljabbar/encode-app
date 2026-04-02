@@ -39,6 +39,18 @@ pub struct GraphData {
     pub edges: Vec<GraphEdge>,
 }
 
+pub fn update_links(conn: &rusqlite::Connection, note_id: i64, targets: &[String]) -> Result<(), String> {
+    conn.execute("DELETE FROM note_links WHERE source_note_id = ?1", [note_id])
+        .map_err(|e| e.to_string())?;
+    for target in targets {
+        conn.execute(
+            "INSERT INTO note_links (source_note_id, target_title) VALUES (?1, ?2)",
+            rusqlite::params![note_id, target],
+        ).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn parse_wikilinks(content: &str) -> Vec<String> {
     WIKILINK_RE
         .captures_iter(content)
