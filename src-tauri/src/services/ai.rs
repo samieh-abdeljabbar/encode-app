@@ -164,7 +164,7 @@ async fn call_openai_compatible(
 
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": user }
@@ -207,7 +207,7 @@ async fn call_claude(
 ) -> Result<(String, String), String> {
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "system": system,
         "messages": [
             { "role": "user", "content": user }
