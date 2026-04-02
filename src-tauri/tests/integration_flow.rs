@@ -212,7 +212,7 @@ fn test_full_study_loop() {
         assert_eq!(synthesis_events, 1, "Should have 1 synthesis event");
 
         Ok(())
-    });
+    }).expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -279,7 +279,7 @@ fn test_card_crud_and_review() {
         assert_eq!(due_after.len(), 3, "Rated card should no longer be due");
 
         Ok(())
-    });
+    }).expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -336,7 +336,7 @@ fn test_quiz_failure_and_retest() {
         assert!(repair_count > 0, "Should have repair cards from quiz misses");
 
         Ok(())
-    });
+    }).expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -390,7 +390,7 @@ fn test_queue_ordering() {
         assert_eq!(dashboard.summary.chapters_in_progress, 1); // reading chapter
 
         Ok(())
-    });
+    }).expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -437,7 +437,7 @@ fn test_quiz_list() {
         assert_eq!(empty.len(), 0);
 
         Ok(())
-    });
+    }).expect("test");
 }
 
 // ──────────────────────────────────────────────
