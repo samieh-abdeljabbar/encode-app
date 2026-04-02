@@ -6,13 +6,13 @@ use app_lib::services::{cards, chunker, notes, note_links, quiz, queue, reader, 
 
 fn setup() -> Database {
     let db = Database::open_memory().expect("Failed to create in-memory DB");
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         conn.execute(
             "INSERT INTO subjects (slug, name, created_at) VALUES ('cs', 'Computer Science', datetime('now'))",
             [],
         ).unwrap();
         Ok(())
-    });
+    }).expect("setup failed");
     db
 }
 

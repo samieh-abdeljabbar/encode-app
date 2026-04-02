@@ -97,7 +97,7 @@ mod tests {
                 [],
             ).unwrap();
             Ok(())
-        });
+        }).expect("test");
         db
     }
 
@@ -114,7 +114,7 @@ mod tests {
             ).unwrap();
             assert_eq!(count, 2);
             Ok(())
-        });
+        }).expect("test");
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
             ).unwrap();
             assert_eq!(status, "unseen");
             Ok(())
-        });
+        }).expect("test");
     }
 
     #[test]
@@ -148,7 +148,7 @@ mod tests {
             ).unwrap();
             assert_eq!(minutes, 1);
             Ok(())
-        });
+        }).expect("test");
     }
 
     #[test]
