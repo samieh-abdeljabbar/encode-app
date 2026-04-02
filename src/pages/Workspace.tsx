@@ -1345,17 +1345,52 @@ export function Workspace() {
             </>
           )}
           {contextMenu.type === "note" && (
-            <button
-              type="button"
-              onClick={() => {
-                setContextMenu(null);
-                handleDeleteNote(contextMenu.id as number);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
-            >
-              <Trash2 size={12} />
-              Delete Note
-            </button>
+            <>
+              {/* Move to folder submenu */}
+              {noteFolders.length > 0 && (
+                <div className="border-b border-border-subtle pb-1 mb-1">
+                  <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted/50">
+                    Move to
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setContextMenu(null);
+                      await handleMoveNote(contextMenu.id as number, null);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-text hover:bg-panel-active"
+                  >
+                    <FolderOpen size={12} className="text-text-muted/50" />
+                    Root (no folder)
+                  </button>
+                  {noteFolders.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={async () => {
+                        setContextMenu(null);
+                        await handleMoveNote(contextMenu.id as number, f);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-text hover:bg-panel-active"
+                    >
+                      <FolderOpen size={12} className="text-purple-400/60" />
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setContextMenu(null);
+                  handleDeleteNote(contextMenu.id as number);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
+              >
+                <Trash2 size={12} />
+                Delete Note
+              </button>
+            </>
           )}
         </div>
       )}
