@@ -4,57 +4,59 @@ use serde::{Deserialize, Serialize};
 use crate::services::ai::{self, AiRequest};
 use crate::services::config::AppConfig;
 
-pub const QUIZ_GENERATE_SYSTEM_PROMPT: &str = r#"You are a quiz question generator for a study tool. Generate quiz questions from the provided chapter sections.
-
-Return a JSON array of question objects. Each question must have:
-- "question_type": one of "short_answer", "multiple_choice", "true_false", "fill_blank"
-- "prompt": the question text
-- "options": array of 4 strings (for multiple_choice only, null otherwise)
-- "correct_answer": the correct answer
-- "section_index": which section (0-indexed) this question is about
-
-Rules:
-- Generate one question per section, max 8 questions
-- Mix question types: ~40% short_answer, ~30% multiple_choice, ~20% true_false, ~10% fill_blank
-- Questions should test understanding, not just recall
-- Keep questions concise and unambiguous
-- For multiple choice, include one clearly correct answer and three plausible distractors
-- Return ONLY valid JSON, no markdown fences"#;
-
-pub fn quiz_generate_prompt(difficulty: &str, question_count: i32) -> String {
+pub fn quiz_generate_prompt(difficulty: &str, question_count: i32, question_type_filter: &str) -> String {
     let difficulty_guidance = match difficulty {
-        "beginner" => "Focus on definitions, key terms, and basic recall. Use more multiple choice and true/false questions. Keep questions straightforward.",
-        "expert" => "Test deep analysis, comparison, and synthesis. Prefer short answer questions that require detailed explanation. Ask questions that connect concepts across sections.",
-        _ => "Test understanding and application. Mix question types evenly. Questions should require comprehension, not just memorization.",
+        "beginner" => "Difficulty: BEGINNER. Test understanding using the same context as the material. Focus on definitions, explanations, and comparisons. Use more multiple choice and true/false. Provide scaffolding in question stems. Target Bloom's levels: Remember and Understand.",
+        "expert" => "Difficulty: EXPERT. Test analysis and evaluation in novel contexts. Require synthesis of multiple concepts from different sections. Prefer short answer questions that require detailed explanation. Ask students to compare, critique, or design. Target Bloom's levels: Analyze and Evaluate.",
+        _ => "Difficulty: INTERMEDIATE. Test application and analysis. Use related but different contexts from the source material. Ask students to predict outcomes, solve problems, or explain relationships. Mix question types evenly. Target Bloom's levels: Apply and Analyze.",
     };
 
-    format!(r#"You are a quiz question generator for a study tool. Generate quiz questions from the provided chapter sections.
+    let type_constraint = match question_type_filter {
+        "multiple_choice" => "\nIMPORTANT: Generate ONLY multiple_choice questions.",
+        "short_answer" => "\nIMPORTANT: Generate ONLY short_answer questions.",
+        "true_false" => "\nIMPORTANT: Generate ONLY true_false questions.",
+        "fill_blank" => "\nIMPORTANT: Generate ONLY fill_blank questions.",
+        _ => "", // "mixed" — no constraint
+    };
+
+    format!(r#"You are an expert quiz question designer. Generate quiz questions from the study material below.
+
+CRITICAL RULES:
+1. REPHRASE concepts — NEVER copy sentences from the source material. Use different wording.
+2. Each question tests ONE specific concept, not multiple concepts.
+3. Questions must be answerable from the material but require UNDERSTANDING, not just recognition.
+4. For multiple choice: each distractor must represent a realistic misconception or common error. Never use absurd distractors. All options must be similar in length and structure. Never use "all of the above" or "none of the above".
+5. For short answer: ask "why" or "how", not "what". Constrain to "In 1-2 sentences, explain..."
+6. For fill-in-the-blank: rephrase the sentence — do NOT copy verbatim from the material and blank out a word. The blank must be a key term that carries conceptual weight.
+7. For true/false: require explanation — don't make statements that can be guessed.
+
+{difficulty_guidance}
+{type_constraint}
+
+Generate exactly {question_count} questions.
 
 Return a JSON array of question objects. Each question must have:
 - "question_type": one of "short_answer", "multiple_choice", "true_false", "fill_blank"
-- "prompt": the question text
+- "prompt": the question text (rephrased from source material)
 - "options": array of 4 strings (for multiple_choice only, null otherwise)
 - "correct_answer": the correct answer
 - "section_index": which section (0-indexed) this question is about
 
-Rules:
-- Generate exactly {} questions
-- {}
-- Keep questions concise and unambiguous
-- For multiple choice, include one clearly correct answer and three plausible distractors
-- Return ONLY valid JSON, no markdown fences"#, question_count, difficulty_guidance)
+Return ONLY valid JSON, no markdown fences."#, question_count = question_count, difficulty_guidance = difficulty_guidance, type_constraint = type_constraint)
 }
 
 pub const QUIZ_EVALUATE_SYSTEM_PROMPT: &str = r#"You are evaluating a student's answer to a quiz question.
 
 Return a JSON object with:
 - "verdict": "correct", "partial", or "incorrect"
-- "explanation": brief explanation of why (1-2 sentences max)
+- "explanation": brief explanation (1-2 sentences). If incorrect, explain WHY the answer is wrong and what the correct understanding is. If partial, explain what was missing.
 
 Rules:
-- Be fair but rigorous — the answer must demonstrate understanding
-- "partial" means the student showed some understanding but missed key points
-- "correct" means the core concept is accurately captured, even if wording differs
+- Be fair but rigorous — the answer must demonstrate understanding, not just pattern matching
+- "partial" means the student showed some understanding but missed key points or was vague
+- "correct" means the core concept is accurately captured, even if wording differs from the exact answer
+- "incorrect" means a fundamental misconception or completely wrong answer
+- Always explain the reasoning, especially for wrong answers — this is where learning happens
 - Return ONLY valid JSON, no markdown fences"#;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -164,7 +166,7 @@ pub fn delete_quiz(conn: &Connection, quiz_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, question_count: i32) -> Result<QuizState, String> {
+pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, question_count: i32, question_type_filter: &str) -> Result<QuizState, String> {
     // Query chapter
     let (subject_id, title, status): (i64, String, String) = conn
         .query_row(
@@ -215,10 +217,10 @@ pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, quest
         .collect();
 
     let max_q = std::cmp::min(question_count as usize, section_data.len());
-    let questions = generate_questions_deterministic(&section_data, max_q);
+    let questions = generate_questions_deterministic(&section_data, max_q, question_type_filter);
 
     // Insert quiz
-    let config = serde_json::json!({"use_ai": false, "difficulty": difficulty, "question_count": question_count});
+    let config = serde_json::json!({"use_ai": false, "difficulty": difficulty, "question_count": question_count, "question_type": question_type_filter});
     conn.execute(
         "INSERT INTO quizzes (subject_id, chapter_id, scope_type, config_json, generated_at)
          VALUES (?1, ?2, 'chapter', ?3, datetime('now'))",
@@ -260,8 +262,9 @@ pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, quest
 pub fn generate_questions_deterministic(
     sections: &[(i64, Option<String>, String)],
     max_questions: usize,
+    question_type_filter: &str,
 ) -> Vec<QuizQuestion> {
-    let type_cycle = [
+    let base_cycle = [
         "short_answer",
         "multiple_choice",
         "short_answer",
@@ -271,6 +274,15 @@ pub fn generate_questions_deterministic(
         "fill_blank",
         "short_answer",
     ];
+
+    // Filter type_cycle based on question_type_filter
+    let type_cycle: Vec<&str> = match question_type_filter {
+        "multiple_choice" => vec!["multiple_choice"],
+        "short_answer" => vec!["short_answer"],
+        "true_false" => vec!["true_false"],
+        "fill_blank" => vec!["fill_blank"],
+        _ => base_cycle.to_vec(), // "mixed" or unknown — use full cycle
+    };
 
     let mut questions = Vec::new();
 
@@ -947,6 +959,7 @@ pub async fn enhance_with_ai(
     sections: &[(i64, Option<String>, String)],
     difficulty: &str,
     question_count: i32,
+    question_type_filter: &str,
 ) -> Result<Vec<QuizQuestion>, String> {
     let mut user_prompt = String::from("Generate quiz questions from these chapter sections:\n\n");
     for (idx, (section_id, heading, body)) in sections.iter().enumerate() {
@@ -960,7 +973,7 @@ pub async fn enhance_with_ai(
 
     let request = AiRequest {
         feature: "quiz.generate".to_string(),
-        system_prompt: quiz_generate_prompt(difficulty, question_count),
+        system_prompt: quiz_generate_prompt(difficulty, question_count, question_type_filter),
         user_prompt,
         model_policy: "balanced".to_string(),
         timeout_ms: 90000, // 90s — CLI providers can be slow
@@ -1127,7 +1140,7 @@ mod tests {
     fn test_generate_quiz_creates_questions() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             assert_eq!(quiz.questions.len(), 4); // min(8, 4)
             assert_eq!(quiz.attempts.len(), 4);
             assert!(quiz.attempts.iter().all(|a| a.result == "unanswered"));
@@ -1140,7 +1153,7 @@ mod tests {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
             conn.execute("UPDATE chapters SET status = 'reading' WHERE id = 1", []).unwrap();
-            let result = generate_quiz(conn, 1, "intermediate", 8);
+            let result = generate_quiz(conn, 1, "intermediate", 8, "mixed");
             assert!(result.is_err());
             Ok(())
         });
@@ -1150,7 +1163,7 @@ mod tests {
     fn test_submit_mc_answer_correct() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             // Find an MC question
             if let Some((idx, q)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "multiple_choice") {
                 let result = submit_answer(conn, quiz.id, idx as i64, &q.correct_answer).unwrap();
@@ -1165,7 +1178,7 @@ mod tests {
     fn test_submit_mc_answer_incorrect_creates_repair() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             if let Some((idx, _)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "multiple_choice") {
                 let result = submit_answer(conn, quiz.id, idx as i64, "wrong answer").unwrap();
                 assert_eq!(result.verdict, "incorrect");
@@ -1179,7 +1192,7 @@ mod tests {
     fn test_short_answer_needs_self_rating() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             if let Some((idx, _)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "short_answer") {
                 let result = submit_answer(conn, quiz.id, idx as i64, "my answer").unwrap();
                 assert!(result.needs_self_rating);
@@ -1192,7 +1205,7 @@ mod tests {
     fn test_complete_quiz_passing() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             // Answer all questions correctly
             for (idx, q) in quiz.questions.iter().enumerate() {
                 if q.question_type == "short_answer" {
@@ -1219,7 +1232,7 @@ mod tests {
     fn test_complete_quiz_failing_schedules_retest() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             // Answer all incorrectly
             for (idx, q) in quiz.questions.iter().enumerate() {
                 if q.question_type == "short_answer" {
@@ -1246,7 +1259,7 @@ mod tests {
     fn test_get_quiz_returns_state() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8, "mixed").unwrap();
             let state = get_quiz(conn, quiz.id).unwrap();
             assert_eq!(state.id, quiz.id);
             assert_eq!(state.chapter_title, "Test Chapter");

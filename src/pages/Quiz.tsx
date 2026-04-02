@@ -43,6 +43,7 @@ export function Quiz() {
   // Config state
   const [difficulty, setDifficulty] = useState<string>("intermediate");
   const [questionCount, setQuestionCount] = useState<number>(8);
+  const [questionType, setQuestionType] = useState<string>("mixed");
 
   const loadQuiz = useCallback(async () => {
     try {
@@ -52,6 +53,7 @@ export function Quiz() {
           Number(chapterParam),
           difficulty,
           questionCount,
+          questionType,
         );
       } else if (quizParam) {
         data = await getQuiz(Number(quizParam));
@@ -77,7 +79,7 @@ export function Quiz() {
     } catch (e) {
       setError(String(e));
     }
-  }, [chapterParam, quizParam, difficulty, questionCount]);
+  }, [chapterParam, quizParam, difficulty, questionCount, questionType]);
 
   // Auto-load for existing quizzes (not new generation)
   useEffect(() => {
@@ -224,6 +226,13 @@ export function Quiz() {
   if (phase === "config") {
     const difficulties = ["beginner", "intermediate", "expert"] as const;
     const questionCounts = [4, 6, 8, 10, 12];
+    const questionTypes = [
+      { value: "mixed", label: "Mixed" },
+      { value: "multiple_choice", label: "Multiple Choice" },
+      { value: "short_answer", label: "Short Answer" },
+      { value: "true_false", label: "True / False" },
+      { value: "fill_blank", label: "Fill in Blank" },
+    ] as const;
 
     return (
       <div className="flex h-full items-center justify-center">
@@ -250,6 +259,29 @@ export function Quiz() {
                   }`}
                 >
                   {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Question Type */}
+          <div className="mb-6">
+            <span className="mb-2 block text-sm font-medium text-text-muted">
+              Question Type
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {questionTypes.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setQuestionType(t.value)}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition-all ${
+                    questionType === t.value
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border-subtle bg-surface text-text-muted hover:border-accent/30"
+                  }`}
+                >
+                  {t.label}
                 </button>
               ))}
             </div>

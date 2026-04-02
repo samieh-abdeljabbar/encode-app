@@ -415,8 +415,14 @@ export const generateQuiz = (
   chapterId: number,
   difficulty: string,
   questionCount: number,
+  questionType = "mixed",
 ) =>
-  invoke<QuizState>("generate_quiz", { chapterId, difficulty, questionCount });
+  invoke<QuizState>("generate_quiz", {
+    chapterId,
+    difficulty,
+    questionCount,
+    questionType,
+  });
 
 export const submitQuizAnswer = (
   quizId: number,

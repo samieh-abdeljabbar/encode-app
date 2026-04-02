@@ -152,7 +152,7 @@ fn test_full_study_loop() {
         assert_eq!(syn.new_status, "ready_for_quiz");
 
         // 7. Generate quiz
-        let quiz_state = quiz::generate_quiz(conn, chapter_id, "intermediate", 8).unwrap();
+        let quiz_state = quiz::generate_quiz(conn, chapter_id, "intermediate", 8, "mixed").unwrap();
         assert_eq!(quiz_state.chapter_title, "Data Structures");
         assert!(quiz_state.questions.len() >= 4, "Should have at least 4 questions (one per section)");
         assert!(quiz_state.attempts.iter().all(|a| a.result == "unanswered"));
@@ -305,7 +305,7 @@ fn test_quiz_failure_and_retest() {
         assert_eq!(status, "ready_for_quiz");
 
         // Generate quiz and answer everything wrong
-        let quiz_state = quiz::generate_quiz(conn, chapter_id, "intermediate", 8).unwrap();
+        let quiz_state = quiz::generate_quiz(conn, chapter_id, "intermediate", 8, "mixed").unwrap();
         let quiz_id = quiz_state.id;
 
         for (idx, q) in quiz_state.questions.iter().enumerate() {
@@ -411,7 +411,7 @@ fn test_quiz_list() {
         reader::process_synthesis(conn, chapter_id, "s").unwrap();
 
         // Generate and complete a quiz
-        let qs = quiz::generate_quiz(conn, chapter_id, "intermediate", 8).unwrap();
+        let qs = quiz::generate_quiz(conn, chapter_id, "intermediate", 8, "mixed").unwrap();
         for (idx, q) in qs.questions.iter().enumerate() {
             if q.question_type == "short_answer" {
                 quiz::submit_answer(conn, qs.id, idx as i64, "a").unwrap();
