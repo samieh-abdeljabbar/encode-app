@@ -112,6 +112,13 @@ export const parchmentTheme = EditorView.theme({
     margin: "24px 0",
     width: "100%",
   },
+  // Hide markdown syntax markers for live-preview feel
+  ".cm-formatting-header, .cm-formatting-strong, .cm-formatting-em, .cm-formatting-strikethrough, .cm-formatting-code, .cm-formatting-link, .cm-formatting-image":
+    {
+      color: "var(--color-text-muted, #6b7265)",
+      opacity: "0.3",
+      fontSize: "0.85em",
+    },
   // Strikethrough
   ".cm-strikethrough": {
     textDecoration: "line-through",
