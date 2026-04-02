@@ -38,6 +38,21 @@ pub fn update_content(conn: &Connection, chapter_id: i64, markdown: &str) -> Res
     Ok(())
 }
 
+pub fn move_chapter(conn: &Connection, chapter_id: i64, new_subject_id: i64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE chapters SET subject_id = ?2, updated_at = datetime('now') WHERE id = ?1",
+        rusqlite::params![chapter_id, new_subject_id],
+    ).map_err(|e| format!("Failed to move chapter: {e}"))?;
+
+    // Also update any cards that belong to this chapter
+    conn.execute(
+        "UPDATE cards SET subject_id = ?2 WHERE chapter_id = ?1",
+        rusqlite::params![chapter_id, new_subject_id],
+    ).map_err(|e| format!("Failed to update card subjects: {e}"))?;
+
+    Ok(())
+}
+
 pub fn save_image(vault_path: &std::path::Path, data: &[u8], extension: &str) -> Result<String, String> {
     let uuid = format!("{:x}", std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -146,5 +161,35 @@ mod tests {
         assert!(result.ends_with(".png"));
         assert!(dir.join(&result).exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_move_chapter_updates_subject() {
+        let db = Database::open_memory().expect("open");
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO subjects (slug, name, created_at) VALUES ('a', 'Subject A', datetime('now'))",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO subjects (slug, name, created_at) VALUES ('b', 'Subject B', datetime('now'))",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO chapters (subject_id, title, slug, status, estimated_minutes, created_at, updated_at)
+                 VALUES (1, 'Ch1', 'ch1', 'new', 5, datetime('now'), datetime('now'))",
+                [],
+            ).unwrap();
+
+            move_chapter(conn, 1, 2).unwrap();
+
+            let subject_id: i64 = conn.query_row(
+                "SELECT subject_id FROM chapters WHERE id = 1",
+                [],
+                |r| r.get(0),
+            ).unwrap();
+            assert_eq!(subject_id, 2);
+            Ok(())
+        }).expect("test failed");
     }
 }

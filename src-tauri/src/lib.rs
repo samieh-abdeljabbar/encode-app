@@ -157,6 +157,7 @@ pub fn run() {
             commands::library::get_chapter_with_sections,
             commands::library::import_url,
             commands::library::search,
+            commands::library::move_chapter,
             commands::library::update_chapter_content,
             commands::library::save_image,
             commands::export::export_subject_cmd,

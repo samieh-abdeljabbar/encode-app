@@ -127,6 +127,9 @@ export const importUrl = (url: string, subjectId: number) =>
 export const searchContent = (query: string) =>
   invoke<SearchResult[]>("search", { query });
 
+export const moveChapter = (chapterId: number, newSubjectId: number) =>
+  invoke<void>("move_chapter", { chapterId, newSubjectId });
+
 // --- Export/backup commands ---
 
 export interface ExportStatus {

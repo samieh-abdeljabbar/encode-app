@@ -28,6 +28,7 @@ import {
   listNotes,
   listSubjects,
   loadReaderSession,
+  moveChapter,
   updateChapterContent,
 } from "../lib/tauri";
 import type { Chapter, NoteInfo, ReaderSession, Subject } from "../lib/tauri";
@@ -600,8 +601,34 @@ export function Workspace() {
 
               return (
                 <div key={subject.id}>
-                  {/* Subject row */}
-                  <div className="group flex items-center">
+                  {/* Subject row — drop target for chapters */}
+                  <div
+                    className="group flex items-center"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.style.outline =
+                        "2px solid var(--color-accent, #2d6a4f)";
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.style.outline = "none";
+                    }}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      e.currentTarget.style.outline = "none";
+                      const chapterId = Number(
+                        e.dataTransfer.getData("chapter-id"),
+                      );
+                      const sourceSubject = Number(
+                        e.dataTransfer.getData("source-subject"),
+                      );
+                      if (chapterId && sourceSubject !== subject.id) {
+                        await moveChapter(chapterId, subject.id);
+                        loadChaptersForSubject(sourceSubject, true);
+                        loadChaptersForSubject(subject.id, true);
+                        loadSubjects();
+                      }
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => toggleSubject(subject.id)}
@@ -742,6 +769,18 @@ export function Workspace() {
                         <button
                           key={chapter.id}
                           type="button"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(
+                              "chapter-id",
+                              String(chapter.id),
+                            );
+                            e.dataTransfer.setData(
+                              "source-subject",
+                              String(subject.id),
+                            );
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
                           onClick={() =>
                             setSelection({
                               type: "chapter",
@@ -750,7 +789,7 @@ export function Workspace() {
                               subjectName: subject.name,
                             })
                           }
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors ${
+                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
                             isChapterSelected
                               ? "bg-accent/10 font-medium text-accent"
                               : "text-text-muted hover:bg-panel-active hover:text-text"

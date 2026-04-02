@@ -347,6 +347,17 @@ pub async fn import_url(
 }
 
 #[tauri::command]
+pub fn move_chapter(
+    state: tauri::State<'_, AppState>,
+    chapter_id: i64,
+    new_subject_id: i64,
+) -> Result<(), String> {
+    state.db.with_conn(|conn| {
+        crate::services::chapter::move_chapter(conn, chapter_id, new_subject_id)
+    })
+}
+
+#[tauri::command]
 pub fn update_chapter_content(
     state: tauri::State<'_, AppState>,
     chapter_id: i64,
