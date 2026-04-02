@@ -705,6 +705,7 @@ export function Workspace() {
                     <button
                       type="button"
                       onClick={() => toggleSubject(subject.id)}
+                      onDragOver={(e) => e.preventDefault()}
                       className={`flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs transition-colors ${
                         isSelectedSubject
                           ? "bg-emerald-700/10 font-medium text-emerald-700"
@@ -850,9 +851,6 @@ export function Workspace() {
                               sourceSubjectId: subject.id,
                             };
                           }}
-                          onDragEnd={() => {
-                            dragRef.current = null;
-                          }}
                           onClick={() =>
                             setSelection({
                               type: "chapter",
@@ -874,7 +872,7 @@ export function Workspace() {
                               },
                             });
                           }}
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
+                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
                             isChapterSelected
                               ? "bg-accent/10 font-medium text-accent"
                               : "text-text-muted hover:bg-panel-active hover:text-text"
@@ -1001,9 +999,6 @@ export function Workspace() {
                       sourceFolder: "",
                     };
                   }}
-                  onDragEnd={() => {
-                    dragRef.current = null;
-                  }}
                   onClick={() =>
                     setSelection({ type: "note", noteId: note.id })
                   }
@@ -1020,7 +1015,7 @@ export function Workspace() {
                       id: note.id,
                     });
                   }}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
                     isNoteSelected
                       ? "bg-purple-400/10 text-purple-400"
                       : "text-text-muted hover:bg-panel-active hover:text-text"
@@ -1077,6 +1072,7 @@ export function Workspace() {
                     <button
                       type="button"
                       onClick={() => toggleFolder(folder)}
+                      onDragOver={(e) => e.preventDefault()}
                       className="flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs font-medium text-text-muted hover:bg-panel-active hover:text-text"
                     >
                       {isOpen ? (
@@ -1145,9 +1141,6 @@ export function Workspace() {
                               sourceFolder: folder,
                             };
                           }}
-                          onDragEnd={() => {
-                            dragRef.current = null;
-                          }}
                           onClick={() =>
                             setSelection({ type: "note", noteId: note.id })
                           }
@@ -1164,7 +1157,7 @@ export function Workspace() {
                               id: note.id,
                             });
                           }}
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
+                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
                             isNoteSelected
                               ? "bg-purple-400/10 text-purple-400"
                               : "text-text-muted hover:bg-panel-active hover:text-text"
