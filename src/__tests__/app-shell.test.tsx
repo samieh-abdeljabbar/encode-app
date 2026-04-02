@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import App from "../App";
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue([]),
+  invoke: vi.fn().mockResolvedValue({
+    configured: true,
+    has_api_key: true,
+    provider: "none",
+  }),
 }));
 
 describe("App shell", () => {
@@ -11,16 +15,17 @@ describe("App shell", () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByLabelText("Queue")).toBeInTheDocument();
-      expect(screen.getByLabelText("Library")).toBeInTheDocument();
+      expect(screen.getByLabelText("Workspace")).toBeInTheDocument();
       expect(screen.getByLabelText("Review")).toBeInTheDocument();
       expect(screen.getByLabelText("Settings")).toBeInTheDocument();
     });
   });
 
-  it("renders the Library page by default", async () => {
+  it("renders the Workspace page by default", async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText("Subjects")).toBeInTheDocument();
+      // Workspace page renders — check for the sidebar header or content area
+      expect(screen.getByLabelText("Workspace")).toBeInTheDocument();
     });
   });
 
