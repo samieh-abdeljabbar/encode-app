@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { updateCard } from "../../lib/tauri";
+import { deleteCard, updateCard } from "../../lib/tauri";
 import type { CardInfo } from "../../lib/tauri";
 
 interface CardRowProps {
@@ -189,6 +189,27 @@ export function CardRow({ card, onUpdated }: CardRowProps) {
               }`}
             >
               {card.status === "suspended" ? "Activate" : "Suspend"}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (!saving) {
+                  setSaving(true);
+                  try {
+                    await deleteCard(card.id);
+                    onUpdated();
+                  } catch {
+                    // error handled by parent refresh
+                  } finally {
+                    setSaving(false);
+                  }
+                }
+              }}
+              disabled={saving}
+              className="h-10 rounded-xl border border-border px-4 text-xs font-medium text-text-muted transition-all hover:border-coral/30 hover:bg-coral/5 hover:text-coral disabled:opacity-40"
+            >
+              Delete
             </button>
 
             <div className="ml-auto flex items-center gap-3 text-[11px] text-text-muted/60">

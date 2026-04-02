@@ -1,6 +1,6 @@
 pub mod db;
 mod commands;
-mod services;
+pub mod services;
 
 use db::Database;
 use services::config::AppConfig;
@@ -70,6 +70,7 @@ fn write_file(
 pub fn run() {
     let vault_path = resolve_vault_path();
     ensure_vault_dirs(&vault_path).expect("failed to initialize vault directories");
+    std::fs::create_dir_all(vault_path.join("notes")).ok();
 
     let encode_dir = vault_path.join(".encode");
     let db = Database::open(&encode_dir.join("encode.db")).expect("failed to open database");
@@ -142,10 +143,12 @@ pub fn run() {
             read_file,
             write_file,
             commands::ai::check_ai_status,
+            commands::ai::list_ai_runs,
             commands::cards::create_card,
             commands::cards::list_cards,
             commands::cards::update_card,
             commands::cards::get_practice_cards,
+            commands::cards::delete_card,
             commands::library::create_subject,
             commands::library::list_subjects,
             commands::library::delete_subject,
@@ -154,6 +157,7 @@ pub fn run() {
             commands::library::get_chapter_with_sections,
             commands::library::import_url,
             commands::library::search,
+            commands::library::move_chapter,
             commands::library::update_chapter_content,
             commands::library::save_image,
             commands::export::export_subject_cmd,
@@ -162,12 +166,44 @@ pub fn run() {
             commands::export::get_export_status,
             commands::export::list_snapshots_cmd,
             commands::queue::get_queue_dashboard,
+            commands::queue::get_progress_report,
             commands::reader::load_reader_session,
             commands::reader::mark_section_read,
             commands::reader::submit_section_check,
+            commands::reader::generate_section_prompt,
             commands::reader::submit_synthesis,
             commands::review::get_due_cards,
             commands::review::submit_card_rating,
+            commands::quiz::list_quizzes,
+            commands::quiz::delete_quiz,
+            commands::quiz::generate_quiz,
+            commands::quiz::submit_quiz_answer,
+            commands::quiz::submit_quiz_self_rating,
+            commands::quiz::get_quiz,
+            commands::quiz::complete_quiz,
+            commands::teachback::start_teachback,
+            commands::teachback::submit_teachback,
+            commands::teachback::submit_teachback_self_rating,
+            commands::teachback::list_teachbacks,
+            commands::notes::create_note,
+            commands::notes::get_note,
+            commands::notes::update_note,
+            commands::notes::delete_note,
+            commands::notes::list_notes,
+            commands::notes::rename_note,
+            commands::notes::search_notes,
+            commands::notes::get_backlinks,
+            commands::notes::get_outgoing_links,
+            commands::notes::get_graph_data,
+            commands::notes::get_local_graph,
+            commands::notes::list_note_folders,
+            commands::notes::create_note_folder,
+            commands::notes::move_note,
+            commands::notes::delete_note_folder,
+            commands::notes::get_note_titles,
+            commands::pathway::generate_pathway_outline,
+            commands::pathway::generate_pathway_chapter,
+            commands::pathway::create_pathway_subject,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -58,7 +58,6 @@ class ColumnsWidget extends WidgetType {
           html = html.slice(3);
         }
 
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: user's own content
         p.innerHTML = html || "&nbsp;";
         colDiv.appendChild(p);
       }

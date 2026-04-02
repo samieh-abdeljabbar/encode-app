@@ -20,6 +20,7 @@ export function ChapterView() {
 
   const [session, setSession] = useState<ReaderSession | null>(null);
   const [subjectName, setSubjectName] = useState<string | null>(null);
+  const [subjectId, setSubjectId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
@@ -73,7 +74,10 @@ export function ChapterView() {
         const subject = subjects.find(
           (s) => s.id === chapterData.chapter.subject_id,
         );
-        if (subject) setSubjectName(subject.name);
+        if (subject) {
+          setSubjectName(subject.name);
+          setSubjectId(subject.id);
+        }
       } catch {
         // breadcrumb is non-critical; silently ignore
       }
@@ -83,6 +87,13 @@ export function ChapterView() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Cleanup debounced save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   const handleEditorChange = (value: string) => {
     setEditorContent(value);
@@ -195,6 +206,8 @@ export function ChapterView() {
             editorViewRef.current = view;
             setEditorView(view);
           }}
+          subjectId={subjectId ?? undefined}
+          chapterId={chapterId}
         />
       </div>
 

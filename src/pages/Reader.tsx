@@ -5,6 +5,7 @@ import { ReaderContent } from "../components/reader/ReaderContent";
 import { ReaderHeader } from "../components/reader/ReaderHeader";
 import { SynthesisPanel } from "../components/reader/SynthesisPanel";
 import {
+  generateSectionPrompt,
   loadReaderSession,
   markSectionRead,
   submitSectionCheck,
@@ -25,6 +26,7 @@ export function Reader() {
   const [lastResult, setLastResult] = useState<CheckResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
     if (!chapterId) return;
@@ -99,6 +101,11 @@ export function Reader() {
         );
         return updated;
       });
+      // Generate AI-enhanced prompt (non-blocking — falls back to deterministic)
+      setAiPrompt(null);
+      generateSectionPrompt(section.heading, section.body_markdown)
+        .then((prompt) => setAiPrompt(prompt))
+        .catch(() => {}); // Fallback handled server-side
     } catch (e) {
       setError(String(e));
     } finally {
@@ -187,15 +194,31 @@ export function Reader() {
             Chapter Complete
           </p>
           <p className="mb-6 text-sm text-text-muted">
-            "{session.chapter.title}" is ready for quiz.
+            &ldquo;{session.chapter.title}&rdquo; is ready for quiz.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/library")}
-            className="h-10 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
-          >
-            Back to Library
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/library")}
+              className="h-10 rounded-xl border border-border bg-panel px-5 text-sm font-medium text-text transition-all hover:bg-panel-active"
+            >
+              Back to Library
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/teachback?chapter=${chapterId}`)}
+              className="h-10 rounded-xl bg-purple-600 px-5 text-sm font-medium text-white shadow-sm hover:bg-purple-500"
+            >
+              Teach Back
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/quiz?chapter=${chapterId}`)}
+              className="h-10 rounded-xl bg-accent px-5 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
+            >
+              Take Quiz
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -232,7 +255,7 @@ export function Reader() {
 
         {gatePhase === "gate" && (
           <DigestionGate
-            prompt={section.prompt}
+            prompt={aiPrompt ?? section.prompt}
             sectionHeading={section.heading}
             onSubmit={handleCheckSubmit}
             loading={loading}

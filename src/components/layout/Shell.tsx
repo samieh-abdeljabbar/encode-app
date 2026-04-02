@@ -16,6 +16,7 @@ export function Shell() {
   const location = useLocation();
   const pageLabel: Record<string, string> = {
     "/": "Queue",
+    "/workspace": "Workspace",
     "/library": "Library",
     "/reader": "Reader",
     "/review": "Review",

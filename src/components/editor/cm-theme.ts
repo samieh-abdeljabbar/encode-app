@@ -15,6 +15,8 @@ export const parchmentTheme = EditorView.theme({
   },
   ".cm-content": {
     padding: "32px 0",
+    maxWidth: "48rem",
+    margin: "0 auto",
     caretColor: "var(--color-accent, #2d6a4f)",
   },
   ".cm-cursor": {
@@ -30,7 +32,7 @@ export const parchmentTheme = EditorView.theme({
   ".cm-gutters": {
     backgroundColor: "var(--color-bg, #f4f0e8)",
     border: "none",
-    width: "24px",
+    display: "none",
   },
   ".cm-gutter-lint, .cm-lineNumbers": {
     display: "none",
@@ -73,8 +75,9 @@ export const parchmentTheme = EditorView.theme({
   },
   ".cm-fencedCode": {
     backgroundColor: "var(--color-panel-alt, #f0ece3)",
-    padding: "12px",
-    borderRadius: "8px",
+    borderRadius: "4px",
+    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+    fontSize: "0.88em",
   },
   // Blockquote
   ".cm-blockquote": {
@@ -111,6 +114,10 @@ export const parchmentTheme = EditorView.theme({
     display: "block",
     margin: "24px 0",
     width: "100%",
+  },
+  // Hide markdown syntax markers (used by live-preview decorations)
+  ".cm-hide": {
+    display: "none",
   },
   // Strikethrough
   ".cm-strikethrough": {

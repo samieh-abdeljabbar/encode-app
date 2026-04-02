@@ -18,12 +18,114 @@ pub struct QueueSummary {
     pub due_cards: i64,
     pub chapters_in_progress: i64,
     pub sections_studied_today: i64,
+    pub chapters_completed: i64,
+    pub total_cards: i64,
+    pub quizzes_passed: i64,
 }
 
 #[derive(Serialize)]
 pub struct QueueDashboard {
     pub summary: QueueSummary,
     pub items: Vec<QueueItem>,
+}
+
+#[derive(Serialize)]
+pub struct SubjectProgress {
+    pub subject_id: i64,
+    pub subject_name: String,
+    pub total_chapters: i64,
+    pub chapters_completed: i64,
+    pub total_cards: i64,
+    pub cards_mastered: i64,
+    pub quiz_average: Option<f64>,
+    pub quizzes_taken: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProgressReport {
+    pub subjects: Vec<SubjectProgress>,
+    pub overall_quiz_average: Option<f64>,
+    pub total_study_events: i64,
+    pub streak_days: i64,
+}
+
+pub fn get_progress(conn: &Connection) -> Result<ProgressReport, String> {
+    // Per-subject progress
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.name,
+                    (SELECT COUNT(*) FROM chapters c WHERE c.subject_id = s.id),
+                    (SELECT COUNT(*) FROM chapters c WHERE c.subject_id = s.id AND c.status IN ('mastering', 'stable')),
+                    (SELECT COUNT(*) FROM cards cd WHERE cd.subject_id = s.id AND cd.status = 'active'),
+                    (SELECT COUNT(*) FROM cards cd
+                     JOIN card_schedule cs ON cs.card_id = cd.id
+                     WHERE cd.subject_id = s.id AND cd.status = 'active' AND cs.stability >= 10.0),
+                    (SELECT AVG(q.score) FROM quizzes q WHERE q.subject_id = s.id AND q.score IS NOT NULL),
+                    (SELECT COUNT(*) FROM quizzes q WHERE q.subject_id = s.id AND q.score IS NOT NULL)
+             FROM subjects s
+             WHERE s.archived_at IS NULL
+             ORDER BY s.name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let subjects: Vec<SubjectProgress> = stmt
+        .query_map([], |row| {
+            Ok(SubjectProgress {
+                subject_id: row.get(0)?,
+                subject_name: row.get(1)?,
+                total_chapters: row.get(2)?,
+                chapters_completed: row.get(3)?,
+                total_cards: row.get(4)?,
+                cards_mastered: row.get(5)?,
+                quiz_average: row.get(6)?,
+                quizzes_taken: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Overall quiz average
+    let overall_quiz_average: Option<f64> = conn
+        .query_row(
+            "SELECT AVG(score) FROM quizzes WHERE score IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(None);
+
+    // Total study events
+    let total_study_events: i64 = conn
+        .query_row("SELECT COUNT(*) FROM study_events", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    // Streak: count consecutive days with study events going back from today
+    let streak_days: i64 = conn
+        .query_row(
+            "WITH RECURSIVE dates AS (
+                SELECT date('now') as d
+                UNION ALL
+                SELECT date(d, '-1 day') FROM dates
+                WHERE EXISTS (
+                    SELECT 1 FROM study_events
+                    WHERE date(created_at) = date(d, '-1 day')
+                )
+                AND d > date('now', '-365 days')
+            )
+            SELECT COUNT(*) - 1 FROM dates
+            WHERE EXISTS (SELECT 1 FROM study_events WHERE date(created_at) = dates.d)
+               OR dates.d = date('now')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    Ok(ProgressReport {
+        subjects,
+        overall_quiz_average,
+        total_study_events,
+        streak_days,
+    })
 }
 
 fn get_summary(conn: &Connection) -> Result<QueueSummary, String> {
@@ -51,10 +153,37 @@ fn get_summary(conn: &Connection) -> Result<QueueSummary, String> {
         )
         .unwrap_or(0);
 
+    let chapters_completed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chapters WHERE status IN ('mastering', 'stable')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let total_cards: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE status = 'active'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let quizzes_passed: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM quizzes WHERE score >= 0.8",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     Ok(QueueSummary {
         due_cards,
         chapters_in_progress,
         sections_studied_today,
+        chapters_completed,
+        total_cards,
+        quizzes_passed,
     })
 }
 
@@ -176,12 +305,142 @@ fn get_chapter_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
     Ok(items)
 }
 
+fn get_quiz_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
+    let mut items = Vec::new();
+
+    // Chapters at ready_for_quiz without a passing quiz
+    let mut stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status = 'ready_for_quiz'
+               AND NOT EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id AND q.score >= 0.8
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let available = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "quiz_available".to_string(),
+                score: 45,
+                title,
+                subtitle: subject_name,
+                reason: "Ready for quiz".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/quiz?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    items.extend(available);
+
+    // Failed quizzes past 48-hour cooldown
+    let mut retake_stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status = 'ready_for_quiz'
+               AND EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id
+                     AND q.score IS NOT NULL
+                     AND q.score < 0.8
+                     AND datetime(q.generated_at, '+2 days') <= datetime('now')
+               )
+               AND NOT EXISTS (
+                   SELECT 1 FROM quizzes q
+                   WHERE q.chapter_id = ch.id AND q.score >= 0.8
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let retakes = retake_stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "quiz_retake".to_string(),
+                score: 60, // 45 base + 15 cooldown elapsed
+                title,
+                subtitle: subject_name,
+                reason: "Cooldown elapsed — retake available".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/quiz?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    items.extend(retakes);
+
+    Ok(items)
+}
+
+fn get_teachback_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT ch.id, ch.title, s.name
+             FROM chapters ch
+             JOIN subjects s ON s.id = ch.subject_id
+             WHERE ch.status IN ('mastering', 'stable')
+               AND NOT EXISTS (
+                   SELECT 1 FROM teachbacks t
+                   WHERE t.chapter_id = ch.id AND t.mastery IN ('solid', 'ready')
+               )
+             ORDER BY ch.updated_at DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let subject_name: String = row.get(2)?;
+            Ok(QueueItem {
+                item_type: "teachback_available".to_string(),
+                score: 35,
+                title,
+                subtitle: subject_name,
+                reason: "Practice explaining what you learned".to_string(),
+                estimated_minutes: 5,
+                target_id: id,
+                target_route: format!("/teachback?chapter={id}"),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(items)
+}
+
 pub fn get_dashboard(conn: &Connection) -> Result<QueueDashboard, String> {
     let summary = get_summary(conn)?;
 
     let mut items = Vec::new();
     items.extend(get_due_card_items(conn)?);
     items.extend(get_chapter_items(conn)?);
+    items.extend(get_quiz_items(conn)?);
+    items.extend(get_teachback_items(conn)?);
 
     // Sort by score descending, then by estimated_minutes ascending (tie-breaker)
     items.sort_by(|a, b| {
@@ -334,6 +593,23 @@ mod tests {
             assert_eq!(dash.summary.sections_studied_today, 2);
             Ok(())
         }).expect("test_summary_counts_sections_studied_today failed");
+    }
+
+    #[test]
+    fn test_teachback_item_appears_for_mastering_chapter() {
+        let db = setup_test_db();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO chapters (subject_id, title, slug, status, estimated_minutes, created_at, updated_at)
+                 VALUES (1, 'Mastering Ch', 'mastering-ch', 'mastering', 10, datetime('now'), datetime('now'))",
+                [],
+            ).unwrap();
+            let dash = get_dashboard(conn).unwrap();
+            let tb_items: Vec<_> = dash.items.iter().filter(|i| i.item_type == "teachback_available").collect();
+            assert_eq!(tb_items.len(), 1);
+            assert_eq!(tb_items[0].score, 35);
+            Ok(())
+        }).expect("test failed");
     }
 
     #[test]

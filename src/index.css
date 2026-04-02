@@ -130,6 +130,8 @@ body {
   border-radius: 8px;
   overflow-x: auto;
   margin-bottom: 1em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 .prose-encode pre code {
   background: none;
@@ -147,6 +149,123 @@ body {
 .prose-encode a {
   color: var(--color-accent);
   text-decoration: underline;
+}
+.prose-encode table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+  font-size: 0.9em;
+}
+.prose-encode th,
+.prose-encode td {
+  border: 1px solid var(--color-border);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.prose-encode th {
+  background: var(--color-panel-alt);
+  font-weight: 600;
+}
+.prose-encode tr:nth-child(even) {
+  background: var(--color-panel-alt);
+}
+.prose-encode hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
+}
+.prose-encode img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-bottom: 1em;
+}
+
+/* WebKit drag-and-drop fix for Tauri webview */
+[draggable="true"],
+button[draggable] {
+  -webkit-user-drag: element;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Pixel cat loading animation */
+.pixel-cat {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  animation: cat-bounce 0.6s ease-in-out infinite;
+}
+
+.pixel-cat-body {
+  width: 4px;
+  height: 4px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: transparent;
+  /* ears */
+  box-shadow:
+    8px 0 0 #a78bfa, 24px 0 0 #a78bfa,
+    8px 4px 0 #a78bfa, 12px 4px 0 #a78bfa, 20px 4px 0 #a78bfa, 24px 4px 0 #a78bfa,
+    /* head */
+    8px 8px 0 #a78bfa, 12px 8px 0 #c4b5fd, 16px 8px 0 #c4b5fd, 20px 8px 0 #c4b5fd, 24px 8px 0 #a78bfa,
+    /* eyes */
+    8px 12px 0 #a78bfa, 12px 12px 0 #1e1b4b, 16px 12px 0 #c4b5fd, 20px 12px 0 #1e1b4b, 24px 12px 0 #a78bfa,
+    /* nose/mouth */
+    8px 16px 0 #a78bfa, 12px 16px 0 #c4b5fd, 16px 16px 0 #f9a8d4, 20px 16px 0 #c4b5fd, 24px 16px 0 #a78bfa,
+    /* body */
+    4px 20px 0 #a78bfa, 8px 20px 0 #c4b5fd, 12px 20px 0 #c4b5fd, 16px 20px 0 #c4b5fd, 20px 20px 0 #c4b5fd, 24px 20px 0 #c4b5fd, 28px 20px 0 #a78bfa,
+    4px 24px 0 #a78bfa, 8px 24px 0 #c4b5fd, 12px 24px 0 #c4b5fd, 16px 24px 0 #c4b5fd, 20px 24px 0 #c4b5fd, 24px 24px 0 #c4b5fd, 28px 24px 0 #a78bfa,
+    4px 28px 0 #a78bfa, 8px 28px 0 #c4b5fd, 12px 28px 0 #c4b5fd, 16px 28px 0 #c4b5fd, 20px 28px 0 #c4b5fd, 24px 28px 0 #c4b5fd, 28px 28px 0 #a78bfa,
+    /* legs */
+    4px 32px 0 #a78bfa, 8px 32px 0 #a78bfa, 24px 32px 0 #a78bfa, 28px 32px 0 #a78bfa,
+    /* tail */
+    32px 20px 0 #a78bfa, 36px 16px 0 #a78bfa, 40px 12px 0 #a78bfa;
+}
+
+@keyframes cat-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.loading-dots::after {
+  content: "";
+  animation: dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 40%;
+  }
+  50% {
+    transform: translateX(100%);
+    width: 60%;
+  }
+  100% {
+    transform: translateX(-100%);
+    width: 40%;
+  }
 }
 
 /* Drag region for custom title bar */

@@ -23,6 +23,7 @@ export function CardForm({ onCreated }: CardFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — load once on mount
   useEffect(() => {
     listSubjects()
       .then((data) => {
@@ -32,7 +33,7 @@ export function CardForm({ onCreated }: CardFormProps) {
         }
       })
       .catch(() => {});
-  }, [subjectId]);
+  }, []);
 
   const handleCreate = async () => {
     if (!subjectId || !prompt.trim() || !answer.trim()) return;

@@ -1,10 +1,10 @@
-import { BookOpen, FileText, Search } from "lucide-react";
+import { BookOpen, FileText, Search, StickyNote } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listChapters, listSubjects } from "../../lib/tauri";
+import { listChapters, listNotes, listSubjects } from "../../lib/tauri";
 
 interface SwitcherItem {
-  type: "subject" | "chapter";
+  type: "subject" | "chapter" | "note";
   id: number;
   name: string;
   subjectName?: string;
@@ -50,9 +50,25 @@ export function QuickSwitcher({ open, onClose }: Props) {
               id: ch.id,
               name: ch.title,
               subjectName: subjects[i].name,
-              path: `/reader?chapter=${ch.id}`,
+              path: `/chapter?id=${ch.id}`,
             });
           }
+        }
+
+        // Load notes
+        try {
+          const notes = await listNotes();
+          for (const note of notes) {
+            all.push({
+              type: "note",
+              id: note.id,
+              name: note.title,
+              subjectName: note.subject_name ?? undefined,
+              path: `/notes?id=${note.id}`,
+            });
+          }
+        } catch {
+          // Notes might not be available yet
         }
 
         setItems(all);
@@ -128,7 +144,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search subjects and chapters..."
+            placeholder="Search subjects, chapters, and notes..."
             className="flex-1 bg-transparent text-sm text-text placeholder:text-text-muted/60 focus:outline-none"
           />
           <kbd className="rounded-md border border-border-subtle bg-panel-alt px-1.5 py-0.5 text-[10px] text-text-muted">
@@ -149,6 +165,8 @@ export function QuickSwitcher({ open, onClose }: Props) {
             >
               {item.type === "subject" ? (
                 <BookOpen size={14} className="shrink-0 text-accent/60" />
+              ) : item.type === "note" ? (
+                <StickyNote size={14} className="shrink-0 text-purple-400/60" />
               ) : (
                 <FileText size={14} className="shrink-0" />
               )}

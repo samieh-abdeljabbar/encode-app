@@ -55,6 +55,19 @@ fn insert_card_with_schedule(
     Ok(card_id)
 }
 
+/// Public wrapper for other services to create cards with schedule.
+pub fn insert_card_with_schedule_pub(
+    conn: &Connection,
+    subject_id: i64,
+    chapter_id: Option<i64>,
+    source_type: &str,
+    prompt: &str,
+    answer: &str,
+    card_type: &str,
+) -> Result<i64, String> {
+    insert_card_with_schedule(conn, subject_id, chapter_id, source_type, prompt, answer, card_type)
+}
+
 fn get_card_info(conn: &Connection, card_id: i64) -> Result<CardInfo, String> {
     conn.query_row(
         "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer,
@@ -209,37 +222,33 @@ pub fn update_card(
     get_card_info(conn, card_id)
 }
 
+pub fn delete_card(conn: &Connection, card_id: i64) -> Result<(), String> {
+    conn.execute("DELETE FROM card_reviews WHERE card_id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card reviews: {e}"))?;
+    conn.execute("DELETE FROM card_schedule WHERE card_id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card schedule: {e}"))?;
+    conn.execute("DELETE FROM cards WHERE id = ?1", [card_id])
+        .map_err(|e| format!("Failed to delete card: {e}"))?;
+    Ok(())
+}
+
 pub fn get_practice_cards(
     conn: &Connection,
     subject_id: Option<i64>,
     limit: i64,
 ) -> Result<Vec<crate::services::review::DueCard>, String> {
-    let sql = if let Some(sid) = subject_id {
-        format!(
-            "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
+    let sql = "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
                     cs.stability, cs.difficulty, cs.reps, cs.lapses
              FROM cards c
              JOIN card_schedule cs ON cs.card_id = c.id
-             WHERE c.status = 'active' AND c.subject_id = {sid}
+             WHERE c.status = 'active' AND (?1 IS NULL OR c.subject_id = ?1)
              ORDER BY cs.last_reviewed ASC NULLS FIRST
-             LIMIT {limit}"
-        )
-    } else {
-        format!(
-            "SELECT c.id, c.subject_id, c.chapter_id, c.source_type, c.prompt, c.answer, c.card_type,
-                    cs.stability, cs.difficulty, cs.reps, cs.lapses
-             FROM cards c
-             JOIN card_schedule cs ON cs.card_id = c.id
-             WHERE c.status = 'active'
-             ORDER BY cs.last_reviewed ASC NULLS FIRST
-             LIMIT {limit}"
-        )
-    };
+             LIMIT ?2";
 
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
 
     let cards = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params![subject_id, limit], |row| {
             Ok(crate::services::review::DueCard {
                 id: row.get(0)?,
                 subject_id: row.get(1)?,
@@ -274,7 +283,7 @@ mod tests {
                 [],
             ).unwrap();
             Ok(())
-        });
+        }).expect("test setup");
         db
     }
 
@@ -295,7 +304,7 @@ mod tests {
             assert_eq!(card.source_type, "manual");
             assert!(card.next_review.is_some());
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -320,7 +329,7 @@ mod tests {
             ).unwrap();
             assert_eq!(reversed, "Back");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -338,7 +347,7 @@ mod tests {
             assert_eq!(card.card_type, "cloze");
             assert!(card.prompt.contains("{{mitochondria}}"));
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -368,7 +377,7 @@ mod tests {
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].prompt, "A");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -389,7 +398,7 @@ mod tests {
             let empty = list_cards(conn, None, Some("quantum")).unwrap();
             assert_eq!(empty.len(), 0);
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -406,7 +415,7 @@ mod tests {
             assert_eq!(updated.prompt, "New");
             assert_eq!(updated.answer, "Answer");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -422,7 +431,7 @@ mod tests {
             let updated = update_card(conn, card.id, None, None, Some("suspended")).unwrap();
             assert_eq!(updated.status, "suspended");
             Ok(())
-        });
+        }).expect("test setup");
     }
 
     #[test]
@@ -446,6 +455,6 @@ mod tests {
             let practice = get_practice_cards(conn, None, 50).unwrap();
             assert_eq!(practice.len(), 2);
             Ok(())
-        });
+        }).expect("test setup");
     }
 }

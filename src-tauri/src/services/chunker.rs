@@ -9,8 +9,23 @@ pub struct SectionData {
     pub word_count: i32,
 }
 
-/// Split markdown content into sections on H2 boundaries.
-/// Content before the first H2 becomes section 0 with no heading.
+/// Extract a heading from a markdown line if it starts with #, ##, or ###.
+/// Returns Some((level, title)) for heading lines, None otherwise.
+fn parse_heading(line: &str) -> Option<(u8, String)> {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("### ") {
+        Some((3, rest.trim().to_string()))
+    } else if let Some(rest) = trimmed.strip_prefix("## ") {
+        Some((2, rest.trim().to_string()))
+    } else if let Some(rest) = trimmed.strip_prefix("# ") {
+        Some((1, rest.trim().to_string()))
+    } else {
+        None
+    }
+}
+
+/// Split markdown content into sections on heading boundaries (H1, H2, H3).
+/// Content before the first heading becomes section 0 with no heading.
 /// Empty sections (heading only, no body) are preserved with word_count 0.
 pub fn split_into_sections(markdown: &str) -> Vec<SectionData> {
     let mut sections: Vec<SectionData> = Vec::new();
@@ -19,7 +34,7 @@ pub fn split_into_sections(markdown: &str) -> Vec<SectionData> {
     let mut has_content_before_first_heading = false;
 
     for line in markdown.lines() {
-        if let Some(title) = line.strip_prefix("## ") {
+        if let Some((_level, title)) = parse_heading(line) {
             // Flush the previous section
             if !current_body.is_empty() || current_heading.is_some() || has_content_before_first_heading {
                 let body = current_body.trim().to_string();
@@ -31,7 +46,7 @@ pub fn split_into_sections(markdown: &str) -> Vec<SectionData> {
                     word_count: wc,
                 });
             }
-            current_heading = Some(title.trim().to_string());
+            current_heading = Some(title);
             current_body = String::new();
         } else {
             if current_heading.is_none() && sections.is_empty() && !line.trim().is_empty() {
@@ -130,11 +145,21 @@ mod tests {
     }
 
     #[test]
-    fn test_h1_and_h3_are_not_split_boundaries() {
-        let md = "## Main\n# H1 inside\n### H3 inside\nBody text.";
+    fn test_h1_and_h3_are_split_boundaries() {
+        let md = "# Main Title\nIntro text.\n## Sub Section\nSub text.\n### Detail\nDetail text.";
         let sections = split_into_sections(md);
-        assert_eq!(sections.len(), 1);
-        assert!(sections[0].body_markdown.contains("# H1 inside"));
-        assert!(sections[0].body_markdown.contains("### H3 inside"));
+        assert_eq!(sections.len(), 3);
+        assert_eq!(sections[0].heading.as_deref(), Some("Main Title"));
+        assert_eq!(sections[1].heading.as_deref(), Some("Sub Section"));
+        assert_eq!(sections[2].heading.as_deref(), Some("Detail"));
+    }
+
+    #[test]
+    fn test_h1_only_content_splits_correctly() {
+        let md = "# Chapter One\nFirst content.\n# Chapter Two\nSecond content.";
+        let sections = split_into_sections(md);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].heading.as_deref(), Some("Chapter One"));
+        assert_eq!(sections[1].heading.as_deref(), Some("Chapter Two"));
     }
 }

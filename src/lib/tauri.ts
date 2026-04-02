@@ -67,6 +67,24 @@ export interface AppConfig {
   };
 }
 
+// AI status types
+export interface AiStatus {
+  provider: string;
+  configured: boolean;
+  has_api_key: boolean;
+}
+
+export interface AiRunInfo {
+  id: number;
+  feature: string;
+  provider: string;
+  model: string;
+  status: string;
+  latency_ms: number;
+  error_summary: string | null;
+  created_at: string;
+}
+
 // --- Foundation commands ---
 
 export const getConfig = () => invoke<AppConfig>("get_config");
@@ -78,6 +96,10 @@ export const readFile = (relativePath: string) =>
   invoke<string>("read_file", { relativePath });
 export const writeFile = (relativePath: string, content: string) =>
   invoke<void>("write_file", { relativePath, content });
+
+// AI IPC
+export const checkAiStatus = () => invoke<AiStatus>("check_ai_status");
+export const listAiRuns = () => invoke<AiRunInfo[]>("list_ai_runs");
 
 // --- Library commands ---
 
@@ -104,6 +126,9 @@ export const importUrl = (url: string, subjectId: number) =>
 
 export const searchContent = (query: string) =>
   invoke<SearchResult[]>("search", { query });
+
+export const moveChapter = (chapterId: number, newSubjectId: number) =>
+  invoke<void>("move_chapter", { chapterId, newSubjectId });
 
 // --- Export/backup commands ---
 
@@ -182,6 +207,9 @@ export const submitSectionCheck = (
 export const submitSynthesis = (chapterId: number, synthesisText: string) =>
   invoke<SynthesisResult>("submit_synthesis", { chapterId, synthesisText });
 
+export const generateSectionPrompt = (heading: string | null, body: string) =>
+  invoke<string>("generate_section_prompt", { heading, body });
+
 // Review types
 export interface DueCard {
   id: number;
@@ -226,6 +254,9 @@ export interface QueueSummary {
   due_cards: number;
   chapters_in_progress: number;
   sections_studied_today: number;
+  chapters_completed: number;
+  total_cards: number;
+  quizzes_passed: number;
 }
 
 export interface QueueDashboard {
@@ -236,6 +267,28 @@ export interface QueueDashboard {
 // Queue IPC
 export const getQueueDashboard = () =>
   invoke<QueueDashboard>("get_queue_dashboard");
+
+// Progress types
+export interface SubjectProgress {
+  subject_id: number;
+  subject_name: string;
+  total_chapters: number;
+  chapters_completed: number;
+  total_cards: number;
+  cards_mastered: number;
+  quiz_average: number | null;
+  quizzes_taken: number;
+}
+
+export interface ProgressReport {
+  subjects: SubjectProgress[];
+  overall_quiz_average: number | null;
+  total_study_events: number;
+  streak_days: number;
+}
+
+export const getProgressReport = () =>
+  invoke<ProgressReport>("get_progress_report");
 
 // Card management types
 export interface CardInfo {
@@ -289,6 +342,9 @@ export const updateCard = (
     status: status ?? null,
   });
 
+export const deleteCard = (cardId: number) =>
+  invoke<void>("delete_card", { cardId });
+
 export const getPracticeCards = (subjectId?: number, limit?: number) =>
   invoke<DueCard[]>("get_practice_cards", {
     subjectId: subjectId ?? null,
@@ -301,3 +357,335 @@ export const updateChapterContent = (chapterId: number, markdown: string) =>
 
 export const saveImage = (data: number[], extension: string) =>
   invoke<string>("save_image", { data, extension });
+
+// Quiz types
+export interface QuizQuestion {
+  question_type: string;
+  prompt: string;
+  options: string[] | null;
+  correct_answer: string;
+  section_id: number;
+  section_heading: string | null;
+}
+
+export interface QuestionResult {
+  verdict: string;
+  correct_answer: string;
+  explanation: string | null;
+  repair_card_id: number | null;
+  needs_self_rating: boolean;
+}
+
+export interface QuizAttemptInfo {
+  question_index: number;
+  result: string;
+}
+
+export interface QuizState {
+  id: number;
+  chapter_id: number | null;
+  chapter_title: string;
+  questions: QuizQuestion[];
+  attempts: QuizAttemptInfo[];
+  score: number | null;
+}
+
+export interface QuizSummary {
+  score: number;
+  total: number;
+  correct: number;
+  partial: number;
+  incorrect: number;
+  repair_cards_created: number;
+  retest_scheduled: boolean;
+}
+
+export interface QuizListItem {
+  id: number;
+  chapter_id: number | null;
+  chapter_title: string;
+  subject_name: string;
+  score: number | null;
+  question_count: number;
+  generated_at: string;
+}
+
+// Quiz IPC
+export const listQuizzes = (subjectId?: number) =>
+  invoke<QuizListItem[]>("list_quizzes", { subjectId: subjectId ?? null });
+
+export const deleteQuiz = (quizId: number) =>
+  invoke<void>("delete_quiz", { quizId });
+
+export const generateQuiz = (
+  chapterId: number,
+  difficulty: string,
+  questionCount: number,
+  questionType = "mixed",
+) =>
+  invoke<QuizState>("generate_quiz", {
+    chapterId,
+    difficulty,
+    questionCount,
+    questionType,
+  });
+
+export const submitQuizAnswer = (
+  quizId: number,
+  questionIndex: number,
+  answer: string,
+) =>
+  invoke<QuestionResult>("submit_quiz_answer", {
+    quizId,
+    questionIndex,
+    answer,
+  });
+
+export const submitQuizSelfRating = (
+  quizId: number,
+  questionIndex: number,
+  selfRating: string,
+) =>
+  invoke<QuestionResult>("submit_quiz_self_rating", {
+    quizId,
+    questionIndex,
+    selfRating,
+  });
+
+export const getQuiz = (quizId: number) =>
+  invoke<QuizState>("get_quiz", { quizId });
+
+export const completeQuiz = (quizId: number) =>
+  invoke<QuizSummary>("complete_quiz", { quizId });
+
+// Teach-back types
+export interface TeachbackStart {
+  id: number;
+  prompt: string;
+  chapter_title: string;
+  subject_name: string;
+}
+
+export interface RubricScores {
+  accuracy: number;
+  clarity: number;
+  completeness: number;
+  example: number;
+  jargon: number;
+}
+
+export interface TeachbackResult {
+  mastery: string;
+  scores: RubricScores;
+  overall: number;
+  strongest: string;
+  biggest_gap: string;
+  repair_card_id: number | null;
+  needs_self_rating: boolean;
+}
+
+export interface TeachbackListItem {
+  id: number;
+  chapter_id: number | null;
+  chapter_title: string;
+  subject_name: string;
+  mastery: string | null;
+  created_at: string;
+}
+
+// Teach-back IPC
+export const startTeachback = (chapterId: number) =>
+  invoke<TeachbackStart>("start_teachback", { chapterId });
+
+export const submitTeachback = (teachbackId: number, response: string) =>
+  invoke<TeachbackResult>("submit_teachback", { teachbackId, response });
+
+export const submitTeachbackSelfRating = (
+  teachbackId: number,
+  response: string,
+  ratings: RubricScores,
+) =>
+  invoke<TeachbackResult>("submit_teachback_self_rating", {
+    teachbackId,
+    response,
+    ratings,
+  });
+
+export const listTeachbacks = (subjectId?: number) =>
+  invoke<TeachbackListItem[]>("list_teachbacks", {
+    subjectId: subjectId ?? null,
+  });
+
+// Notes types
+export interface NoteInfo {
+  id: number;
+  title: string;
+  file_path: string;
+  subject_id: number | null;
+  subject_name: string | null;
+  tags: string[];
+  created_at: string;
+  modified_at: string;
+}
+
+export interface NoteDetail {
+  info: NoteInfo;
+  content: string;
+}
+
+export interface NoteSearchResult {
+  note_id: number;
+  title: string;
+  snippet: string;
+  file_path: string;
+}
+
+export interface BacklinkInfo {
+  note_id: number;
+  title: string;
+  context: string;
+}
+
+export interface LinkInfo {
+  target_title: string;
+  target_note_id: number | null;
+  resolved: boolean;
+}
+
+export interface GraphNode {
+  id: number;
+  title: string;
+  subject_id: number | null;
+  link_count: number;
+}
+
+export interface GraphEdge {
+  source: number;
+  target: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Notes IPC
+export const createNote = (
+  title: string,
+  folder: string | null,
+  subjectName: string | null,
+  content: string,
+) => invoke<NoteInfo>("create_note", { title, folder, subjectName, content });
+
+export const getNote = (noteId: number) =>
+  invoke<NoteDetail>("get_note", { noteId });
+
+export const updateNote = (noteId: number, content: string) =>
+  invoke<NoteInfo>("update_note", { noteId, content });
+
+export const deleteNote = (noteId: number) =>
+  invoke<void>("delete_note", { noteId });
+
+export const listNotes = (folder?: string, subjectId?: number, tag?: string) =>
+  invoke<NoteInfo[]>("list_notes", {
+    folder: folder ?? null,
+    subjectId: subjectId ?? null,
+    tag: tag ?? null,
+  });
+
+export const renameNote = (noteId: number, newTitle: string) =>
+  invoke<NoteInfo>("rename_note", { noteId, newTitle });
+
+export const searchNotes = (query: string) =>
+  invoke<NoteSearchResult[]>("search_notes", { query });
+
+export const getBacklinks = (noteId: number) =>
+  invoke<BacklinkInfo[]>("get_backlinks", { noteId });
+
+export const getOutgoingLinks = (noteId: number) =>
+  invoke<LinkInfo[]>("get_outgoing_links", { noteId });
+
+export const getGraphData = () => invoke<GraphData>("get_graph_data");
+
+export const getLocalGraph = (noteId: number, depth: number) =>
+  invoke<GraphData>("get_local_graph", { noteId, depth });
+
+export const listNoteFolders = () => invoke<string[]>("list_note_folders");
+
+export const createNoteFolder = (path: string) =>
+  invoke<void>("create_note_folder", { path });
+
+export const moveNote = (noteId: number, targetFolder: string | null) =>
+  invoke<NoteInfo>("move_note", { noteId, targetFolder });
+
+export const deleteNoteFolder = (path: string) =>
+  invoke<void>("delete_note_folder", { path });
+
+export const getNoteTitles = () =>
+  invoke<[number, string][]>("get_note_titles");
+
+// Pathway types
+export interface ChapterOutline {
+  title: string;
+  description: string;
+  estimated_minutes: number;
+}
+
+export interface PathwayOutline {
+  subject_name: string;
+  chapters: ChapterOutline[];
+}
+
+export interface FlashcardPair {
+  prompt: string;
+  answer: string;
+}
+
+export interface SuggestedUrl {
+  title: string;
+  url: string;
+}
+
+export interface ChapterContent {
+  content: string;
+  flashcards: FlashcardPair[];
+  suggested_urls: SuggestedUrl[];
+}
+
+export interface PathwayResult {
+  subject_id: number;
+  subject_name: string;
+  chapters_created: number;
+  flashcards_created: number;
+  suggested_urls: SuggestedUrl[];
+}
+
+// Pathway IPC
+export const generatePathwayOutline = (
+  topic: string,
+  mastery: string,
+  scope: string,
+) =>
+  invoke<PathwayOutline>("generate_pathway_outline", { topic, mastery, scope });
+
+export const generatePathwayChapter = (
+  topic: string,
+  mastery: string,
+  title: string,
+  description: string,
+  chapterIndex: number,
+  totalChapters: number,
+) =>
+  invoke<ChapterContent>("generate_pathway_chapter", {
+    topic,
+    mastery,
+    title,
+    description,
+    chapterIndex,
+    totalChapters,
+  });
+
+export const createPathwaySubject = (
+  subjectName: string,
+  chapters: [ChapterOutline, ChapterContent][],
+) => invoke<PathwayResult>("create_pathway_subject", { subjectName, chapters });

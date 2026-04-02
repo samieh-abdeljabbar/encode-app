@@ -10,6 +10,7 @@ export interface SlashCommand {
   label: string;
   description: string;
   insert: (view: EditorView) => string;
+  action?: string; // custom action key — triggers callback instead of insert
 }
 
 function todayDate(): string {
@@ -95,8 +96,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     name: "flashcard",
     label: "Flashcard",
-    description: "Q&A flashcard template",
-    insert: () => "Q: \nA: ",
+    description: "Create a flashcard",
+    insert: () => "",
+    action: "flashcard",
   },
   {
     name: "definition",
@@ -244,6 +246,12 @@ function positionMenu(el: HTMLDivElement, view: EditorView): void {
 // Plugin class
 // ---------------------------------------------------------------------------
 
+export type SlashActionHandler = (
+  action: string,
+  view: EditorView,
+  pos: number,
+) => void;
+
 class SlashMenuPlugin {
   private active = false;
   private filter = "";
@@ -252,9 +260,11 @@ class SlashMenuPlugin {
   private filteredCommands: SlashCommand[] = [];
   private menuEl: HTMLDivElement;
   private view: EditorView;
+  private onAction: SlashActionHandler | undefined;
 
-  constructor(view: EditorView) {
+  constructor(view: EditorView, onAction?: SlashActionHandler) {
     this.view = view;
+    this.onAction = onAction;
     this.menuEl = createMenuEl();
     document.body.appendChild(this.menuEl);
 
@@ -384,6 +394,17 @@ class SlashMenuPlugin {
 
   private insertCommand(cmd: SlashCommand): void {
     const cursorPos = this.view.state.selection.main.head;
+
+    if (cmd.action && this.onAction) {
+      // Remove the slash text first
+      this.view.dispatch({
+        changes: { from: this.anchorPos, to: cursorPos, insert: "" },
+      });
+      this.deactivate();
+      this.onAction(cmd.action, this.view, this.anchorPos);
+      return;
+    }
+
     const text = cmd.insert(this.view);
 
     this.view.dispatch({
@@ -418,10 +439,10 @@ class SlashMenuPlugin {
 // WeakMap to expose plugin instances for the keydown event handler
 const pluginInstances = new WeakMap<EditorView, SlashMenuPlugin>();
 
-export function slashCommands(): Extension {
+export function slashCommands(onAction?: SlashActionHandler): Extension {
   return ViewPlugin.define(
     (view) => {
-      const instance = new SlashMenuPlugin(view);
+      const instance = new SlashMenuPlugin(view, onAction);
       pluginInstances.set(view, instance);
       return {
         update(update: ViewUpdate) {

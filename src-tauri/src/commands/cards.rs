@@ -44,6 +44,14 @@ pub fn update_card(
 }
 
 #[tauri::command]
+pub fn delete_card(
+    state: tauri::State<'_, AppState>,
+    card_id: i64,
+) -> Result<(), String> {
+    state.db.with_conn(|conn| cards::delete_card(conn, card_id))
+}
+
+#[tauri::command]
 pub fn get_practice_cards(
     state: tauri::State<'_, AppState>,
     subject_id: Option<i64>,

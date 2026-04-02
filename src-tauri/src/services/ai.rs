@@ -164,7 +164,7 @@ async fn call_openai_compatible(
 
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "messages": [
             { "role": "system", "content": system },
             { "role": "user", "content": user }
@@ -207,7 +207,7 @@ async fn call_claude(
 ) -> Result<(String, String), String> {
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "system": system,
         "messages": [
             { "role": "user", "content": user }
@@ -296,25 +296,21 @@ async fn call_gemini(
 
 // ── CLI provider ──
 
-const CLI_ALLOWLIST: &[&str] = &[
-    "claude", "gemini", "sgpt", "ollama", "aichat", "llm", "chatgpt",
-];
-
 const CLI_BLOCKLIST: &[&str] = &[
     "rm", "dd", "bash", "sh", "zsh", "curl", "wget", "python", "node",
     "sudo", "chmod", "chown", "kill", "mkfs", "fdisk",
 ];
 
 fn validate_cli_command(command: &str) -> Result<(), String> {
-    let base = command.split('/').last().unwrap_or(command);
+    let base = command
+        .split('/')
+        .last()
+        .unwrap_or(command)
+        .split('.')
+        .next()
+        .unwrap_or(command);
     if CLI_BLOCKLIST.contains(&base) {
         return Err(format!("CLI command '{base}' is blocked for security"));
-    }
-    if !CLI_ALLOWLIST.contains(&base) {
-        return Err(format!(
-            "CLI command '{base}' is not in the allowlist. Allowed: {}",
-            CLI_ALLOWLIST.join(", ")
-        ));
     }
     Ok(())
 }
@@ -330,15 +326,26 @@ fn call_cli_blocking(
 
     let full_prompt = format!("{system}\n\n{user}");
 
+    // Pass prompt via stdin pipe (not as CLI arg — prompts can exceed OS arg length limits)
+    // Use configured args + "-p" flag with "-" to read from stdin for claude CLI
+    let mut full_args: Vec<String> = args.to_vec();
+    // Add the prompt as a short positional arg hint, truncated to avoid arg limits
+    let short_hint = if full_prompt.len() > 1000 {
+        format!("{}...", &full_prompt[..1000])
+    } else {
+        full_prompt.clone()
+    };
+    full_args.push(short_hint);
+
     let mut child = std::process::Command::new(command)
-        .args(args)
+        .args(&full_args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn CLI command '{command}': {e}"))?;
 
-    // Write prompt to stdin
+    // Write full prompt to stdin
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
         let _ = stdin.write_all(full_prompt.as_bytes());
@@ -491,6 +498,48 @@ pub fn check_status(config: &AiConfig) -> AiStatus {
     AiStatus { provider, configured, has_api_key }
 }
 
+#[derive(Serialize)]
+pub struct AiRunInfo {
+    pub id: i64,
+    pub feature: String,
+    pub provider: String,
+    pub model: String,
+    pub status: String,
+    pub latency_ms: i64,
+    pub error_summary: Option<String>,
+    pub created_at: String,
+}
+
+pub fn list_ai_runs(conn: &rusqlite::Connection) -> Result<Vec<AiRunInfo>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, feature, provider, model, status, latency_ms, error_summary, created_at
+             FROM ai_runs
+             ORDER BY created_at DESC
+             LIMIT 20",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let runs = stmt
+        .query_map([], |row| {
+            Ok(AiRunInfo {
+                id: row.get(0)?,
+                feature: row.get(1)?,
+                provider: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                latency_ms: row.get(5)?,
+                error_summary: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(runs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -620,13 +669,14 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_allowlist_accepts_claude() {
+    fn test_cli_accepts_claude() {
         assert!(validate_cli_command("claude").is_ok());
     }
 
     #[test]
-    fn test_cli_allowlist_accepts_gemini() {
-        assert!(validate_cli_command("gemini").is_ok());
+    fn test_cli_accepts_custom_scripts() {
+        assert!(validate_cli_command("encode-claude.sh").is_ok());
+        assert!(validate_cli_command("/usr/local/bin/my-ai-tool").is_ok());
     }
 
     #[test]
@@ -640,8 +690,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_unknown_command_rejected() {
-        assert!(validate_cli_command("my_random_tool").is_err());
+    fn test_cli_accepts_unknown_commands() {
+        // Any non-blocklisted command is allowed (user configured it themselves)
+        assert!(validate_cli_command("my_random_tool").is_ok());
     }
 
     #[test]
