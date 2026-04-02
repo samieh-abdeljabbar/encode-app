@@ -168,9 +168,9 @@ export function Pathway() {
           </div>
 
           <div>
-            <span className="mb-2 block text-sm font-medium text-text">
+            <div className="mb-2 text-sm font-medium text-text">
               Mastery Level
-            </span>
+            </div>
             <div className="flex gap-2">
               {[
                 {
@@ -207,9 +207,7 @@ export function Pathway() {
           </div>
 
           <div>
-            <span className="mb-2 block text-sm font-medium text-text">
-              Scope
-            </span>
+            <div className="mb-2 text-sm font-medium text-text">Scope</div>
             <div className="flex gap-2">
               {[
                 {
@@ -322,7 +320,7 @@ export function Pathway() {
         <div className="flex-1 space-y-2 overflow-auto">
           {editableChapters.map((ch, i) => (
             <div
-              key={`ch-${ch.title}-${i}`}
+              key={`ch-${ch.title}`}
               className="flex items-center gap-2 rounded-lg border border-border bg-panel p-3"
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/10 text-[10px] font-bold text-accent">

@@ -111,6 +111,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   }, [note]);
 
   // Initialize CodeMirror ONCE when initial content is ready
+  // biome-ignore lint/correctness/useExhaustiveDependencies: note triggers the effect once when loaded; early return guards against re-runs
   useEffect(() => {
     if (!containerRef.current || initialContentRef.current === null) return;
     if (viewRef.current) return;
