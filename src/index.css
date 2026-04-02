@@ -180,6 +180,14 @@ body {
   margin-bottom: 1em;
 }
 
+/* WebKit drag-and-drop fix for Tauri webview */
+[draggable="true"],
+button[draggable] {
+  -webkit-user-drag: element;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Pixel cat loading animation */
 .pixel-cat {
   position: relative;
