@@ -16,6 +16,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Check, Pencil, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { livePreviewDecorations } from "../components/editor/cm-decorations";
 import { parchmentTheme } from "../components/editor/cm-theme";
 import { wikilinkExtension } from "../components/editor/cm-wikilink";
 import { BacklinksPanel } from "../components/notes/BacklinksPanel";
@@ -117,6 +118,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
       doc: initialContentRef.current,
       extensions: [
         parchmentTheme,
+        livePreviewDecorations,
         wikilinkExtension(() => getNoteTitles()),
         markdown({
           base: markdownLanguage,
