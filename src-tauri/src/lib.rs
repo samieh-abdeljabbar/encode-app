@@ -70,6 +70,7 @@ fn write_file(
 pub fn run() {
     let vault_path = resolve_vault_path();
     ensure_vault_dirs(&vault_path).expect("failed to initialize vault directories");
+    std::fs::create_dir_all(vault_path.join("notes")).ok();
 
     let encode_dir = vault_path.join(".encode");
     let db = Database::open(&encode_dir.join("encode.db")).expect("failed to open database");
@@ -182,6 +183,20 @@ pub fn run() {
             commands::teachback::submit_teachback,
             commands::teachback::submit_teachback_self_rating,
             commands::teachback::list_teachbacks,
+            commands::notes::create_note,
+            commands::notes::get_note,
+            commands::notes::update_note,
+            commands::notes::delete_note,
+            commands::notes::list_notes,
+            commands::notes::rename_note,
+            commands::notes::search_notes,
+            commands::notes::get_backlinks,
+            commands::notes::get_outgoing_links,
+            commands::notes::get_graph_data,
+            commands::notes::get_local_graph,
+            commands::notes::list_note_folders,
+            commands::notes::create_note_folder,
+            commands::notes::get_note_titles,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

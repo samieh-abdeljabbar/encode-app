@@ -2,6 +2,7 @@ pub mod ai;
 pub mod cards;
 pub mod export;
 pub mod library;
+pub mod notes;
 pub mod queue;
 pub mod quiz;
 pub mod reader;
