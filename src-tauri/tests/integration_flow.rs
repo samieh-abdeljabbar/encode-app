@@ -2,7 +2,7 @@
 //! These exercise the full backend service layer with an in-memory SQLite database.
 
 use app_lib::db::Database;
-use app_lib::services::{cards, chunker, quiz, queue, reader, review, teachback};
+use app_lib::services::{cards, chunker, notes, note_links, quiz, queue, reader, review, teachback};
 
 fn setup() -> Database {
     let db = Database::open_memory().expect("Failed to create in-memory DB");
@@ -508,4 +508,80 @@ fn test_teachback_flow() {
         Ok(())
     })
     .expect("test_teachback_flow failed");
+}
+
+// ──────────────────────────────────────────────
+// Test 7: Notes Full Flow
+// ──────────────────────────────────────────────
+
+#[test]
+fn test_notes_full_flow() {
+    let db = setup();
+    let tmp = tempfile::tempdir().expect("tmpdir");
+    std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
+
+    db.with_conn(|conn| {
+        // 1. Create notes with wikilinks
+        let note_a = notes::create_note(conn, tmp.path(), "Binary Trees", None, None, "A binary tree has at most two children. See [[Hash Tables]] for comparison.").unwrap();
+        assert_eq!(note_a.title, "Binary Trees");
+        assert!(note_a.file_path.ends_with(".md"));
+
+        let note_b = notes::create_note(conn, tmp.path(), "Hash Tables", None, None, "Hash tables provide O(1) lookup. Related: [[Binary Trees]].").unwrap();
+
+        // 2. Resolve links and verify backlinks
+        note_links::resolve_links(conn).unwrap();
+
+        let backlinks_a = note_links::get_backlinks(conn, note_a.id).unwrap();
+        assert_eq!(backlinks_a.len(), 1);
+        assert_eq!(backlinks_a[0].title, "Hash Tables");
+
+        let backlinks_b = note_links::get_backlinks(conn, note_b.id).unwrap();
+        assert_eq!(backlinks_b.len(), 1);
+        assert_eq!(backlinks_b[0].title, "Binary Trees");
+
+        // 3. Get note content
+        let detail = notes::get_note(conn, tmp.path(), note_a.id).unwrap();
+        assert!(detail.content.contains("binary tree"));
+
+        // 4. Graph data
+        let graph = note_links::get_graph_data(conn).unwrap();
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 2); // bidirectional
+
+        // 5. Local graph
+        let local = note_links::get_local_graph(conn, note_a.id, 1).unwrap();
+        assert_eq!(local.nodes.len(), 2);
+
+        // 6. Rename note — backlinks should update
+        let renamed = notes::rename_note(conn, tmp.path(), note_a.id, "BST Overview").unwrap();
+        assert_eq!(renamed.title, "BST Overview");
+
+        // 7. Search — FTS5 uses token matching, search for a single word
+        let results = notes::search_notes(conn, "lookup").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "Hash Tables");
+
+        // 8. Create note in folder
+        notes::create_folder(tmp.path(), "algorithms").unwrap();
+        let foldered = notes::create_note(conn, tmp.path(), "Sorting", Some("algorithms"), None, "Merge sort and quicksort").unwrap();
+        assert!(foldered.file_path.starts_with("algorithms/"));
+
+        // 9. List with filter
+        let all = notes::list_notes(conn, None, None, None).unwrap();
+        assert_eq!(all.len(), 3);
+        let in_folder = notes::list_notes(conn, Some("algorithms"), None, None).unwrap();
+        assert_eq!(in_folder.len(), 1);
+
+        // 10. Delete
+        notes::delete_note(conn, tmp.path(), foldered.id).unwrap();
+        let after_delete = notes::list_notes(conn, None, None, None).unwrap();
+        assert_eq!(after_delete.len(), 2);
+
+        // 11. Note titles for autocomplete
+        let titles = notes::get_note_titles(conn).unwrap();
+        assert_eq!(titles.len(), 2);
+
+        Ok(())
+    })
+    .expect("test_notes_full_flow failed");
 }
