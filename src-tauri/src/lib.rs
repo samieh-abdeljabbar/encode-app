@@ -197,6 +197,9 @@ pub fn run() {
             commands::notes::list_note_folders,
             commands::notes::create_note_folder,
             commands::notes::get_note_titles,
+            commands::pathway::generate_pathway_outline,
+            commands::pathway::generate_pathway_chapter,
+            commands::pathway::create_pathway_subject,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

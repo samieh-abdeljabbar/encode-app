@@ -1,11 +1,13 @@
-import { Inbox } from "lucide-react";
+import { Inbox, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { QueueItemRow } from "../components/queue/QueueItemRow";
 import { QueueStats } from "../components/queue/QueueStats";
 import type { QueueDashboard } from "../lib/tauri";
 import { getQueueDashboard } from "../lib/tauri";
 
 export function Queue() {
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<QueueDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,24 @@ export function Queue() {
       </h1>
 
       <QueueStats summary={dashboard.summary} />
+
+      <button
+        type="button"
+        onClick={() => navigate("/pathway")}
+        className="mt-6 flex w-full items-center gap-3 rounded-xl border border-accent/20 bg-accent/5 p-4 text-left transition-all hover:border-accent/40 hover:bg-accent/10"
+      >
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+          <Sparkles size={18} className="text-accent" />
+        </div>
+        <div>
+          <div className="text-sm font-medium text-text">
+            Learn Something New
+          </div>
+          <div className="text-xs text-text-muted">
+            AI generates a full curriculum for any topic
+          </div>
+        </div>
+      </button>
 
       <div className="mt-8">
         {dashboard.items.length > 0 ? (

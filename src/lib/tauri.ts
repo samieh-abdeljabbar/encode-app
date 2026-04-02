@@ -611,3 +611,69 @@ export const createNoteFolder = (path: string) =>
 
 export const getNoteTitles = () =>
   invoke<[number, string][]>("get_note_titles");
+
+// Pathway types
+export interface ChapterOutline {
+  title: string;
+  description: string;
+  estimated_minutes: number;
+}
+
+export interface PathwayOutline {
+  subject_name: string;
+  chapters: ChapterOutline[];
+}
+
+export interface FlashcardPair {
+  prompt: string;
+  answer: string;
+}
+
+export interface SuggestedUrl {
+  title: string;
+  url: string;
+}
+
+export interface ChapterContent {
+  content: string;
+  flashcards: FlashcardPair[];
+  suggested_urls: SuggestedUrl[];
+}
+
+export interface PathwayResult {
+  subject_id: number;
+  subject_name: string;
+  chapters_created: number;
+  flashcards_created: number;
+  suggested_urls: SuggestedUrl[];
+}
+
+// Pathway IPC
+export const generatePathwayOutline = (
+  topic: string,
+  mastery: string,
+  scope: string,
+) =>
+  invoke<PathwayOutline>("generate_pathway_outline", { topic, mastery, scope });
+
+export const generatePathwayChapter = (
+  topic: string,
+  mastery: string,
+  title: string,
+  description: string,
+  chapterIndex: number,
+  totalChapters: number,
+) =>
+  invoke<ChapterContent>("generate_pathway_chapter", {
+    topic,
+    mastery,
+    title,
+    description,
+    chapterIndex,
+    totalChapters,
+  });
+
+export const createPathwaySubject = (
+  subjectName: string,
+  chapters: [ChapterOutline, ChapterContent][],
+) => invoke<PathwayResult>("create_pathway_subject", { subjectName, chapters });

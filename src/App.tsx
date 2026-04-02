@@ -10,6 +10,7 @@ import { Graph } from "./pages/Graph";
 import { Library } from "./pages/Library";
 import { Notes } from "./pages/Notes";
 import { Onboarding } from "./pages/Onboarding";
+import { Pathway } from "./pages/Pathway";
 import { Progress } from "./pages/Progress";
 import { Queue } from "./pages/Queue";
 import { Quiz } from "./pages/Quiz";
@@ -80,6 +81,7 @@ function AppContent() {
           <Route path="/teachback" element={<Teachback />} />
           <Route path="/notes" element={<Notes />} />
           <Route path="/graph" element={<Graph />} />
+          <Route path="/pathway" element={<Pathway />} />
         </Route>
       </Routes>
     </MemoryRouter>

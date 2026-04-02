@@ -15,4 +15,5 @@ pub mod snapshot;
 pub mod teachback;
 pub mod note_links;
 pub mod notes;
+pub mod pathway;
 pub mod vault_fs;
