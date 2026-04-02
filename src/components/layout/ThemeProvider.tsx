@@ -41,9 +41,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const theme = THEMES.find((t) => t.name === themeName) ?? THEMES[0];
 
-  // Apply theme CSS variables to :root
+  // Apply theme CSS variables to :root (clean up stale properties on switch)
   useEffect(() => {
     const root = document.documentElement;
+    // Collect all possible theme keys across all themes
+    const allKeys = new Set<string>();
+    for (const t of THEMES) {
+      for (const key of Object.keys(t.colors)) {
+        allKeys.add(key);
+      }
+    }
+    // Remove all theme properties first (prevents leaking from previous theme)
+    for (const key of allKeys) {
+      root.style.removeProperty(key);
+    }
+    // Apply current theme
     for (const [key, value] of Object.entries(theme.colors)) {
       root.style.setProperty(key, value);
     }
