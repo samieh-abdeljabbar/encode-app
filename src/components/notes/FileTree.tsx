@@ -1,129 +1,183 @@
-import { ChevronRight, Folder, FolderOpen, Plus } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  Plus,
+} from "lucide-react";
+import { useState } from "react";
+import type { NoteInfo } from "../../lib/tauri";
 
 interface FileTreeProps {
   folders: string[];
-  selectedFolder: string | null;
-  onSelectFolder: (folder: string | null) => void;
+  notes: NoteInfo[];
+  selectedNoteId: number | null;
+  onSelectNote: (noteId: number) => void;
+  onCreateNote: (folder: string | null) => void;
   onCreateFolder: (path: string) => void;
 }
 
 export function FileTree({
   folders,
-  selectedFolder,
-  onSelectFolder,
+  notes,
+  selectedNoteId,
+  onSelectNote,
+  onCreateNote,
   onCreateFolder,
 }: FileTreeProps) {
-  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(folders));
+  const [newFolderInput, setNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
 
-  const handleCreate = useCallback(() => {
-    const trimmed = newFolderName.trim();
-    if (!trimmed) return;
-    onCreateFolder(trimmed);
-    setNewFolderName("");
-    setShowNewFolder(false);
-  }, [newFolderName, onCreateFolder]);
+  const toggleFolder = (folder: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(folder)) next.delete(folder);
+      else next.add(folder);
+      return next;
+    });
+  };
+
+  // Group notes by folder
+  const rootNotes = notes.filter((n) => !n.file_path.includes("/"));
+  const folderNotes = (folder: string) =>
+    notes.filter(
+      (n) =>
+        n.file_path.startsWith(`${folder}/`) &&
+        !n.file_path.slice(folder.length + 1).includes("/"),
+    );
+
+  const handleNewFolder = () => {
+    if (newFolderName.trim()) {
+      onCreateFolder(newFolderName.trim());
+      setNewFolderName("");
+      setNewFolderInput(false);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border-subtle/60 px-5 py-4">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.15em] text-text-muted">
-          Folders
-        </h2>
-        <button
-          type="button"
-          onClick={() => setShowNewFolder(true)}
-          aria-label="New folder"
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-accent"
-        >
-          <Plus size={14} />
-        </button>
+      <div className="flex items-center justify-between border-b border-border-subtle/60 px-3 py-2">
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+          Notes
+        </span>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => onCreateNote(null)}
+            aria-label="New note"
+            className="rounded p-1 text-text-muted hover:bg-panel-active hover:text-text"
+          >
+            <FileText size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setNewFolderInput(true)}
+            aria-label="New folder"
+            className="rounded p-1 text-text-muted hover:bg-panel-active hover:text-text"
+          >
+            <Plus size={12} />
+          </button>
+        </div>
       </div>
 
-      {showNewFolder && (
-        <div className="border-b border-border-subtle px-5 py-3">
-          <input
-            type="text"
-            value={newFolderName}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreate();
-              if (e.key === "Escape") setShowNewFolder(false);
-            }}
-            placeholder="Folder name..."
-            autoFocus
-            className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-xs text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
-          />
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={handleCreate}
-              className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-accent/90"
-            >
-              Create
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowNewFolder(false)}
-              className="rounded-lg px-3 py-1 text-xs text-text-muted hover:text-text"
-            >
-              Cancel
-            </button>
+      <div className="flex-1 overflow-auto px-1 py-1">
+        {/* New folder input */}
+        {newFolderInput && (
+          <div className="px-2 py-1">
+            <input
+              type="text"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleNewFolder();
+                if (e.key === "Escape") setNewFolderInput(false);
+              }}
+              onBlur={handleNewFolder}
+              placeholder="Folder name..."
+              autoFocus
+              className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
+            />
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="flex-1 overflow-auto px-3 py-3">
-        {/* All Notes option */}
-        <button
-          type="button"
-          onClick={() => onSelectFolder(null)}
-          className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all ${
-            selectedFolder === null
-              ? "bg-accent/10 font-medium text-accent shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
-              : "text-text-muted hover:bg-panel-active hover:text-text"
-          }`}
-        >
-          <FolderOpen
-            size={14}
-            className={`shrink-0 ${selectedFolder === null ? "text-accent" : ""}`}
-          />
-          <span className="flex-1 truncate">All Notes</span>
-        </button>
+        {/* Root notes (not in any folder) */}
+        {rootNotes.map((note) => (
+          <button
+            key={note.id}
+            type="button"
+            onClick={() => onSelectNote(note.id)}
+            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
+              selectedNoteId === note.id
+                ? "bg-accent/10 text-accent"
+                : "text-text-muted hover:bg-panel-active hover:text-text"
+            }`}
+          >
+            <FileText size={12} className="shrink-0" />
+            <span className="truncate">{note.title}</span>
+          </button>
+        ))}
 
-        {/* Folder list */}
+        {/* Folders with nested notes */}
         {folders.map((folder) => {
-          const isActive = selectedFolder === folder;
+          const isOpen = expanded.has(folder);
+          const items = folderNotes(folder);
           return (
-            <button
-              key={folder}
-              type="button"
-              onClick={() => onSelectFolder(folder)}
-              className={`mt-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all ${
-                isActive
-                  ? "bg-accent/10 font-medium text-accent shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
-                  : "text-text-muted hover:bg-panel-active hover:text-text"
-              }`}
-            >
-              <ChevronRight
-                size={12}
-                className={`shrink-0 transition-transform ${isActive ? "rotate-90 text-accent" : ""}`}
-              />
-              <Folder
-                size={14}
-                className={`shrink-0 ${isActive ? "text-accent" : ""}`}
-              />
-              <span className="flex-1 truncate">{folder}</span>
-            </button>
+            <div key={folder}>
+              <div className="group flex items-center">
+                <button
+                  type="button"
+                  onClick={() => toggleFolder(folder)}
+                  className="flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs font-medium text-text-muted hover:bg-panel-active hover:text-text"
+                >
+                  {isOpen ? (
+                    <ChevronDown size={12} />
+                  ) : (
+                    <ChevronRight size={12} />
+                  )}
+                  <FolderOpen size={12} className="text-amber-400/70" />
+                  <span className="truncate">{folder.split("/").pop()}</span>
+                  <span className="ml-auto text-[10px] text-text-muted/40">
+                    {items.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCreateNote(folder);
+                  }}
+                  className="mr-1 rounded p-0.5 text-text-muted/30 opacity-0 transition-opacity group-hover:opacity-100 hover:text-text"
+                  aria-label={`New note in ${folder}`}
+                >
+                  <Plus size={11} />
+                </button>
+              </div>
+              {isOpen &&
+                items.map((note) => (
+                  <button
+                    key={note.id}
+                    type="button"
+                    onClick={() => onSelectNote(note.id)}
+                    className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors ${
+                      selectedNoteId === note.id
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-muted hover:bg-panel-active hover:text-text"
+                    }`}
+                  >
+                    <FileText size={11} className="shrink-0" />
+                    <span className="truncate">{note.title}</span>
+                  </button>
+                ))}
+            </div>
           );
         })}
 
-        {folders.length === 0 && (
+        {folders.length === 0 && rootNotes.length === 0 && (
           <div className="px-4 py-10 text-center">
-            <p className="text-xs text-text-muted/50">No folders yet</p>
+            <p className="text-xs text-text-muted/50">No notes yet</p>
             <p className="mt-1 text-[10px] text-text-muted/40">
-              Click + to create one
+              Click the icons above to get started
             </p>
           </div>
         )}

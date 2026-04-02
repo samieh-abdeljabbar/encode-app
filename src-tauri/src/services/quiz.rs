@@ -482,17 +482,8 @@ fn create_repair_card(
     question: &QuizQuestion,
     user_answer: &str,
 ) -> Result<i64, String> {
-    let prompt = format!(
-        "Quiz miss: {}",
-        question
-            .section_heading
-            .as_deref()
-            .unwrap_or("this section")
-    );
-    let answer = format!(
-        "Q: {}\nYour answer: {}\nCorrect: {}",
-        question.prompt, user_answer, question.correct_answer
-    );
+    let prompt = question.prompt.clone();
+    let answer = question.correct_answer.clone();
 
     conn.execute(
         "INSERT INTO cards (subject_id, chapter_id, source_type, prompt, answer, card_type, status, created_at)

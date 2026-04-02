@@ -8,7 +8,6 @@ import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
 import { Graph } from "./pages/Graph";
 import { Library } from "./pages/Library";
-import { NoteEditor } from "./pages/NoteEditor";
 import { Notes } from "./pages/Notes";
 import { Onboarding } from "./pages/Onboarding";
 import { Progress } from "./pages/Progress";
@@ -80,7 +79,6 @@ function AppContent() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/teachback" element={<Teachback />} />
           <Route path="/notes" element={<Notes />} />
-          <Route path="/notes/:id" element={<NoteEditor />} />
           <Route path="/graph" element={<Graph />} />
         </Route>
       </Routes>

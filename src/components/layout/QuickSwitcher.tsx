@@ -64,7 +64,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
               id: note.id,
               name: note.title,
               subjectName: note.subject_name ?? undefined,
-              path: `/notes/${note.id}`,
+              path: `/notes?id=${note.id}`,
             });
           }
         } catch {

@@ -121,7 +121,7 @@ export function Graph() {
   const handleNodeClick = useCallback(
     (node: NodeObject<GNode>) => {
       if (node.id != null) {
-        navigate(`/notes/${node.id}`);
+        navigate(`/notes?id=${node.id}`);
       }
     },
     [navigate],

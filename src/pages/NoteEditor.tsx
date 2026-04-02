@@ -13,9 +13,9 @@ import {
 } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { ArrowLeft, Check, Pencil, Tag, Trash2 } from "lucide-react";
+import { Check, Pencil, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { parchmentTheme } from "../components/editor/cm-theme";
 import { wikilinkExtension } from "../components/editor/cm-wikilink";
 import { BacklinksPanel } from "../components/notes/BacklinksPanel";
@@ -28,10 +28,13 @@ import {
 } from "../lib/tauri";
 import type { NoteDetail } from "../lib/tauri";
 
-export function NoteEditor() {
-  const { id } = useParams<{ id: string }>();
+interface NoteEditorProps {
+  noteId: number;
+  onNoteChanged?: () => void;
+}
+
+export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   const navigate = useNavigate();
-  const noteId = Number(id);
 
   const [note, setNote] = useState<NoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,22 +69,26 @@ export function NoteEditor() {
   }, [loadNote]);
 
   // Auto-save debounce
-  const debouncedSave = useCallback((content: string) => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = setTimeout(async () => {
-      setSaving(true);
-      try {
-        const updated = await updateNote(noteIdRef.current, content);
-        setNote((prev) => (prev ? { ...prev, info: updated } : prev));
-      } catch {
-        // Silently fail — next save will retry
-      } finally {
-        setSaving(false);
+  const debouncedSave = useCallback(
+    (content: string) => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
       }
-    }, 1000);
-  }, []);
+      saveTimerRef.current = setTimeout(async () => {
+        setSaving(true);
+        try {
+          const updated = await updateNote(noteIdRef.current, content);
+          setNote((prev) => (prev ? { ...prev, info: updated } : prev));
+          onNoteChanged?.();
+        } catch {
+          // Silently fail - next save will retry
+        } finally {
+          setSaving(false);
+        }
+      }, 1000);
+    },
+    [onNoteChanged],
+  );
 
   // Cleanup save timer on unmount
   useEffect(() => {
@@ -182,6 +189,7 @@ export function NoteEditor() {
     try {
       const updated = await renameNote(noteId, trimmed);
       setNote((prev) => (prev ? { ...prev, info: updated } : prev));
+      onNoteChanged?.();
     } catch (e) {
       setError(String(e));
     }
@@ -191,6 +199,7 @@ export function NoteEditor() {
   const handleDelete = async () => {
     try {
       await deleteNote(noteId);
+      onNoteChanged?.();
       navigate("/notes");
     } catch (e) {
       setError(String(e));
@@ -209,14 +218,6 @@ export function NoteEditor() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <p className="text-sm text-coral">{error ?? "Note not found"}</p>
-        <button
-          type="button"
-          onClick={() => navigate("/notes")}
-          className="flex items-center gap-1.5 text-sm text-text-muted hover:text-accent"
-        >
-          <ArrowLeft size={14} />
-          Back to Notes
-        </button>
       </div>
     );
   }
@@ -228,15 +229,6 @@ export function NoteEditor() {
         {/* Header */}
         <div className="shrink-0 border-b border-border-subtle/60 px-7 py-4">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/notes")}
-              aria-label="Back to notes"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-text"
-            >
-              <ArrowLeft size={16} />
-            </button>
-
             <div className="min-w-0 flex-1">
               {editingTitle ? (
                 <input

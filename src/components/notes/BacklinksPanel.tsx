@@ -85,7 +85,7 @@ export function BacklinksPanel({
           <button
             key={bl.note_id}
             type="button"
-            onClick={() => navigate(`/notes/${bl.note_id}`)}
+            onClick={() => navigate(`/notes?id=${bl.note_id}`)}
             className="mb-2 w-full rounded-lg border border-border bg-surface p-3 text-left transition-all hover:border-accent/25 hover:shadow-sm"
           >
             <div className="flex items-center gap-1.5">
