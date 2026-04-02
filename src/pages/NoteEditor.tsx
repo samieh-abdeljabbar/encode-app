@@ -77,8 +77,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
       saveTimerRef.current = setTimeout(async () => {
         setSaving(true);
         try {
-          const updated = await updateNote(noteIdRef.current, content);
-          setNote((prev) => (prev ? { ...prev, info: updated } : prev));
+          await updateNote(noteIdRef.current, content);
           onNoteChanged?.();
         } catch {
           // Silently fail - next save will retry
@@ -99,14 +98,23 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
     };
   }, []);
 
-  // Initialize CodeMirror once note is loaded
+  // Track initial content to avoid re-creating editor
+  const initialContentRef = useRef<string | null>(null);
+
+  // Set initial content when note first loads
   useEffect(() => {
-    if (!containerRef.current || !note) return;
-    // Don't re-create if already mounted for this note
+    if (note && initialContentRef.current === null) {
+      initialContentRef.current = note.content;
+    }
+  }, [note]);
+
+  // Initialize CodeMirror ONCE when initial content is ready
+  useEffect(() => {
+    if (!containerRef.current || initialContentRef.current === null) return;
     if (viewRef.current) return;
 
     const state = EditorState.create({
-      doc: note.content,
+      doc: initialContentRef.current,
       extensions: [
         parchmentTheme,
         wikilinkExtension(() => getNoteTitles()),
@@ -177,6 +185,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
     return () => {
       view.destroy();
       viewRef.current = null;
+      initialContentRef.current = null;
     };
   }, [note, debouncedSave]);
 

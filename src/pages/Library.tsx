@@ -2,11 +2,8 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
-  ClipboardCheck,
-  Clock,
   FileText,
   Globe,
-  MessageSquare,
   Plus,
   Search,
   Trash2,
@@ -531,80 +528,10 @@ export function Library() {
                 </div>
               )}
 
-              {/* Chapter list in main area */}
-              {chapters.map((chapter) => (
-                <button
-                  key={chapter.id}
-                  type="button"
-                  onClick={() => navigate(`/chapter?id=${chapter.id}`)}
-                  className="mb-3 flex w-full items-center gap-4 rounded-xl border border-border bg-panel p-5 text-left transition-all hover:border-accent/25 hover:shadow-sm"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/6">
-                    <FileText size={15} className="text-accent/70" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium tracking-tight text-text">
-                      {chapter.title}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2.5 text-xs text-text-muted">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-accent-soft/50 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                        {chapter.status}
-                      </span>
-                      {chapter.estimated_minutes && (
-                        <span className="inline-flex items-center gap-1">
-                          <Clock size={10} />
-                          {chapter.estimated_minutes} min
-                        </span>
-                      )}
-                      {chapter.section_count > 0 && (
-                        <span className="inline-flex items-center gap-1 text-text-muted/50">
-                          {chapter.checked_count}/{chapter.section_count}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {["ready_for_quiz", "mastering", "stable"].includes(
-                    chapter.status,
-                  ) && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/quiz?chapter=${chapter.id}`);
-                      }}
-                      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-accent/30 bg-accent/5 px-3 text-[11px] font-medium text-accent transition-all hover:bg-accent/10"
-                    >
-                      <ClipboardCheck size={12} />
-                      Take Quiz
-                    </button>
-                  )}
-                  {["mastering", "stable"].includes(chapter.status) && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/teachback?chapter=${chapter.id}`);
-                      }}
-                      className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-purple-400/30 bg-purple-500/5 px-3 text-[11px] font-medium text-purple-400 transition-all hover:bg-purple-500/10"
-                    >
-                      <MessageSquare size={12} />
-                      Teach Back
-                    </button>
-                  )}
-                  <ChevronRight size={14} className="text-text-muted/40" />
-                </button>
-              ))}
-
               {chapters.length === 0 && activeModal === null && (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-panel/50 py-20 text-center">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent/6">
-                    <FileText size={20} className="text-accent/40" />
-                  </div>
-                  <p className="text-sm font-medium text-text-muted">
-                    No chapters yet
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted/60">
-                    Import a URL or create a chapter to get started
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-panel/50 py-16 text-center">
+                  <p className="text-sm text-text-muted">
+                    No chapters yet — import a URL or create one above
                   </p>
                 </div>
               )}
