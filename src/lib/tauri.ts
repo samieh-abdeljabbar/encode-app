@@ -411,8 +411,12 @@ export const listQuizzes = (subjectId?: number) =>
 export const deleteQuiz = (quizId: number) =>
   invoke<void>("delete_quiz", { quizId });
 
-export const generateQuiz = (chapterId: number) =>
-  invoke<QuizState>("generate_quiz", { chapterId });
+export const generateQuiz = (
+  chapterId: number,
+  difficulty: string,
+  questionCount: number,
+) =>
+  invoke<QuizState>("generate_quiz", { chapterId, difficulty, questionCount });
 
 export const submitQuizAnswer = (
   quizId: number,

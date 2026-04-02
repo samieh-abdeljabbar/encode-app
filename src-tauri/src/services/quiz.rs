@@ -21,6 +21,30 @@ Rules:
 - For multiple choice, include one clearly correct answer and three plausible distractors
 - Return ONLY valid JSON, no markdown fences"#;
 
+pub fn quiz_generate_prompt(difficulty: &str, question_count: i32) -> String {
+    let difficulty_guidance = match difficulty {
+        "beginner" => "Focus on definitions, key terms, and basic recall. Use more multiple choice and true/false questions. Keep questions straightforward.",
+        "expert" => "Test deep analysis, comparison, and synthesis. Prefer short answer questions that require detailed explanation. Ask questions that connect concepts across sections.",
+        _ => "Test understanding and application. Mix question types evenly. Questions should require comprehension, not just memorization.",
+    };
+
+    format!(r#"You are a quiz question generator for a study tool. Generate quiz questions from the provided chapter sections.
+
+Return a JSON array of question objects. Each question must have:
+- "question_type": one of "short_answer", "multiple_choice", "true_false", "fill_blank"
+- "prompt": the question text
+- "options": array of 4 strings (for multiple_choice only, null otherwise)
+- "correct_answer": the correct answer
+- "section_index": which section (0-indexed) this question is about
+
+Rules:
+- Generate exactly {} questions
+- {}
+- Keep questions concise and unambiguous
+- For multiple choice, include one clearly correct answer and three plausible distractors
+- Return ONLY valid JSON, no markdown fences"#, question_count, difficulty_guidance)
+}
+
 pub const QUIZ_EVALUATE_SYSTEM_PROMPT: &str = r#"You are evaluating a student's answer to a quiz question.
 
 Return a JSON object with:
@@ -140,7 +164,7 @@ pub fn delete_quiz(conn: &Connection, quiz_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn generate_quiz(conn: &Connection, chapter_id: i64) -> Result<QuizState, String> {
+pub fn generate_quiz(conn: &Connection, chapter_id: i64, difficulty: &str, question_count: i32) -> Result<QuizState, String> {
     // Query chapter
     let (subject_id, title, status): (i64, String, String) = conn
         .query_row(
@@ -190,13 +214,15 @@ pub fn generate_quiz(conn: &Connection, chapter_id: i64) -> Result<QuizState, St
         .map(|(id, _idx, heading, body, _wc)| (*id, heading.clone(), body.clone()))
         .collect();
 
-    let questions = generate_questions_deterministic(&section_data);
+    let max_q = std::cmp::min(question_count as usize, section_data.len());
+    let questions = generate_questions_deterministic(&section_data, max_q);
 
     // Insert quiz
+    let config = serde_json::json!({"use_ai": false, "difficulty": difficulty, "question_count": question_count});
     conn.execute(
         "INSERT INTO quizzes (subject_id, chapter_id, scope_type, config_json, generated_at)
-         VALUES (?1, ?2, 'chapter', '{\"use_ai\": false}', datetime('now'))",
-        rusqlite::params![subject_id, chapter_id],
+         VALUES (?1, ?2, 'chapter', ?3, datetime('now'))",
+        rusqlite::params![subject_id, chapter_id, config.to_string()],
     )
     .map_err(|e| format!("Failed to insert quiz: {e}"))?;
 
@@ -233,8 +259,8 @@ pub fn generate_quiz(conn: &Connection, chapter_id: i64) -> Result<QuizState, St
 
 pub fn generate_questions_deterministic(
     sections: &[(i64, Option<String>, String)],
+    max_questions: usize,
 ) -> Vec<QuizQuestion> {
-    let max_questions = std::cmp::min(8, sections.len());
     let type_cycle = [
         "short_answer",
         "multiple_choice",
@@ -928,6 +954,8 @@ pub async fn enhance_with_ai(
     http: &reqwest::Client,
     config: &AppConfig,
     sections: &[(i64, Option<String>, String)],
+    difficulty: &str,
+    question_count: i32,
 ) -> Result<Vec<QuizQuestion>, String> {
     let mut user_prompt = String::from("Generate quiz questions from these chapter sections:\n\n");
     for (idx, (section_id, heading, body)) in sections.iter().enumerate() {
@@ -941,7 +969,7 @@ pub async fn enhance_with_ai(
 
     let request = AiRequest {
         feature: "quiz.generate".to_string(),
-        system_prompt: QUIZ_GENERATE_SYSTEM_PROMPT.to_string(),
+        system_prompt: quiz_generate_prompt(difficulty, question_count),
         user_prompt,
         model_policy: "balanced".to_string(),
         timeout_ms: 90000, // 90s — CLI providers can be slow
@@ -1108,7 +1136,7 @@ mod tests {
     fn test_generate_quiz_creates_questions() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             assert_eq!(quiz.questions.len(), 4); // min(8, 4)
             assert_eq!(quiz.attempts.len(), 4);
             assert!(quiz.attempts.iter().all(|a| a.result == "unanswered"));
@@ -1121,7 +1149,7 @@ mod tests {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
             conn.execute("UPDATE chapters SET status = 'reading' WHERE id = 1", []).unwrap();
-            let result = generate_quiz(conn, 1);
+            let result = generate_quiz(conn, 1, "intermediate", 8);
             assert!(result.is_err());
             Ok(())
         });
@@ -1131,7 +1159,7 @@ mod tests {
     fn test_submit_mc_answer_correct() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             // Find an MC question
             if let Some((idx, q)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "multiple_choice") {
                 let result = submit_answer(conn, quiz.id, idx as i64, &q.correct_answer).unwrap();
@@ -1146,7 +1174,7 @@ mod tests {
     fn test_submit_mc_answer_incorrect_creates_repair() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             if let Some((idx, _)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "multiple_choice") {
                 let result = submit_answer(conn, quiz.id, idx as i64, "wrong answer").unwrap();
                 assert_eq!(result.verdict, "incorrect");
@@ -1160,7 +1188,7 @@ mod tests {
     fn test_short_answer_needs_self_rating() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             if let Some((idx, _)) = quiz.questions.iter().enumerate().find(|(_, q)| q.question_type == "short_answer") {
                 let result = submit_answer(conn, quiz.id, idx as i64, "my answer").unwrap();
                 assert!(result.needs_self_rating);
@@ -1173,7 +1201,7 @@ mod tests {
     fn test_complete_quiz_passing() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             // Answer all questions correctly
             for (idx, q) in quiz.questions.iter().enumerate() {
                 if q.question_type == "short_answer" {
@@ -1200,7 +1228,7 @@ mod tests {
     fn test_complete_quiz_failing_schedules_retest() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             // Answer all incorrectly
             for (idx, q) in quiz.questions.iter().enumerate() {
                 if q.question_type == "short_answer" {
@@ -1227,7 +1255,7 @@ mod tests {
     fn test_get_quiz_returns_state() {
         let db = setup_quiz_db();
         db.with_conn(|conn| {
-            let quiz = generate_quiz(conn, 1).unwrap();
+            let quiz = generate_quiz(conn, 1, "intermediate", 8).unwrap();
             let state = get_quiz(conn, quiz.id).unwrap();
             assert_eq!(state.id, quiz.id);
             assert_eq!(state.chapter_title, "Test Chapter");

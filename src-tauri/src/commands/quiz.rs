@@ -21,11 +21,13 @@ pub fn delete_quiz(
 pub async fn generate_quiz(
     state: tauri::State<'_, AppState>,
     chapter_id: i64,
+    difficulty: String,
+    question_count: i32,
 ) -> Result<quiz::QuizState, String> {
     // 1. Generate quiz with deterministic questions
     let mut quiz_state = state
         .db
-        .with_conn(|conn| quiz::generate_quiz(conn, chapter_id))?;
+        .with_conn(|conn| quiz::generate_quiz(conn, chapter_id, &difficulty, question_count))?;
 
     // 2. Try AI enhancement if configured
     let config = state.config.read().map_err(|e| e.to_string())?.clone();
@@ -48,7 +50,7 @@ pub async fn generate_quiz(
             Ok(rows)
         })?;
 
-        match quiz::enhance_with_ai(&state.http, &config, &sections).await {
+        match quiz::enhance_with_ai(&state.http, &config, &sections, &difficulty, question_count).await {
             Ok(ai_questions) => {
                 // Replace deterministic questions with AI-generated ones
                 state.db.with_conn(|conn| {

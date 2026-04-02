@@ -6,7 +6,6 @@ import { QuizQuestion } from "../components/quiz/QuizQuestion";
 import { QuizSidebar } from "../components/quiz/QuizSidebar";
 import { SelfRatePanel } from "../components/quiz/SelfRatePanel";
 import {
-  checkAiStatus,
   completeQuiz,
   generateQuiz,
   getQuiz,
@@ -15,7 +14,13 @@ import {
 } from "../lib/tauri";
 import type { QuestionResult, QuizState, QuizSummary } from "../lib/tauri";
 
-type Phase = "loading" | "answering" | "feedback" | "selfrating" | "complete";
+type Phase =
+  | "config"
+  | "loading"
+  | "answering"
+  | "feedback"
+  | "selfrating"
+  | "complete";
 
 export function Quiz() {
   const [searchParams] = useSearchParams();
@@ -26,26 +31,28 @@ export function Quiz() {
 
   const [quiz, setQuiz] = useState<QuizState | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [phase, setPhase] = useState<Phase>("loading");
+  const [phase, setPhase] = useState<Phase>(
+    chapterParam ? "config" : "loading",
+  );
   const [lastResult, setLastResult] = useState<QuestionResult | null>(null);
   const [lastAnswer, setLastAnswer] = useState("");
   const [summary, setSummary] = useState<QuizSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Config state
+  const [difficulty, setDifficulty] = useState<string>("intermediate");
+  const [questionCount, setQuestionCount] = useState<number>(8);
+
   const loadQuiz = useCallback(async () => {
     try {
       let data: QuizState;
       if (chapterParam) {
-        // Check if AI is configured before generating
-        const aiStatus = await checkAiStatus();
-        if (!aiStatus.configured || !aiStatus.has_api_key) {
-          setError(
-            "Quiz generation requires an AI provider. Go to Settings to configure one.",
-          );
-          return;
-        }
-        data = await generateQuiz(Number(chapterParam));
+        data = await generateQuiz(
+          Number(chapterParam),
+          difficulty,
+          questionCount,
+        );
       } else if (quizParam) {
         data = await getQuiz(Number(quizParam));
       } else {
@@ -70,10 +77,18 @@ export function Quiz() {
     } catch (e) {
       setError(String(e));
     }
-  }, [chapterParam, quizParam]);
+  }, [chapterParam, quizParam, difficulty, questionCount]);
 
+  // Auto-load for existing quizzes (not new generation)
   useEffect(() => {
-    loadQuiz();
+    if (quizParam && !chapterParam) {
+      loadQuiz();
+    }
+  }, [quizParam, chapterParam, loadQuiz]);
+
+  const handleStartQuiz = useCallback(async () => {
+    setPhase("loading");
+    await loadQuiz();
   }, [loadQuiz]);
 
   const handleSubmitAnswer = useCallback(
@@ -191,32 +206,104 @@ export function Quiz() {
     );
   }
 
-  if (phase === "loading" || !quiz) {
+  if (phase === "config") {
+    const difficulties = ["beginner", "intermediate", "expert"] as const;
+    const questionCounts = [4, 6, 8, 10, 12];
+
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-border border-t-accent" />
+        <div className="w-full max-w-md rounded-2xl border border-border-subtle bg-panel p-8">
+          <h2 className="mb-6 text-center text-lg font-semibold text-text">
+            Quiz Settings
+          </h2>
+
+          {/* Difficulty */}
+          <div className="mb-6">
+            <span className="mb-2 block text-sm font-medium text-text-muted">
+              Difficulty
+            </span>
+            <div className="flex gap-2">
+              {difficulties.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDifficulty(d)}
+                  className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium capitalize transition-all ${
+                    difficulty === d
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border-subtle bg-surface text-text-muted hover:border-accent/30"
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="mb-2 text-sm font-medium text-text">
+
+          {/* Question Count */}
+          <div className="mb-8">
+            <label
+              htmlFor="quiz-question-count"
+              className="mb-2 block text-sm font-medium text-text-muted"
+            >
+              Questions
+            </label>
+            <select
+              id="quiz-question-count"
+              value={questionCount}
+              onChange={(e) => setQuestionCount(Number(e.target.value))}
+              className="h-11 w-full rounded-xl border border-border bg-surface px-4 text-sm text-text focus:border-accent/40 focus:outline-none"
+            >
+              {questionCounts.map((n) => (
+                <option key={n} value={n}>
+                  {n} questions
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm font-medium text-text-muted transition-all hover:bg-surface"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleStartQuiz}
+              className="flex-1 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-accent/90"
+            >
+              Generate Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "loading" || !quiz) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-6">
+        <div className="pixel-cat">
+          <div className="pixel-cat-body" />
+        </div>
+        <div className="text-center">
+          <p className="mb-1 text-sm font-medium text-text">
             {chapterParam ? "Generating Quiz" : "Loading Quiz"}
           </p>
           <p className="text-xs text-text-muted">
-            {chapterParam
-              ? "AI is crafting questions from your chapter..."
-              : "Loading your quiz..."}
+            {chapterParam ? (
+              <>
+                Crafting questions from your chapter
+                <span className="loading-dots" />
+              </>
+            ) : (
+              "Loading your quiz..."
+            )}
           </p>
-          {chapterParam && (
-            <div className="mx-auto mt-4 h-1 w-48 overflow-hidden rounded-full bg-border">
-              <div
-                className="h-full animate-pulse rounded-full bg-accent/60"
-                style={{
-                  width: "60%",
-                  animation: "indeterminate 1.5s ease-in-out infinite",
-                }}
-              />
-            </div>
-          )}
         </div>
       </div>
     );
