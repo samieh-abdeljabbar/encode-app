@@ -271,6 +271,14 @@ export function Workspace() {
     new Set(),
   );
 
+  // Drag state (React state instead of dataTransfer for Tauri webview compatibility)
+  const dragRef = useRef<{
+    type: "chapter" | "note";
+    id: number;
+    sourceSubjectId?: number;
+    sourceFolder?: string;
+  } | null>(null);
+
   // Sidebar modals
   const [sidebarModal, setSidebarModal] = useState<SidebarModal>(null);
   const [newSubjectName, setNewSubjectName] = useState("");
@@ -671,15 +679,15 @@ export function Workspace() {
                     onDrop={async (e) => {
                       e.preventDefault();
                       e.currentTarget.style.outline = "none";
-                      const chapterId = Number(
-                        e.dataTransfer.getData("chapter-id"),
-                      );
-                      const sourceSubject = Number(
-                        e.dataTransfer.getData("source-subject"),
-                      );
-                      if (chapterId && sourceSubject !== subject.id) {
-                        await moveChapter(chapterId, subject.id);
-                        loadChaptersForSubject(sourceSubject, true);
+                      const drag = dragRef.current;
+                      dragRef.current = null;
+                      if (
+                        drag?.type === "chapter" &&
+                        drag.sourceSubjectId != null &&
+                        drag.sourceSubjectId !== subject.id
+                      ) {
+                        await moveChapter(drag.id, subject.id);
+                        loadChaptersForSubject(drag.sourceSubjectId, true);
                         loadChaptersForSubject(subject.id, true);
                         loadSubjects();
                       }
@@ -835,16 +843,15 @@ export function Workspace() {
                           key={chapter.id}
                           type="button"
                           draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData(
-                              "chapter-id",
-                              String(chapter.id),
-                            );
-                            e.dataTransfer.setData(
-                              "source-subject",
-                              String(subject.id),
-                            );
-                            e.dataTransfer.effectAllowed = "move";
+                          onDragStart={() => {
+                            dragRef.current = {
+                              type: "chapter",
+                              id: chapter.id,
+                              sourceSubjectId: subject.id,
+                            };
+                          }}
+                          onDragEnd={() => {
+                            dragRef.current = null;
                           }}
                           onClick={() =>
                             setSelection({
@@ -926,11 +933,10 @@ export function Workspace() {
               onDrop={async (e) => {
                 e.preventDefault();
                 e.currentTarget.style.outline = "none";
-                const noteId = Number(e.dataTransfer.getData("note-id"));
-                const sourceFolder =
-                  e.dataTransfer.getData("note-source-folder");
-                if (noteId && sourceFolder !== "") {
-                  await handleMoveNote(noteId, null);
+                const drag = dragRef.current;
+                dragRef.current = null;
+                if (drag?.type === "note" && drag.sourceFolder !== "") {
+                  await handleMoveNote(drag.id, null);
                 }
               }}
             >
@@ -988,15 +994,15 @@ export function Workspace() {
                   role="button"
                   tabIndex={0}
                   draggable="true"
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("note-id", String(note.id));
-                    e.dataTransfer.setData(
-                      "note-source-folder",
-                      note.file_path.includes("/")
-                        ? note.file_path.split("/").slice(0, -1).join("/")
-                        : "",
-                    );
-                    e.dataTransfer.effectAllowed = "move";
+                  onDragStart={() => {
+                    dragRef.current = {
+                      type: "note",
+                      id: note.id,
+                      sourceFolder: "",
+                    };
+                  }}
+                  onDragEnd={() => {
+                    dragRef.current = null;
                   }}
                   onClick={() =>
                     setSelection({ type: "note", noteId: note.id })
@@ -1049,11 +1055,13 @@ export function Workspace() {
                     onDrop={async (e) => {
                       e.preventDefault();
                       e.currentTarget.style.outline = "none";
-                      const noteId = Number(e.dataTransfer.getData("note-id"));
-                      const sourceFolder =
-                        e.dataTransfer.getData("note-source-folder");
-                      if (noteId && sourceFolder !== folder) {
-                        await handleMoveNote(noteId, folder);
+                      const drag = dragRef.current;
+                      dragRef.current = null;
+                      if (
+                        drag?.type === "note" &&
+                        drag.sourceFolder !== folder
+                      ) {
+                        await handleMoveNote(drag.id, folder);
                       }
                     }}
                     onContextMenu={(e) => {
@@ -1130,13 +1138,15 @@ export function Workspace() {
                           role="button"
                           tabIndex={0}
                           draggable="true"
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("note-id", String(note.id));
-                            e.dataTransfer.setData(
-                              "note-source-folder",
-                              folder,
-                            );
-                            e.dataTransfer.effectAllowed = "move";
+                          onDragStart={() => {
+                            dragRef.current = {
+                              type: "note",
+                              id: note.id,
+                              sourceFolder: folder,
+                            };
+                          }}
+                          onDragEnd={() => {
+                            dragRef.current = null;
                           }}
                           onClick={() =>
                             setSelection({ type: "note", noteId: note.id })
