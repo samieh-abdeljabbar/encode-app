@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   Clock,
@@ -10,7 +11,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   createChapter,
@@ -25,11 +26,23 @@ import type { Chapter, SearchResult, Subject } from "../lib/tauri";
 
 type Modal = "create-subject" | "import-url" | "create-chapter" | null;
 
+const STATUS_DOT: Record<string, string> = {
+  new: "bg-text-muted/40",
+  reading: "bg-blue-400",
+  awaiting_synthesis: "bg-amber-400",
+  ready_for_quiz: "bg-orange-400",
+  mastering: "bg-green-400",
+  stable: "bg-teal-400",
+};
+
 export function Library() {
   const navigate = useNavigate();
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
+    null,
+  );
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const [chaptersMap, setChaptersMap] = useState<Record<number, Chapter[]>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [activeModal, setActiveModal] = useState<Modal>(null);
@@ -38,6 +51,15 @@ export function Library() {
   const [newChapterTitle, setNewChapterTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Track which subjects have had chapters loaded
+  const loadedSubjects = useRef<Set<number>>(new Set());
+
+  const selectedSubject =
+    subjects.find((s) => s.id === selectedSubjectId) ?? null;
+  const chapters = selectedSubjectId
+    ? (chaptersMap[selectedSubjectId] ?? [])
+    : [];
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -48,24 +70,40 @@ export function Library() {
     }
   }, []);
 
-  const loadChapters = useCallback(async (subjectId: number) => {
-    try {
-      const data = await listChapters(subjectId);
-      setChapters(data);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
+  const loadChaptersForSubject = useCallback(
+    async (subjectId: number, force = false) => {
+      if (!force && loadedSubjects.current.has(subjectId)) return;
+      try {
+        const data = await listChapters(subjectId);
+        loadedSubjects.current.add(subjectId);
+        setChaptersMap((prev) => ({ ...prev, [subjectId]: data }));
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     loadSubjects();
   }, [loadSubjects]);
 
+  // When a subject is expanded, load its chapters
   useEffect(() => {
-    if (selectedSubject) {
-      loadChapters(selectedSubject.id);
+    for (const id of expanded) {
+      loadChaptersForSubject(id);
     }
-  }, [selectedSubject, loadChapters]);
+  }, [expanded, loadChaptersForSubject]);
+
+  const toggleExpand = (subjectId: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(subjectId)) next.delete(subjectId);
+      else next.add(subjectId);
+      return next;
+    });
+    setSelectedSubjectId(subjectId);
+  };
 
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
@@ -90,6 +128,9 @@ export function Library() {
       setSubjects((prev) => [...prev, subject]);
       setNewSubjectName("");
       setActiveModal(null);
+      // Auto-expand the new subject
+      setExpanded((prev) => new Set(prev).add(subject.id));
+      setSelectedSubjectId(subject.id);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -101,10 +142,20 @@ export function Library() {
     try {
       await deleteSubject(id);
       setSubjects((prev) => prev.filter((s) => s.id !== id));
-      if (selectedSubject?.id === id) {
-        setSelectedSubject(null);
-        setChapters([]);
+      if (selectedSubjectId === id) {
+        setSelectedSubjectId(null);
       }
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setChaptersMap((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      loadedSubjects.current.delete(id);
     } catch (e) {
       setError(String(e));
     }
@@ -116,7 +167,10 @@ export function Library() {
     setError(null);
     try {
       const chapter = await importUrl(importUrlValue, selectedSubject.id);
-      setChapters((prev) => [...prev, chapter]);
+      setChaptersMap((prev) => ({
+        ...prev,
+        [selectedSubject.id]: [...(prev[selectedSubject.id] ?? []), chapter],
+      }));
       setImportUrlValue("");
       setActiveModal(null);
       await loadSubjects();
@@ -151,46 +205,50 @@ export function Library() {
 
   return (
     <div className="flex h-full">
-      {/* Subject sidebar */}
-      <div className="flex w-72 shrink-0 flex-col border-r border-border-subtle bg-panel">
-        <div className="flex items-center justify-between border-b border-border-subtle/60 px-5 py-4">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.15em] text-text-muted">
-            Subjects
-          </h2>
+      {/* Sidebar: subject tree with nested chapters */}
+      <div className="flex w-64 shrink-0 flex-col border-r border-border-subtle bg-panel">
+        <div className="flex items-center justify-between border-b border-border-subtle/60 px-3 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+            Library
+          </span>
           <button
             type="button"
             onClick={() => setActiveModal("create-subject")}
             aria-label="Create subject"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-accent"
+            className="rounded p-1 text-text-muted hover:bg-panel-active hover:text-accent"
           >
-            <Plus size={14} />
+            <Plus size={12} />
           </button>
         </div>
 
+        {/* Inline create-subject input */}
         {activeModal === "create-subject" && (
-          <div className="border-b border-border-subtle px-5 py-4">
+          <div className="border-b border-border-subtle px-3 py-2">
             <input
               type="text"
               value={newSubjectName}
               onChange={(e) => setNewSubjectName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateSubject()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateSubject();
+                if (e.key === "Escape") setActiveModal(null);
+              }}
               placeholder="Subject name..."
               autoFocus
-              className="h-11 w-full rounded-xl border border-border bg-surface px-3.5 text-sm text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
+              className="w-full rounded bg-bg px-2 py-1.5 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
             />
-            <div className="mt-2.5 flex gap-2">
+            <div className="mt-1.5 flex gap-1.5">
               <button
                 type="button"
                 onClick={handleCreateSubject}
                 disabled={loading}
-                className="rounded-lg bg-accent px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/90 disabled:opacity-50"
+                className="rounded bg-accent px-2.5 py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-50"
               >
                 Create
               </button>
               <button
                 type="button"
                 onClick={() => setActiveModal(null)}
-                className="rounded-lg px-3.5 py-1.5 text-xs text-text-muted hover:text-text"
+                className="rounded px-2.5 py-1 text-[10px] text-text-muted hover:text-text"
               >
                 Cancel
               </button>
@@ -198,35 +256,88 @@ export function Library() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto px-3 py-3">
+        <div className="flex-1 overflow-auto px-1 py-1">
           {subjects.map((subject) => {
-            const isActive = selectedSubject?.id === subject.id;
+            const isOpen = expanded.has(subject.id);
+            const isSelected = selectedSubjectId === subject.id;
+            const subjectChapters = chaptersMap[subject.id] ?? [];
             return (
-              <button
-                key={subject.id}
-                type="button"
-                onClick={() => setSelectedSubject(subject)}
-                className={`mt-0.5 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-all ${
-                  isActive
-                    ? "bg-accent/10 font-medium text-accent shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
-                    : "text-text-muted hover:bg-panel-active hover:text-text"
-                }`}
-              >
-                <BookOpen
-                  size={14}
-                  className={`shrink-0 ${isActive ? "text-accent" : ""}`}
-                />
-                <span className="flex-1 truncate">{subject.name}</span>
-                <span
-                  className={`text-[11px] tabular-nums ${isActive ? "text-accent/60" : "text-text-muted/50"}`}
-                >
-                  {subject.chapter_count}
-                </span>
-              </button>
+              <div key={subject.id}>
+                {/* Subject row */}
+                <div className="group flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(subject.id)}
+                    className={`flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs transition-colors ${
+                      isSelected
+                        ? "bg-accent/10 font-medium text-accent"
+                        : "text-text-muted hover:bg-panel-active hover:text-text"
+                    }`}
+                  >
+                    {isOpen ? (
+                      <ChevronDown size={12} className="shrink-0" />
+                    ) : (
+                      <ChevronRight size={12} className="shrink-0" />
+                    )}
+                    <BookOpen
+                      size={12}
+                      className={`shrink-0 ${isSelected ? "text-accent" : "text-accent/50"}`}
+                    />
+                    <span className="flex-1 truncate text-left">
+                      {subject.name}
+                    </span>
+                    <span
+                      className={`text-[10px] tabular-nums ${isSelected ? "text-accent/60" : "text-text-muted/40"}`}
+                    >
+                      {subject.chapter_count}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedSubjectId(subject.id);
+                      if (!expanded.has(subject.id)) {
+                        setExpanded((prev) => new Set(prev).add(subject.id));
+                      }
+                      setActiveModal("create-chapter");
+                    }}
+                    className="mr-1 rounded p-0.5 text-text-muted/30 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent"
+                    aria-label={`New chapter in ${subject.name}`}
+                  >
+                    <Plus size={11} />
+                  </button>
+                </div>
+
+                {/* Nested chapters */}
+                {isOpen &&
+                  subjectChapters.map((chapter) => (
+                    <button
+                      key={chapter.id}
+                      type="button"
+                      onClick={() => navigate(`/chapter?id=${chapter.id}`)}
+                      className="flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs text-text-muted transition-colors hover:bg-panel-active hover:text-text"
+                    >
+                      <FileText size={11} className="shrink-0" />
+                      <span className="flex-1 truncate">{chapter.title}</span>
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[chapter.status] ?? "bg-text-muted/30"}`}
+                        title={chapter.status}
+                      />
+                    </button>
+                  ))}
+
+                {isOpen && subjectChapters.length === 0 && (
+                  <div className="py-2 pl-8 pr-2 text-[10px] text-text-muted/40">
+                    No chapters
+                  </div>
+                )}
+              </div>
             );
           })}
+
           {subjects.length === 0 && (
-            <div className="px-4 py-14 text-center">
+            <div className="px-4 py-10 text-center">
               <p className="text-xs text-text-muted/50">No subjects yet</p>
               <p className="mt-1 text-[10px] text-text-muted/40">
                 Click + to create one
@@ -238,6 +349,7 @@ export function Library() {
 
       {/* Main content area */}
       <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Search bar */}
         <div className="shrink-0 border-b border-border-subtle/60 px-7 py-4">
           <div className="relative max-w-3xl">
             <Search
@@ -268,6 +380,7 @@ export function Library() {
             </div>
           )}
 
+          {/* Search results */}
           {isSearchActive ? (
             <div className="px-7 py-7">
               <h3 className="mb-4 text-xs font-bold uppercase tracking-[0.1em] text-text-muted">
@@ -288,7 +401,7 @@ export function Library() {
                     {result.section_heading && (
                       <span className="text-text-muted/50">
                         {" "}
-                        › {result.section_heading}
+                        &rsaquo; {result.section_heading}
                       </span>
                     )}
                   </div>
@@ -418,7 +531,7 @@ export function Library() {
                 </div>
               )}
 
-              {/* Chapter list */}
+              {/* Chapter list in main area */}
               {chapters.map((chapter) => (
                 <button
                   key={chapter.id}
@@ -429,7 +542,7 @@ export function Library() {
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/6">
                     <FileText size={15} className="text-accent/70" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium tracking-tight text-text">
                       {chapter.title}
                     </div>
@@ -506,7 +619,7 @@ export function Library() {
                   Select a subject
                 </p>
                 <p className="mt-2 text-sm text-text-muted/50">
-                  Choose from the sidebar to view chapters
+                  Expand a subject in the sidebar to browse chapters
                 </p>
               </div>
             </div>
