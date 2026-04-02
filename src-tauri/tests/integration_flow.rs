@@ -81,7 +81,7 @@ fn test_full_study_loop() {
     // 1. Create chapter with sections
     let chapter_id = insert_chapter(&db, 1, "Data Structures", SAMPLE_MARKDOWN);
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // Verify chapter created with correct status
         let status: String = conn.query_row(
             "SELECT status FROM chapters WHERE id = ?1", [chapter_id], |r| r.get(0)
@@ -223,7 +223,7 @@ fn test_full_study_loop() {
 fn test_card_crud_and_review() {
     let db = setup();
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // Create basic card
         let basic = cards::create_card(conn, &cards::CardCreateInput {
             subject_id: 1,
@@ -291,7 +291,7 @@ fn test_quiz_failure_and_retest() {
     let db = setup();
     let chapter_id = insert_chapter(&db, 1, "Algorithms", SAMPLE_MARKDOWN);
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // Fast-track to ready_for_quiz
         for i in 0..4 {
             reader::mark_section_seen(conn, chapter_id, i).unwrap();
@@ -347,7 +347,7 @@ fn test_quiz_failure_and_retest() {
 fn test_queue_ordering() {
     let db = setup();
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // Create a new chapter (score 20)
         conn.execute(
             "INSERT INTO chapters (subject_id, title, slug, status, estimated_minutes, created_at, updated_at)
@@ -402,7 +402,7 @@ fn test_quiz_list() {
     let db = setup();
     let chapter_id = insert_chapter(&db, 1, "Testing", SAMPLE_MARKDOWN);
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // Fast-track to ready_for_quiz
         for i in 0..4 {
             reader::mark_section_seen(conn, chapter_id, i).unwrap();
@@ -449,7 +449,7 @@ fn test_teachback_flow() {
     let db = setup();
     let chapter_id = insert_chapter(&db, 1, "Trees", SAMPLE_MARKDOWN);
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // 1. Start teachback
         let start = teachback::start_teachback(conn, chapter_id).unwrap();
         assert!(!start.prompt.is_empty());
@@ -520,7 +520,7 @@ fn test_notes_full_flow() {
     let tmp = tempfile::tempdir().expect("tmpdir");
     std::fs::create_dir_all(tmp.path().join("notes")).unwrap();
 
-    let _ = db.with_conn(|conn| {
+    db.with_conn(|conn| {
         // 1. Create notes with wikilinks
         let note_a = notes::create_note(conn, tmp.path(), "Binary Trees", None, None, "A binary tree has at most two children. See [[Hash Tables]] for comparison.").unwrap();
         assert_eq!(note_a.title, "Binary Trees");
