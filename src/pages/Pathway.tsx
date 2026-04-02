@@ -244,7 +244,7 @@ export function Pathway() {
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+            <div className="rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-coral">
               {error}
             </div>
           )}
@@ -360,7 +360,7 @@ export function Pathway() {
                 <button
                   type="button"
                   onClick={() => deleteChapter(i)}
-                  className="rounded p-1 text-text-muted/40 hover:text-red-400"
+                  className="rounded p-1 text-text-muted/40 hover:text-coral"
                 >
                   <Trash2 size={11} />
                 </button>
@@ -370,7 +370,7 @@ export function Pathway() {
         </div>
 
         {error && (
-          <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+          <div className="mt-4 rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-coral">
             {error}
           </div>
         )}

@@ -583,7 +583,7 @@ export function Workspace() {
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted hover:bg-panel-active hover:text-text"
                 >
-                  <BookOpen size={12} className="text-emerald-700" />
+                  <BookOpen size={12} className="text-accent" />
                   New Study Subject
                 </button>
                 <button
@@ -606,7 +606,7 @@ export function Workspace() {
           {/* ===== STUDY SECTION ===== */}
           <div className="px-1 pt-2">
             <div className="flex items-center justify-between px-2 pb-1">
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
                 <BookOpen size={10} />
                 Study
               </span>
@@ -614,7 +614,7 @@ export function Workspace() {
                 type="button"
                 onClick={() => setSidebarModal("create-subject")}
                 aria-label="New subject"
-                className="rounded p-0.5 text-text-muted/40 hover:text-emerald-700"
+                className="rounded p-0.5 text-text-muted/40 hover:text-accent"
               >
                 <Plus size={11} />
               </button>
@@ -633,14 +633,14 @@ export function Workspace() {
                   }}
                   placeholder="Subject name..."
                   autoFocus
-                  className="w-full rounded bg-bg px-2 py-1.5 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
+                  className="w-full rounded bg-bg px-2 py-1.5 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                 />
                 <div className="mt-1.5 flex gap-1.5">
                   <button
                     type="button"
                     onClick={handleCreateSubject}
                     disabled={loading}
-                    className="rounded bg-green-500 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-green-500/90 disabled:opacity-50"
+                    className="rounded bg-accent px-2.5 py-1 text-[10px] font-medium text-white hover:bg-accent/90 disabled:opacity-50"
                   >
                     Create
                   </button>
@@ -708,7 +708,7 @@ export function Workspace() {
                       onDragOver={(e) => e.preventDefault()}
                       className={`flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs transition-colors ${
                         isSelectedSubject
-                          ? "bg-emerald-700/10 font-medium text-emerald-700"
+                          ? "bg-accent/10 font-medium text-accent"
                           : "text-text-muted hover:bg-panel-active hover:text-text"
                       }`}
                     >
@@ -719,7 +719,7 @@ export function Workspace() {
                       )}
                       <BookOpen
                         size={12}
-                        className={`shrink-0 ${isSelectedSubject ? "text-emerald-700" : "text-emerald-700/50"}`}
+                        className={`shrink-0 ${isSelectedSubject ? "text-accent" : "text-accent/50"}`}
                       />
                       <span
                         className="flex-1 text-left"
@@ -731,7 +731,7 @@ export function Workspace() {
                         {subject.name}
                       </span>
                       <span
-                        className={`shrink-0 text-[10px] tabular-nums ${isSelectedSubject ? "text-emerald-700/60" : "text-text-muted/40"}`}
+                        className={`shrink-0 text-[10px] tabular-nums ${isSelectedSubject ? "text-accent/60" : "text-text-muted/40"}`}
                       >
                         {subject.chapter_count}
                       </span>
@@ -749,7 +749,7 @@ export function Workspace() {
                           }
                           setSidebarModal("create-chapter");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-emerald-700"
+                        className="rounded p-0.5 text-text-muted/30 hover:text-accent"
                         aria-label={`New chapter in ${subject.name}`}
                         title="New chapter"
                       >
@@ -767,7 +767,7 @@ export function Workspace() {
                           }
                           setSidebarModal("import-url");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-emerald-700"
+                        className="rounded p-0.5 text-text-muted/30 hover:text-accent"
                         aria-label={`Import URL to ${subject.name}`}
                         title="Import URL"
                       >
@@ -803,7 +803,7 @@ export function Workspace() {
                           }}
                           placeholder="Chapter title..."
                           autoFocus
-                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
+                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                         />
                       </div>
                     )}
@@ -823,7 +823,7 @@ export function Workspace() {
                           }}
                           placeholder="https://..."
                           autoFocus
-                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
+                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                         />
                         {loading && (
                           <p className="mt-1 text-[10px] text-text-muted/60">

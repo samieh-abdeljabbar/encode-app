@@ -32,6 +32,13 @@ const SUBJECT_COLORS = [
   "#34d399",
 ];
 
+function getCssVar(name: string, fallback: string): string {
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim() ||
+    fallback
+  );
+}
+
 export function Graph() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -137,12 +144,12 @@ export function Graph() {
         search &&
         !(node.title ?? "").toLowerCase().includes(search.toLowerCase())
       ) {
-        return "#334155";
+        return getCssVar("--color-border", "#334155");
       }
       if (node.subject_id) {
         return SUBJECT_COLORS[(node.subject_id - 1) % SUBJECT_COLORS.length];
       }
-      return "#64748b";
+      return getCssVar("--color-text-muted", "#64748b");
     },
     [search],
   );
@@ -166,7 +173,7 @@ export function Graph() {
       if (globalScale > 1.5) {
         const fontSize = Math.max(10 / globalScale, 2);
         ctx.font = `${fontSize}px Inter, sans-serif`;
-        ctx.fillStyle = "#e2e8f0";
+        ctx.fillStyle = getCssVar("--color-text", "#e2e8f0");
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         ctx.fillText(node.title ?? "", node.x ?? 0, (node.y ?? 0) + size + 2);
@@ -246,7 +253,7 @@ export function Graph() {
             nodeLabel="title"
             nodeColor={getNodeColor}
             nodeVal={(node: NodeObject<GNode>) => 2 + (node.link_count ?? 0)}
-            linkColor={() => "#334155"}
+            linkColor={() => getCssVar("--color-border", "#334155")}
             linkWidth={1}
             onNodeClick={handleNodeClick}
             nodeCanvasObject={renderNode}

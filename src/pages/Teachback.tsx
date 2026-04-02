@@ -46,15 +46,15 @@ const MASTERY_COLORS: Record<
   string,
   { bg: string; text: string; label: string }
 > = {
-  weak: { bg: "bg-red-500/10", text: "text-red-400", label: "Weak" },
+  weak: { bg: "bg-coral/10", text: "text-coral", label: "Weak" },
   developing: {
     bg: "bg-amber-500/10",
     text: "text-amber-400",
     label: "Developing",
   },
   solid: {
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-400",
+    bg: "bg-accent/10",
+    text: "text-accent",
     label: "Solid",
   },
   ready: { bg: "bg-teal/10", text: "text-teal", label: "Ready" },
@@ -155,7 +155,7 @@ export function Teachback() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center">
-          <p className="mb-2 text-sm text-red-400">{error}</p>
+          <p className="mb-2 text-sm text-coral">{error}</p>
           <button
             type="button"
             onClick={() => navigate("/library")}
@@ -273,7 +273,7 @@ export function Teachback() {
 
         {result.strongest && (
           <div className="mb-3 rounded-lg border border-border bg-panel p-4">
-            <div className="mb-1 text-xs font-medium uppercase tracking-wider text-emerald-400">
+            <div className="mb-1 text-xs font-medium uppercase tracking-wider text-accent">
               Strongest Part
             </div>
             <div className="text-sm text-text">{result.strongest}</div>
@@ -301,10 +301,10 @@ export function Teachback() {
                   <div
                     className={`h-1.5 rounded-full transition-all ${
                       result.scores[c.key] >= 60
-                        ? "bg-emerald-400"
+                        ? "bg-accent"
                         : result.scores[c.key] >= 40
-                          ? "bg-amber-400"
-                          : "bg-red-400"
+                          ? "bg-amber"
+                          : "bg-coral"
                     }`}
                     style={{ width: `${result.scores[c.key]}%` }}
                   />
