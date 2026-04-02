@@ -13,4 +13,6 @@ pub mod reader;
 pub mod review;
 pub mod snapshot;
 pub mod teachback;
+pub mod note_links;
+pub mod notes;
 pub mod vault_fs;
