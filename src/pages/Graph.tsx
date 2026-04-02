@@ -121,10 +121,14 @@ export function Graph() {
   const handleNodeClick = useCallback(
     (node: NodeObject<GNode>) => {
       if (node.id != null) {
-        navigate(`/notes?id=${node.id}`);
+        if (localMode) {
+          setSelectedNode(node.id as number);
+        } else {
+          navigate(`/notes?id=${node.id}`);
+        }
       }
     },
-    [navigate],
+    [navigate, localMode],
   );
 
   const getNodeColor = useCallback(

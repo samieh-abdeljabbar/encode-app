@@ -164,17 +164,18 @@ export function Quizzes() {
               onClick={async () => {
                 // Load chapters that are ready for quiz
                 try {
-                  const allChapters: Chapter[] = [];
-                  for (const s of subjects) {
-                    const ch = await listChapters(s.id);
-                    allChapters.push(
-                      ...ch.filter((c) =>
+                  const chapterLists = await Promise.all(
+                    subjects.map((s) => listChapters(s.id)),
+                  );
+                  const allChapters = subjects.flatMap((s, i) =>
+                    chapterLists[i]
+                      .filter((c) =>
                         ["ready_for_quiz", "mastering", "stable"].includes(
                           c.status,
                         ),
-                      ),
-                    );
-                  }
+                      )
+                      .map((c) => ({ ...c, subjectName: s.name })),
+                  );
                   setAvailableChapters(allChapters);
                   setShowChapterPicker(true);
                 } catch {

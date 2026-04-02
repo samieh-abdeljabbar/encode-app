@@ -1,11 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import {
-  LanguageDescription,
-  bracketMatching,
-  foldGutter,
-  foldKeymap,
-} from "@codemirror/language";
+import { LanguageDescription, bracketMatching } from "@codemirror/language";
 import {
   highlightSelectionMatches,
   search,
@@ -118,13 +113,11 @@ export function MarkdownEditor({
         search(),
         highlightSelectionMatches(),
         bracketMatching(),
-        foldGutter(),
         markdownFoldService,
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
           ...searchKeymap,
-          ...foldKeymap,
           ...tableKeymap,
         ]),
         livePreviewDecorations,

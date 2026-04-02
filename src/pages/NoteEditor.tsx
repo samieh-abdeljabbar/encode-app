@@ -1,11 +1,6 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import {
-  LanguageDescription,
-  bracketMatching,
-  foldGutter,
-  foldKeymap,
-} from "@codemirror/language";
+import { LanguageDescription, bracketMatching } from "@codemirror/language";
 import {
   highlightSelectionMatches,
   search,
@@ -164,13 +159,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
         search(),
         highlightSelectionMatches(),
         bracketMatching(),
-        foldGutter(),
-        keymap.of([
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...searchKeymap,
-          ...foldKeymap,
-        ]),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             debouncedSave(update.state.doc.toString());
