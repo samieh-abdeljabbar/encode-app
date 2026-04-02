@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Repeat,
   Settings,
+  StickyNote,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { path: "/cards", icon: Layers, label: "Cards" },
   { path: "/quizzes", icon: ClipboardCheck, label: "Quizzes" },
   { path: "/progress", icon: BarChart3, label: "Progress" },
+  { path: "/notes", icon: StickyNote, label: "Notes" },
 ] as const;
 
 const SETTINGS_ITEM = {

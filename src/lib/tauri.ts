@@ -503,3 +503,105 @@ export const listTeachbacks = (subjectId?: number) =>
   invoke<TeachbackListItem[]>("list_teachbacks", {
     subjectId: subjectId ?? null,
   });
+
+// Notes types
+export interface NoteInfo {
+  id: number;
+  title: string;
+  file_path: string;
+  subject_id: number | null;
+  subject_name: string | null;
+  tags: string[];
+  created_at: string;
+  modified_at: string;
+}
+
+export interface NoteDetail {
+  info: NoteInfo;
+  content: string;
+}
+
+export interface NoteSearchResult {
+  note_id: number;
+  title: string;
+  snippet: string;
+  file_path: string;
+}
+
+export interface BacklinkInfo {
+  note_id: number;
+  title: string;
+  context: string;
+}
+
+export interface LinkInfo {
+  target_title: string;
+  target_note_id: number | null;
+  resolved: boolean;
+}
+
+export interface GraphNode {
+  id: number;
+  title: string;
+  subject_id: number | null;
+  link_count: number;
+}
+
+export interface GraphEdge {
+  source: number;
+  target: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Notes IPC
+export const createNote = (
+  title: string,
+  folder: string | null,
+  subjectName: string | null,
+  content: string,
+) => invoke<NoteInfo>("create_note", { title, folder, subjectName, content });
+
+export const getNote = (noteId: number) =>
+  invoke<NoteDetail>("get_note", { noteId });
+
+export const updateNote = (noteId: number, content: string) =>
+  invoke<NoteInfo>("update_note", { noteId, content });
+
+export const deleteNote = (noteId: number) =>
+  invoke<void>("delete_note", { noteId });
+
+export const listNotes = (folder?: string, subjectId?: number, tag?: string) =>
+  invoke<NoteInfo[]>("list_notes", {
+    folder: folder ?? null,
+    subjectId: subjectId ?? null,
+    tag: tag ?? null,
+  });
+
+export const renameNote = (noteId: number, newTitle: string) =>
+  invoke<NoteInfo>("rename_note", { noteId, newTitle });
+
+export const searchNotes = (query: string) =>
+  invoke<NoteSearchResult[]>("search_notes", { query });
+
+export const getBacklinks = (noteId: number) =>
+  invoke<BacklinkInfo[]>("get_backlinks", { noteId });
+
+export const getOutgoingLinks = (noteId: number) =>
+  invoke<LinkInfo[]>("get_outgoing_links", { noteId });
+
+export const getGraphData = () => invoke<GraphData>("get_graph_data");
+
+export const getLocalGraph = (noteId: number, depth: number) =>
+  invoke<GraphData>("get_local_graph", { noteId, depth });
+
+export const listNoteFolders = () => invoke<string[]>("list_note_folders");
+
+export const createNoteFolder = (path: string) =>
+  invoke<void>("create_note_folder", { path });
+
+export const getNoteTitles = () =>
+  invoke<[number, string][]>("get_note_titles");
