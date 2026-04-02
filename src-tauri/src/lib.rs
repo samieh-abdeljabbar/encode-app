@@ -169,6 +169,7 @@ pub fn run() {
             commands::reader::load_reader_session,
             commands::reader::mark_section_read,
             commands::reader::submit_section_check,
+            commands::reader::generate_section_prompt,
             commands::reader::submit_synthesis,
             commands::review::get_due_cards,
             commands::review::submit_card_rating,

@@ -5,6 +5,7 @@ import { ReaderContent } from "../components/reader/ReaderContent";
 import { ReaderHeader } from "../components/reader/ReaderHeader";
 import { SynthesisPanel } from "../components/reader/SynthesisPanel";
 import {
+  generateSectionPrompt,
   loadReaderSession,
   markSectionRead,
   submitSectionCheck,
@@ -25,6 +26,7 @@ export function Reader() {
   const [lastResult, setLastResult] = useState<CheckResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
     if (!chapterId) return;
@@ -99,6 +101,11 @@ export function Reader() {
         );
         return updated;
       });
+      // Generate AI-enhanced prompt (non-blocking — falls back to deterministic)
+      setAiPrompt(null);
+      generateSectionPrompt(section.heading, section.body_markdown)
+        .then((prompt) => setAiPrompt(prompt))
+        .catch(() => {}); // Fallback handled server-side
     } catch (e) {
       setError(String(e));
     } finally {
@@ -248,7 +255,7 @@ export function Reader() {
 
         {gatePhase === "gate" && (
           <DigestionGate
-            prompt={section.prompt}
+            prompt={aiPrompt ?? section.prompt}
             sectionHeading={section.heading}
             onSubmit={handleCheckSubmit}
             loading={loading}

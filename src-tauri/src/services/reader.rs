@@ -41,6 +41,15 @@ pub struct SynthesisResult {
     pub new_status: String,
 }
 
+pub const READER_PROMPT_SYSTEM: &str = r#"You are generating a comprehension check question for a student who just read a section of study material. Create ONE focused question that tests whether they understood the key concept.
+
+Rules:
+- Ask "why" or "how" questions, not "what" questions
+- The question should require understanding, not just recall
+- Keep it to 1-2 sentences
+- Don't reference the section by name — just ask the question directly
+- Return ONLY the question text, nothing else"#;
+
 pub fn generate_prompt(heading: &Option<String>, body: &str) -> String {
     let text = format!(
         "{} {}",

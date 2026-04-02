@@ -204,6 +204,9 @@ export const submitSectionCheck = (
 export const submitSynthesis = (chapterId: number, synthesisText: string) =>
   invoke<SynthesisResult>("submit_synthesis", { chapterId, synthesisText });
 
+export const generateSectionPrompt = (heading: string | null, body: string) =>
+  invoke<string>("generate_section_prompt", { heading, body });
+
 // Review types
 export interface DueCard {
   id: number;
