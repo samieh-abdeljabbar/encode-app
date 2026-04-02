@@ -575,7 +575,7 @@ export function Workspace() {
                   }}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted hover:bg-panel-active hover:text-text"
                 >
-                  <BookOpen size={12} className="text-green-400" />
+                  <BookOpen size={12} className="text-emerald-700" />
                   New Study Subject
                 </button>
                 <button
@@ -598,7 +598,7 @@ export function Workspace() {
           {/* ===== STUDY SECTION ===== */}
           <div className="px-1 pt-2">
             <div className="flex items-center justify-between px-2 pb-1">
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-green-400">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">
                 <BookOpen size={10} />
                 Study
               </span>
@@ -606,7 +606,7 @@ export function Workspace() {
                 type="button"
                 onClick={() => setSidebarModal("create-subject")}
                 aria-label="New subject"
-                className="rounded p-0.5 text-text-muted/40 hover:text-green-400"
+                className="rounded p-0.5 text-text-muted/40 hover:text-emerald-700"
               >
                 <Plus size={11} />
               </button>
@@ -625,7 +625,7 @@ export function Workspace() {
                   }}
                   placeholder="Subject name..."
                   autoFocus
-                  className="w-full rounded bg-bg px-2 py-1.5 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-green-400/30"
+                  className="w-full rounded bg-bg px-2 py-1.5 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
                 />
                 <div className="mt-1.5 flex gap-1.5">
                   <button
@@ -699,7 +699,7 @@ export function Workspace() {
                       onClick={() => toggleSubject(subject.id)}
                       className={`flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs transition-colors ${
                         isSelectedSubject
-                          ? "bg-green-400/10 font-medium text-green-400"
+                          ? "bg-emerald-700/10 font-medium text-emerald-700"
                           : "text-text-muted hover:bg-panel-active hover:text-text"
                       }`}
                     >
@@ -710,7 +710,7 @@ export function Workspace() {
                       )}
                       <BookOpen
                         size={12}
-                        className={`shrink-0 ${isSelectedSubject ? "text-green-400" : "text-green-400/50"}`}
+                        className={`shrink-0 ${isSelectedSubject ? "text-emerald-700" : "text-emerald-700/50"}`}
                       />
                       <span
                         className="flex-1 text-left"
@@ -722,7 +722,7 @@ export function Workspace() {
                         {subject.name}
                       </span>
                       <span
-                        className={`shrink-0 text-[10px] tabular-nums ${isSelectedSubject ? "text-green-400/60" : "text-text-muted/40"}`}
+                        className={`shrink-0 text-[10px] tabular-nums ${isSelectedSubject ? "text-emerald-700/60" : "text-text-muted/40"}`}
                       >
                         {subject.chapter_count}
                       </span>
@@ -740,7 +740,7 @@ export function Workspace() {
                           }
                           setSidebarModal("create-chapter");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-green-400"
+                        className="rounded p-0.5 text-text-muted/30 hover:text-emerald-700"
                         aria-label={`New chapter in ${subject.name}`}
                         title="New chapter"
                       >
@@ -758,7 +758,7 @@ export function Workspace() {
                           }
                           setSidebarModal("import-url");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-green-400"
+                        className="rounded p-0.5 text-text-muted/30 hover:text-emerald-700"
                         aria-label={`Import URL to ${subject.name}`}
                         title="Import URL"
                       >
@@ -794,7 +794,7 @@ export function Workspace() {
                           }}
                           placeholder="Chapter title..."
                           autoFocus
-                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-green-400/30"
+                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
                         />
                       </div>
                     )}
@@ -814,7 +814,7 @@ export function Workspace() {
                           }}
                           placeholder="https://..."
                           autoFocus
-                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-green-400/30"
+                          className="w-full rounded bg-bg px-2 py-1 text-xs text-text placeholder:text-text-muted/50 focus:outline-none focus:ring-1 focus:ring-emerald-700/30"
                         />
                         {loading && (
                           <p className="mt-1 text-[10px] text-text-muted/60">
@@ -983,10 +983,11 @@ export function Workspace() {
               const isNoteSelected =
                 selection?.type === "note" && selection.noteId === note.id;
               return (
-                <button
+                <div
                   key={note.id}
-                  type="button"
-                  draggable
+                  role="button"
+                  tabIndex={0}
+                  draggable="true"
                   onDragStart={(e) => {
                     e.dataTransfer.setData("note-id", String(note.id));
                     e.dataTransfer.setData(
@@ -1000,6 +1001,10 @@ export function Workspace() {
                   onClick={() =>
                     setSelection({ type: "note", noteId: note.id })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      setSelection({ type: "note", noteId: note.id });
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setContextMenu({
@@ -1022,7 +1027,7 @@ export function Workspace() {
                   >
                     {note.title}
                   </span>
-                </button>
+                </div>
               );
             })}
 
@@ -1120,10 +1125,11 @@ export function Workspace() {
                         selection?.type === "note" &&
                         selection.noteId === note.id;
                       return (
-                        <button
+                        <div
                           key={note.id}
-                          type="button"
-                          draggable
+                          role="button"
+                          tabIndex={0}
+                          draggable="true"
                           onDragStart={(e) => {
                             e.dataTransfer.setData("note-id", String(note.id));
                             e.dataTransfer.setData(
@@ -1135,6 +1141,10 @@ export function Workspace() {
                           onClick={() =>
                             setSelection({ type: "note", noteId: note.id })
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              setSelection({ type: "note", noteId: note.id });
+                          }}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             setContextMenu({
@@ -1160,7 +1170,7 @@ export function Workspace() {
                           >
                             {note.title}
                           </span>
-                        </button>
+                        </div>
                       );
                     })}
                 </div>
