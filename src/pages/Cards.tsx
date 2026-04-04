@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CardForm } from "../components/cards/CardForm";
 import { CardRow } from "../components/cards/CardRow";
 import { PracticeSetup } from "../components/cards/PracticeSetup";
+import { CardStudyHelpDialog } from "../components/review/CardStudyHelpDialog";
 import { ReviewCard } from "../components/review/ReviewCard";
 import {
   getPracticeBucketCounts,
@@ -46,6 +47,7 @@ export function Cards() {
   const [filterSubjectId, setFilterSubjectId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [practiceSetupOpen, setPracticeSetupOpen] = useState(false);
+  const [studyHelpCardId, setStudyHelpCardId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [practicePreviewError, setPracticePreviewError] = useState<
@@ -296,6 +298,9 @@ export function Cards() {
                     sourceType={activePracticeCard.source_type}
                     cardType={activePracticeCard.card_type}
                     onReveal={() => setPracticeRevealed(true)}
+                    onStudyHelp={() =>
+                      setStudyHelpCardId(activePracticeCard.id)
+                    }
                   />
 
                   <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -465,6 +470,13 @@ export function Cards() {
         subjects={subjects}
         initialSubjectId={filterSubjectId}
       />
+
+      {studyHelpCardId != null ? (
+        <CardStudyHelpDialog
+          cardId={studyHelpCardId}
+          onClose={() => setStudyHelpCardId(null)}
+        />
+      ) : null}
     </div>
   );
 }

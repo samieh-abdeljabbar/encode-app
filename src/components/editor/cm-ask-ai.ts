@@ -5,18 +5,28 @@ export type AskAiHandler = (
   coords: { top: number; left: number },
 ) => void;
 
+type MenuPosition = {
+  top: number;
+  left: number;
+};
+
 /**
- * CM6 ViewPlugin that shows a floating "Ask AI" button when text is selected.
- * Clicking the button invokes the handler with the selected text and position.
+ * CM6 ViewPlugin that shows a floating "Ask AI" button when text is selected
+ * and exposes a custom right-click Study Help menu entry for highlighted text.
  */
 function createAskAiPlugin(onAskAi: AskAiHandler) {
   return ViewPlugin.fromClass(
     class {
       tooltip: HTMLDivElement;
+      contextMenu: HTMLDivElement;
       view: EditorView;
+      menuPosition: MenuPosition | null = null;
+      onDocumentPointerDown: (event: MouseEvent) => void;
+      onContextMenu: (event: MouseEvent) => void;
 
       constructor(view: EditorView) {
         this.view = view;
+
         this.tooltip = document.createElement("div");
         this.tooltip.className = "cm-ask-ai-toolbar";
         this.tooltip.innerHTML = `<button class="cm-ask-ai-btn" title="Ask for study help about this selection">
@@ -26,50 +36,114 @@ function createAskAiPlugin(onAskAi: AskAiHandler) {
           <span>Study Help</span>
         </button>`;
         this.tooltip.style.display = "none";
-        view.dom.parentElement?.appendChild(this.tooltip);
 
-        this.tooltip.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const sel = view.state.selection.main;
-          const text = view.state.sliceDoc(sel.from, sel.to).trim();
-          if (!text) return;
-          const coords = view.coordsAtPos(sel.to);
-          if (coords) {
-            this.hide();
-            onAskAi(text, { top: coords.bottom + 8, left: coords.left });
-          }
+        this.contextMenu = document.createElement("div");
+        this.contextMenu.className = "cm-ask-ai-context-menu";
+        this.contextMenu.innerHTML = `<button class="cm-ask-ai-context-item" title="Ask for study help about this selection">
+          Study Help
+        </button>`;
+        this.contextMenu.style.display = "none";
+
+        const parent = view.dom.parentElement;
+        parent?.appendChild(this.tooltip);
+        parent?.appendChild(this.contextMenu);
+
+        this.tooltip.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.openAskAi();
         });
+
+        this.contextMenu.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.openAskAi();
+        });
+
+        this.onDocumentPointerDown = (event) => {
+          const target = event.target as Node;
+          if (
+            this.contextMenu.contains(target) ||
+            this.tooltip.contains(target) ||
+            this.view.dom.contains(target)
+          ) {
+            return;
+          }
+          this.hideContextMenu();
+        };
+
+        this.onContextMenu = (event) => {
+          const selection = this.view.state.selection.main;
+          const text = this.view.state
+            .sliceDoc(selection.from, selection.to)
+            .trim();
+          if (selection.empty || text.length < 3) {
+            this.hideContextMenu();
+            return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          this.menuPosition = {
+            top: event.clientY + 6,
+            left: event.clientX + 6,
+          };
+          this.showContextMenu();
+        };
+
+        document.addEventListener("mousedown", this.onDocumentPointerDown);
+        this.view.dom.addEventListener("contextmenu", this.onContextMenu);
       }
 
       update(update: ViewUpdate) {
         if (update.selectionSet || update.docChanged || update.focusChanged) {
-          this.reposition();
+          this.repositionToolbar();
+          if (update.selectionSet || update.docChanged) {
+            this.hideContextMenu();
+          }
         }
       }
 
-      reposition() {
-        const sel = this.view.state.selection.main;
-        if (sel.empty || !this.view.hasFocus) {
-          this.hide();
+      openAskAi() {
+        const selection = this.view.state.selection.main;
+        const text = this.view.state
+          .sliceDoc(selection.from, selection.to)
+          .trim();
+        if (!text) return;
+
+        const coords = this.menuPosition ?? {
+          top: this.view.coordsAtPos(selection.to)?.bottom ?? 0,
+          left: this.view.coordsAtPos(selection.to)?.left ?? 0,
+        };
+
+        this.hideContextMenu();
+        this.hideToolbar();
+        onAskAi(text, coords);
+      }
+
+      repositionToolbar() {
+        const selection = this.view.state.selection.main;
+        if (selection.empty || !this.view.hasFocus) {
+          this.hideToolbar();
           return;
         }
 
-        const text = this.view.state.sliceDoc(sel.from, sel.to).trim();
+        const text = this.view.state
+          .sliceDoc(selection.from, selection.to)
+          .trim();
         if (!text || text.length < 3) {
-          this.hide();
+          this.hideToolbar();
           return;
         }
 
-        const coords = this.view.coordsAtPos(sel.from);
+        const coords = this.view.coordsAtPos(selection.from);
         if (!coords) {
-          this.hide();
+          this.hideToolbar();
           return;
         }
 
-        // Position above the selection start
         const editorRect = this.view.dom.getBoundingClientRect();
-        const toolbarWidth = 80;
+        const toolbarWidth = 96;
         let left = coords.left - editorRect.left;
         left = Math.max(4, Math.min(left, editorRect.width - toolbarWidth - 4));
 
@@ -78,18 +152,33 @@ function createAskAiPlugin(onAskAi: AskAiHandler) {
         this.tooltip.style.left = `${left}px`;
       }
 
-      hide() {
+      showContextMenu() {
+        if (!this.menuPosition) return;
+
+        this.contextMenu.style.display = "block";
+        this.contextMenu.style.top = `${this.menuPosition.top}px`;
+        this.contextMenu.style.left = `${this.menuPosition.left}px`;
+      }
+
+      hideToolbar() {
         this.tooltip.style.display = "none";
       }
 
+      hideContextMenu() {
+        this.contextMenu.style.display = "none";
+        this.menuPosition = null;
+      }
+
       destroy() {
+        document.removeEventListener("mousedown", this.onDocumentPointerDown);
+        this.view.dom.removeEventListener("contextmenu", this.onContextMenu);
         this.tooltip.remove();
+        this.contextMenu.remove();
       }
     },
   );
 }
 
-/** CSS for the floating toolbar */
 const askAiTheme = EditorView.baseTheme({
   "& .cm-ask-ai-toolbar": {
     position: "absolute",
@@ -117,11 +206,33 @@ const askAiTheme = EditorView.baseTheme({
     background: "var(--color-surface, #f8f8f8)",
     boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
   },
+  "& .cm-ask-ai-context-menu": {
+    position: "fixed",
+    zIndex: "70",
+    overflow: "hidden",
+    borderRadius: "12px",
+    border: "1px solid var(--color-border, #e0e0e0)",
+    background: "var(--color-panel, #fff)",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.18)",
+  },
+  "& .cm-ask-ai-context-item": {
+    display: "block",
+    width: "100%",
+    border: "0",
+    background: "transparent",
+    padding: "10px 14px",
+    textAlign: "left",
+    color: "var(--color-text, #2b2b2b)",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  "& .cm-ask-ai-context-item:hover": {
+    background: "var(--color-surface, #f8f8f8)",
+    color: "var(--color-accent, #7c5cbf)",
+  },
 });
 
-/**
- * Create the Ask AI extension — call with a handler that opens the Q&A form.
- */
 export function askAiExtension(onAskAi: AskAiHandler) {
   return [createAskAiPlugin(onAskAi), askAiTheme];
 }

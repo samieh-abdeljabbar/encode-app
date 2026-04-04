@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { CardStudyHelpDialog } from "../components/review/CardStudyHelpDialog";
 import { ReviewCard } from "../components/review/ReviewCard";
 import { ReviewComplete } from "../components/review/ReviewComplete";
 import { getDueCards, getPracticeCards, submitCardRating } from "../lib/tauri";
@@ -26,6 +27,7 @@ export function Review() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ratingError, setRatingError] = useState<string | null>(null);
+  const [studyHelpCardId, setStudyHelpCardId] = useState<number | null>(null);
   const [stats, setStats] = useState<SessionStats>({
     reviewed: 0,
     again: 0,
@@ -205,6 +207,7 @@ export function Review() {
             sourceType={card.source_type}
             cardType={card.card_type}
             onReveal={() => setRevealed(true)}
+            onStudyHelp={() => setStudyHelpCardId(card.id)}
           />
         </div>
       </div>
@@ -260,6 +263,13 @@ export function Review() {
           </div>
         </div>
       )}
+
+      {studyHelpCardId != null ? (
+        <CardStudyHelpDialog
+          cardId={studyHelpCardId}
+          onClose={() => setStudyHelpCardId(null)}
+        />
+      ) : null}
     </div>
   );
 }

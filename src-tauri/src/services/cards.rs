@@ -106,6 +106,10 @@ fn get_card_info(conn: &Connection, card_id: i64) -> Result<CardInfo, String> {
     .map_err(|e| format!("Card not found: {e}"))
 }
 
+pub fn get_card_info_pub(conn: &Connection, card_id: i64) -> Result<CardInfo, String> {
+    get_card_info(conn, card_id)
+}
+
 pub fn create_card(conn: &Connection, input: &CardCreateInput) -> Result<CardInfo, String> {
     let card_id = insert_card_with_schedule(
         conn,

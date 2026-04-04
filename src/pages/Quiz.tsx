@@ -8,6 +8,7 @@ import { QuizSidebar } from "../components/quiz/QuizSidebar";
 import { SelfRatePanel } from "../components/quiz/SelfRatePanel";
 import {
   completeQuiz,
+  createQuizMissedHelpNote,
   generateQuiz,
   generateSubjectQuiz,
   getQuiz,
@@ -21,6 +22,7 @@ import type {
   QuestionResult,
   QuizState,
   QuizSummary,
+  StudyHelpNoteResult,
   Subject,
 } from "../lib/tauri";
 
@@ -48,6 +50,10 @@ export function Quiz() {
   const [lastResult, setLastResult] = useState<QuestionResult | null>(null);
   const [lastAnswer, setLastAnswer] = useState("");
   const [summary, setSummary] = useState<QuizSummary | null>(null);
+  const [studyHelpResult, setStudyHelpResult] =
+    useState<StudyHelpNoteResult | null>(null);
+  const [studyHelpError, setStudyHelpError] = useState<string | null>(null);
+  const [creatingStudyHelp, setCreatingStudyHelp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [chapterMeta, setChapterMeta] = useState<NavigationChapter | null>(
@@ -171,6 +177,8 @@ export function Quiz() {
 
   const handleStartQuiz = useCallback(async () => {
     setPhase("loading");
+    setStudyHelpResult(null);
+    setStudyHelpError(null);
     await loadQuiz();
   }, [loadQuiz]);
 
@@ -271,6 +279,21 @@ export function Quiz() {
       setPhase("answering");
     }
   }, [quiz, currentIndex]);
+
+  const handleCreateStudyHelp = useCallback(async () => {
+    if (!quiz || creatingStudyHelp) return;
+    setCreatingStudyHelp(true);
+    setStudyHelpError(null);
+
+    try {
+      const result = await createQuizMissedHelpNote(quiz.id);
+      setStudyHelpResult(result);
+    } catch (reason) {
+      setStudyHelpError(String(reason));
+    } finally {
+      setCreatingStudyHelp(false);
+    }
+  }, [creatingStudyHelp, quiz]);
 
   if (error) {
     return (
@@ -482,7 +505,16 @@ export function Quiz() {
   }
 
   if (phase === "complete" && summary) {
-    return <QuizComplete summary={summary} chapterTitle={quiz.chapter_title} />;
+    return (
+      <QuizComplete
+        summary={summary}
+        chapterTitle={quiz.chapter_title}
+        creatingStudyHelp={creatingStudyHelp}
+        studyHelpError={studyHelpError}
+        studyHelpResult={studyHelpResult}
+        onCreateStudyHelp={summary.incorrect > 0 ? handleCreateStudyHelp : null}
+      />
+    );
   }
 
   const currentQuestion = quiz.questions[currentIndex];

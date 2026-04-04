@@ -111,6 +111,32 @@ export const listAiRuns = () => invoke<AiRunInfo[]>("list_ai_runs");
 export const askInlineQuestion = (context: string, question: string) =>
   invoke<string>("ask_inline_question", { context, question });
 
+export interface CardStudyHelp {
+  explanation: string;
+  mnemonic: string;
+  note_markdown: string;
+  subject_id: number;
+  chapter_id: number | null;
+}
+
+export interface StudyHelpNoteResult {
+  note_id: number;
+  title: string;
+  appended_count: number;
+}
+
+export const generateCardStudyHelp = (cardId: number) =>
+  invoke<CardStudyHelp>("generate_card_study_help", { cardId });
+
+export const saveCardStudyHelpNote = (cardId: number, noteMarkdown: string) =>
+  invoke<StudyHelpNoteResult>("save_card_study_help_note", {
+    cardId,
+    noteMarkdown,
+  });
+
+export const createQuizMissedHelpNote = (quizId: number) =>
+  invoke<StudyHelpNoteResult>("create_quiz_missed_help_note", { quizId });
+
 // --- Library commands ---
 
 export const createSubject = (name: string) =>

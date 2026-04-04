@@ -26,6 +26,13 @@ pub struct NoteDetail {
     pub content: String,
 }
 
+#[derive(Serialize)]
+pub struct StudyHelpNoteResult {
+    pub note_id: i64,
+    pub title: String,
+    pub appended_count: i64,
+}
+
 struct NoteContext {
     subject_id: Option<i64>,
     subject_name: Option<String>,
@@ -359,6 +366,78 @@ fn note_info_from_row(conn: &Connection, row: NoteRowData) -> NoteInfo {
         created_at: row.created_at,
         modified_at: row.modified_at,
     }
+}
+
+fn build_study_help_note_title(note_context: &NoteContext) -> Result<String, String> {
+    if let Some(chapter_title) = &note_context.chapter_title {
+        return Ok(format!("Study Help - {chapter_title}"));
+    }
+
+    if let Some(subject_name) = &note_context.subject_name {
+        return Ok(format!("Study Help - {subject_name}"));
+    }
+
+    Err("Study help notes require a subject or chapter context".to_string())
+}
+
+fn get_note_body_by_id(conn: &Connection, vault: &Path, note_id: i64) -> Result<String, String> {
+    Ok(get_note(conn, vault, note_id)?.content)
+}
+
+pub fn append_to_study_help_note(
+    conn: &Connection,
+    vault: &Path,
+    subject_id: Option<i64>,
+    chapter_id: Option<i64>,
+    entry_markdown: &str,
+    appended_count: i64,
+) -> Result<StudyHelpNoteResult, String> {
+    let note_context = resolve_note_context(conn, subject_id, chapter_id)?;
+    let title = build_study_help_note_title(&note_context)?;
+    let rel_path = format!("study-help/{}.md", slugify(&title));
+    let trimmed_entry = entry_markdown.trim();
+
+    if trimmed_entry.is_empty() {
+        return Err("Study help content cannot be empty".to_string());
+    }
+
+    let existing_note: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM notes WHERE file_path = ?1 LIMIT 1",
+            [rel_path.as_str()],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to resolve study help note: {e}"))?;
+
+    let note_id = if let Some(note_id) = existing_note {
+        let current_body = get_note_body_by_id(conn, vault, note_id)?;
+        let separator = if current_body.trim().is_empty() {
+            ""
+        } else {
+            "\n\n"
+        };
+        let next_body = format!("{current_body}{separator}{trimmed_entry}\n");
+        update_note(conn, vault, note_id, &next_body)?;
+        note_id
+    } else {
+        create_note(
+            conn,
+            vault,
+            &title,
+            Some("study-help"),
+            note_context.subject_id,
+            note_context.chapter_id,
+            &format!("{trimmed_entry}\n"),
+        )?
+        .id
+    };
+
+    Ok(StudyHelpNoteResult {
+        note_id,
+        title,
+        appended_count,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1302,6 +1381,73 @@ mod tests {
             let filtered = list_notes(conn, Some("projects"), None, None, None).unwrap();
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].title, "Project Note");
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_append_to_study_help_note_creates_and_appends_subject_note() {
+        let (db, tmp) = setup();
+        db.with_conn(|conn| {
+            let first = append_to_study_help_note(
+                conn,
+                tmp.path(),
+                Some(1),
+                None,
+                "## Card Help - 2026-04-04 10:00 UTC\nFirst entry",
+                1,
+            )
+            .unwrap();
+            assert_eq!(first.title, "Study Help - Computer Science");
+            assert_eq!(first.appended_count, 1);
+
+            let second = append_to_study_help_note(
+                conn,
+                tmp.path(),
+                Some(1),
+                None,
+                "## Card Help - 2026-04-04 11:00 UTC\nSecond entry",
+                1,
+            )
+            .unwrap();
+
+            assert_eq!(first.note_id, second.note_id);
+
+            let detail = get_note(conn, tmp.path(), first.note_id).unwrap();
+            assert!(detail.content.contains("First entry"));
+            assert!(detail.content.contains("Second entry"));
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_append_to_study_help_note_prefers_chapter_context() {
+        let (db, tmp) = setup();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO chapters (subject_id, title, slug, status, estimated_minutes, created_at, updated_at)
+                 VALUES (1, 'Pointers', 'pointers', 'ready_for_quiz', 10, datetime('now'), datetime('now'))",
+                [],
+            )
+            .unwrap();
+
+            let result = append_to_study_help_note(
+                conn,
+                tmp.path(),
+                Some(1),
+                Some(1),
+                "## Quiz Help - 2026-04-04 10:00 UTC\nPointers help",
+                2,
+            )
+            .unwrap();
+
+            assert_eq!(result.title, "Study Help - Pointers");
+
+            let detail = get_note(conn, tmp.path(), result.note_id).unwrap();
+            assert!(detail.content.contains("Pointers help"));
+            assert_eq!(detail.info.chapter_id, Some(1));
             Ok(())
         })
         .expect("test failed");

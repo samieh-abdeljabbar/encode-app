@@ -5,6 +5,7 @@ export function ReviewCard({
   sourceType,
   cardType = "basic",
   onReveal,
+  onStudyHelp,
 }: {
   prompt: string;
   answer: string;
@@ -12,6 +13,7 @@ export function ReviewCard({
   sourceType: string;
   cardType?: string;
   onReveal: () => void;
+  onStudyHelp?: () => void;
 }) {
   const renderPrompt = (text: string, type: string, isRevealed: boolean) => {
     if (type !== "cloze") return text;
@@ -66,12 +68,25 @@ export function ReviewCard({
           Show Answer
         </button>
       ) : (
-        <div className="mt-4 rounded-[24px] border border-accent/20 bg-accent-soft/25 p-7">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-accent">
-            Answer
-          </p>
-          <p className="text-base leading-relaxed text-text">{answer}</p>
-        </div>
+        <>
+          <div className="mt-4 rounded-[24px] border border-accent/20 bg-accent-soft/25 p-7">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-accent">
+              Answer
+            </p>
+            <p className="text-base leading-relaxed text-text">{answer}</p>
+          </div>
+          {onStudyHelp ? (
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={onStudyHelp}
+                className="rounded-2xl border border-border bg-panel px-4 py-2 text-xs font-medium text-text-muted transition-all hover:border-accent/30 hover:text-accent"
+              >
+                Help me remember this
+              </button>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

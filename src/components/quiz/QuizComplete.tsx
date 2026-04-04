@@ -1,12 +1,20 @@
 import { useNavigate } from "react-router-dom";
-import type { QuizSummary } from "../../lib/tauri";
+import type { QuizSummary, StudyHelpNoteResult } from "../../lib/tauri";
 
 export function QuizComplete({
   summary,
   chapterTitle,
+  creatingStudyHelp = false,
+  studyHelpError = null,
+  studyHelpResult = null,
+  onCreateStudyHelp,
 }: {
   summary: QuizSummary;
   chapterTitle: string;
+  creatingStudyHelp?: boolean;
+  studyHelpError?: string | null;
+  studyHelpResult?: StudyHelpNoteResult | null;
+  onCreateStudyHelp?: (() => void) | null;
 }) {
   const navigate = useNavigate();
   const pct = Math.round(summary.score * 100);
@@ -80,6 +88,54 @@ export function QuizComplete({
             <p className="text-[10px] text-text-muted">
               Review your repair cards before retaking
             </p>
+          </div>
+        )}
+
+        {summary.incorrect > 0 && onCreateStudyHelp && !studyHelpResult && (
+          <div className="mb-3 rounded-xl border border-border-subtle bg-panel px-4 py-3 text-left">
+            <p className="text-xs font-medium text-text">
+              Want help with what you missed?
+            </p>
+            <p className="mt-1 text-[10px] text-text-muted">
+              Create one study-help note for incorrect answers only.
+            </p>
+            <button
+              type="button"
+              onClick={onCreateStudyHelp}
+              disabled={creatingStudyHelp}
+              className="mt-3 h-9 rounded-xl bg-accent px-4 text-xs font-semibold text-white transition-all hover:bg-accent/90 disabled:opacity-40"
+            >
+              {creatingStudyHelp
+                ? "Creating Study Help…"
+                : "Create Study Help Note for Misses"}
+            </button>
+          </div>
+        )}
+
+        {studyHelpError && (
+          <div className="mb-3 rounded-xl border border-coral/20 bg-coral/5 px-4 py-3 text-left">
+            <p className="text-xs font-medium text-coral">{studyHelpError}</p>
+          </div>
+        )}
+
+        {studyHelpResult && (
+          <div className="mb-3 rounded-xl border border-teal/20 bg-teal/5 px-4 py-3 text-left">
+            <p className="text-xs font-medium text-teal">
+              Study help saved to {studyHelpResult.title}
+            </p>
+            <p className="mt-1 text-[10px] text-text-muted">
+              Added {studyHelpResult.appended_count} missed question
+              {studyHelpResult.appended_count === 1 ? "" : "s"} for review.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/workspace?note=${studyHelpResult.note_id}`)
+              }
+              className="mt-3 h-9 rounded-xl bg-accent px-4 text-xs font-semibold text-white transition-all hover:bg-accent/90"
+            >
+              Open Note
+            </button>
           </div>
         )}
 
