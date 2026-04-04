@@ -209,7 +209,10 @@ mod tests {
         let bad_tmp = dir.path().join("notes.tmp");
         let good_tmp = dir.path().join("notes.md.tmp");
         assert!(!bad_tmp.exists(), "old-style .tmp should not exist");
-        assert!(!good_tmp.exists(), ".md.tmp should be cleaned up after rename");
+        assert!(
+            !good_tmp.exists(),
+            ".md.tmp should be cleaned up after rename"
+        );
         assert!(dir.path().join("notes.md").exists());
     }
 

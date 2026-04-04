@@ -101,6 +101,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     action: "flashcard",
   },
   {
+    name: "help",
+    label: "Study Help",
+    description: "Ask AI for a clearer explanation",
+    insert: () => "",
+    action: "ask-ai",
+  },
+  {
     name: "definition",
     label: "Definition",
     description: "Bold term definition",

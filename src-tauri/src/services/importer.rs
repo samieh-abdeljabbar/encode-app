@@ -29,8 +29,7 @@ static RE_STRONG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<(?:strong|b)[^>]*>(.*?)</(?:strong|b)>").unwrap());
 static RE_EM: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<(?:em|i)[^>]*>(.*?)</(?:em|i)>").unwrap());
-static RE_LI: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<li[^>]*>(.*?)</li>").unwrap());
+static RE_LI: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<li[^>]*>(.*?)</li>").unwrap());
 static RE_PRE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<pre[^>]*><code[^>]*>(.*?)</code></pre>").unwrap());
 static RE_CODE: LazyLock<Regex> =
@@ -40,8 +39,7 @@ static RE_TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap
 static RE_BLANKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
 static RE_TITLE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<title[^>]*>(.*?)</title>").unwrap());
-static RE_H1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<h1[^>]*>(.*?)</h1>").unwrap());
+static RE_H1: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<h1[^>]*>(.*?)</h1>").unwrap());
 
 pub fn html_to_markdown(html: &str) -> String {
     let mut result = html.to_string();

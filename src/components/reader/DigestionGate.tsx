@@ -8,11 +8,13 @@ export function DigestionGate({
   sectionHeading,
   onSubmit,
   loading,
+  aiEnabled,
 }: {
   prompt: string;
   sectionHeading: string | null;
-  onSubmit: (response: string, rating: string) => void;
+  onSubmit: (response: string, rating?: string) => void;
   loading: boolean;
+  aiEnabled: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>("responding");
   const [response, setResponse] = useState("");
@@ -20,6 +22,11 @@ export function DigestionGate({
 
   const handleReveal = () => {
     if (response.trim().length < 5) return;
+    if (aiEnabled) {
+      setPhase("result");
+      onSubmit(response);
+      return;
+    }
     setPhase("self_check");
   };
 
@@ -48,11 +55,20 @@ export function DigestionGate({
           <button
             type="button"
             onClick={handleReveal}
-            disabled={response.trim().length < 5}
+            disabled={response.trim().length < 5 || loading}
             className="h-10 rounded-xl bg-accent px-5 text-xs font-medium text-white shadow-sm transition-all hover:bg-accent/90 disabled:opacity-40"
           >
-            Check Yourself
+            {loading
+              ? "Checking..."
+              : aiEnabled
+                ? "Check with AI"
+                : "Check Yourself"}
           </button>
+          <p className="mt-2 text-xs text-text-muted">
+            {aiEnabled
+              ? "AI will compare your response to the section and judge how closely you captured the idea."
+              : "You’ll compare your response against the section and rate how close you were."}
+          </p>
         </>
       )}
 
@@ -115,6 +131,12 @@ export function DigestionGate({
               A repair card has been created for review later.
             </span>
           )}
+        </div>
+      )}
+
+      {phase === "result" && aiEnabled && !selectedRating && (
+        <div className="text-sm text-text-muted">
+          Checking your response against the section...
         </div>
       )}
     </div>

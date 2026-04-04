@@ -131,7 +131,7 @@ export function Graph() {
         if (localMode) {
           setSelectedNode(node.id as number);
         } else {
-          navigate(`/notes?id=${node.id}`);
+          navigate(`/workspace?note=${node.id}`);
         }
       }
     },
@@ -188,11 +188,11 @@ export function Graph() {
       <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2">
         <button
           type="button"
-          onClick={() => navigate("/notes")}
+          onClick={() => navigate("/workspace")}
           className="flex items-center gap-1 text-xs text-text-muted hover:text-text"
         >
           <ArrowLeft size={12} />
-          Notes
+          Library
         </button>
 
         <div className="flex flex-1 items-center gap-2">
@@ -266,7 +266,8 @@ export function Graph() {
         ) : (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-text-muted">
-              No notes yet. Create some notes to see your knowledge graph.
+              No notes yet. Create or import a few linked notes to see how ideas
+              connect.
             </p>
           </div>
         )}

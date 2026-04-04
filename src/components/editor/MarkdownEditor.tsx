@@ -69,6 +69,21 @@ export function MarkdownEditor({
             insertPos: pos,
           });
         }
+        return;
+      }
+
+      if (action === "ask-ai") {
+        const coords = view.coordsAtPos(pos);
+        const line = view.state.doc.lineAt(pos);
+        const selectedText = view.state.sliceDoc(line.from, line.to).trim();
+        if (coords && selectedText) {
+          setAskAiForm({
+            top: coords.bottom + 4,
+            left: coords.left,
+            selectedText,
+            insertPos: pos,
+          });
+        }
       }
     },
     [],
@@ -234,8 +249,6 @@ export function MarkdownEditor({
         <AskAiInlineForm
           position={{ top: askAiForm.top, left: askAiForm.left }}
           selectedText={askAiForm.selectedText}
-          subjectId={subjectId}
-          chapterId={chapterId}
           onInsertCallout={handleAiInsertCallout}
           onDismiss={() => setAskAiForm(null)}
         />

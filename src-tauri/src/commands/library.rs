@@ -21,6 +21,7 @@ pub struct Chapter {
     pub slug: String,
     pub status: String,
     pub estimated_minutes: Option<i64>,
+    pub raw_markdown: String,
     pub created_at: String,
     pub section_count: i64,
     pub checked_count: i64,
@@ -65,9 +66,10 @@ fn row_to_chapter(row: &rusqlite::Row) -> rusqlite::Result<Chapter> {
         slug: row.get(3)?,
         status: row.get(4)?,
         estimated_minutes: row.get(5)?,
-        created_at: row.get(6)?,
-        section_count: row.get(7)?,
-        checked_count: row.get(8)?,
+        raw_markdown: row.get(6)?,
+        created_at: row.get(7)?,
+        section_count: row.get(8)?,
+        checked_count: row.get(9)?,
     })
 }
 
@@ -109,10 +111,7 @@ fn insert_sections(
 }
 
 #[tauri::command]
-pub fn create_subject(
-    state: tauri::State<'_, AppState>,
-    name: String,
-) -> Result<Subject, String> {
+pub fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result<Subject, String> {
     let slug = slugify(&name);
     state.db.with_conn(|conn| {
         conn.execute(
@@ -187,9 +186,15 @@ pub fn create_chapter(
 
     state.db.with_conn(|conn| {
         conn.execute(
-            "INSERT INTO chapters (subject_id, title, slug, estimated_minutes)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![subject_id, title.trim(), slug, estimated_minutes],
+            "INSERT INTO chapters (subject_id, title, slug, estimated_minutes, raw_markdown)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                subject_id,
+                title.trim(),
+                slug,
+                estimated_minutes,
+                content.as_str()
+            ],
         )
         .map_err(|e| format!("Failed to create chapter: {e}"))?;
 
@@ -203,6 +208,7 @@ pub fn create_chapter(
             slug,
             status: "new".to_string(),
             estimated_minutes: Some(estimated_minutes),
+            raw_markdown: content,
             created_at: chrono::Utc::now().to_rfc3339(),
             section_count: sections.len() as i64,
             checked_count: 0,
@@ -218,7 +224,7 @@ pub fn list_chapters(
     state.db.with_conn(|conn| {
         let mut stmt = conn
             .prepare(
-                "SELECT c.id, c.subject_id, c.title, c.slug, c.status, c.estimated_minutes, c.created_at,
+                "SELECT c.id, c.subject_id, c.title, c.slug, c.status, c.estimated_minutes, c.raw_markdown, c.created_at,
                         COUNT(cs.id) as section_count,
                         COUNT(CASE WHEN cs.status IN ('checked_correct', 'checked_partial', 'checked_off_track') THEN 1 END) as checked_count
                  FROM chapters c
@@ -247,7 +253,7 @@ pub fn get_chapter_with_sections(
     state.db.with_conn(|conn| {
         let chapter = conn
             .query_row(
-                "SELECT c.id, c.subject_id, c.title, c.slug, c.status, c.estimated_minutes, c.created_at,
+                "SELECT c.id, c.subject_id, c.title, c.slug, c.status, c.estimated_minutes, c.raw_markdown, c.created_at,
                         COUNT(cs.id) as section_count,
                         COUNT(CASE WHEN cs.status IN ('checked_correct', 'checked_partial', 'checked_off_track') THEN 1 END) as checked_count
                  FROM chapters c
@@ -323,9 +329,9 @@ pub async fn import_url(
         let source_id = conn.last_insert_rowid();
 
         conn.execute(
-            "INSERT INTO chapters (subject_id, source_id, title, slug, estimated_minutes)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![subject_id, source_id, title, slug, estimated_minutes],
+            "INSERT INTO chapters (subject_id, source_id, title, slug, estimated_minutes, raw_markdown)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![subject_id, source_id, title, slug, estimated_minutes, markdown.as_str()],
         )
         .map_err(|e| format!("Failed to insert chapter: {e}"))?;
 
@@ -339,6 +345,7 @@ pub async fn import_url(
             slug,
             status: "new".to_string(),
             estimated_minutes: Some(estimated_minutes),
+            raw_markdown: markdown,
             created_at: chrono::Utc::now().to_rfc3339(),
             section_count: sections.len() as i64,
             checked_count: 0,
@@ -352,9 +359,9 @@ pub fn move_chapter(
     chapter_id: i64,
     new_subject_id: i64,
 ) -> Result<(), String> {
-    state.db.with_conn(|conn| {
-        crate::services::chapter::move_chapter(conn, chapter_id, new_subject_id)
-    })
+    state
+        .db
+        .with_conn(|conn| crate::services::chapter::move_chapter(conn, chapter_id, new_subject_id))
 }
 
 #[tauri::command]
@@ -363,9 +370,9 @@ pub fn update_chapter_content(
     chapter_id: i64,
     markdown: String,
 ) -> Result<(), String> {
-    state.db.with_conn(|conn| {
-        crate::services::chapter::update_content(conn, chapter_id, &markdown)
-    })
+    state
+        .db
+        .with_conn(|conn| crate::services::chapter::update_content(conn, chapter_id, &markdown))
 }
 
 #[tauri::command]

@@ -12,7 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { MarkdownEditor } from "../components/editor/MarkdownEditor";
 import { OutlinePanel } from "../components/editor/OutlinePanel";
 import { StatusBar } from "../components/editor/StatusBar";
@@ -45,6 +45,7 @@ type Selection =
       chapterId: number;
       subjectId: number;
       subjectName: string;
+      chapterTitle: string;
     }
   | { type: "note"; noteId: number }
   | null;
@@ -74,6 +75,43 @@ const STATUS_LABEL: Record<string, string> = {
   stable: "Stable",
 };
 
+type ChapterMarkdownSource = ReaderSession & {
+  markdown?: string;
+  content?: string;
+  raw_markdown?: string;
+  canonical_markdown?: string;
+  chapter?: ReaderSession["chapter"] & {
+    markdown?: string;
+    content?: string;
+    raw_markdown?: string;
+    canonical_markdown?: string;
+  };
+};
+
+function buildChapterMarkdown(data: ChapterMarkdownSource): string {
+  const candidates = [
+    data.markdown,
+    data.content,
+    data.raw_markdown,
+    data.canonical_markdown,
+    data.chapter?.markdown,
+    data.chapter?.content,
+    data.chapter?.raw_markdown,
+    data.chapter?.canonical_markdown,
+  ];
+  const canonical = candidates.find((value) => value !== undefined);
+  if (canonical !== undefined) {
+    return canonical;
+  }
+
+  return data.sections
+    .map((s) => {
+      const heading = s.heading ? `## ${s.heading}\n\n` : "";
+      return heading + s.body_markdown;
+    })
+    .join("\n\n");
+}
+
 // --- Chapter Editor (inline, not the full ChapterView page) ---
 
 function ChapterEditor({
@@ -96,6 +134,8 @@ function ChapterEditor({
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingContentRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
   const editorViewRef = useRef<EditorView | null>(null);
 
   const handleNavigateLine = useCallback((line: number) => {
@@ -114,41 +154,84 @@ function ChapterEditor({
   const load = useCallback(async () => {
     if (!chapterId) return;
     try {
-      const data = await loadReaderSession(chapterId);
+      const data = (await loadReaderSession(
+        chapterId,
+      )) as ChapterMarkdownSource;
       setSession(data);
-      const md = data.sections
-        .map((s) => {
-          const heading = s.heading ? `## ${s.heading}\n\n` : "";
-          return heading + s.body_markdown;
-        })
-        .join("\n\n");
-      setEditorContent(md);
+      setEditorContent(buildChapterMarkdown(data));
+      pendingContentRef.current = null;
     } catch (e) {
       setError(String(e));
     }
   }, [chapterId]);
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [load]);
 
+  const saveContent = useCallback(
+    async (content: string) => {
+      if (mountedRef.current) {
+        setSaveStatus("saving");
+      }
+      try {
+        await updateChapterContent(chapterId, content);
+        if (pendingContentRef.current === content) {
+          pendingContentRef.current = null;
+        }
+        if (mountedRef.current) {
+          setSaveStatus("saved");
+        }
+      } catch {
+        if (mountedRef.current) {
+          setSaveStatus("idle");
+        }
+      }
+    },
+    [chapterId],
+  );
+
+  const flushPendingSave = useCallback(() => {
+    const pending = pendingContentRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (pending == null) return;
+    void saveContent(pending);
+  }, [saveContent]);
+
   useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const handleBlur = () => {
+      flushPendingSave();
     };
-  }, []);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSave();
+      }
+    };
+
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   const handleEditorChange = (value: string) => {
     setEditorContent(value);
     setSaveStatus("saving");
+    pendingContentRef.current = value;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        await updateChapterContent(chapterId, value);
-        setSaveStatus("saved");
-      } catch {
-        setSaveStatus("idle");
-      }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void saveContent(value);
     }, 2000);
   };
 
@@ -253,6 +336,13 @@ function ChapterEditor({
 
 export function Workspace() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedNoteId = searchParams.get("note")
+    ? Number(searchParams.get("note"))
+    : null;
+  const requestedChapterId = searchParams.get("chapter")
+    ? Number(searchParams.get("chapter"))
+    : null;
 
   // Selection
   const [selection, setSelection] = useState<Selection>(null);
@@ -344,6 +434,46 @@ export function Workspace() {
     loadSubjects();
     loadNotes();
   }, [loadSubjects, loadNotes]);
+
+  useEffect(() => {
+    if (requestedNoteId == null) return;
+    if (!notes.some((note) => note.id === requestedNoteId)) return;
+    setSelection((current) =>
+      current?.type === "note" && current.noteId === requestedNoteId
+        ? current
+        : { type: "note", noteId: requestedNoteId },
+    );
+  }, [requestedNoteId, notes]);
+
+  useEffect(() => {
+    if (requestedChapterId == null || subjects.length === 0) return;
+    for (const subject of subjects) {
+      void loadChaptersForSubject(subject.id);
+    }
+  }, [requestedChapterId, subjects, loadChaptersForSubject]);
+
+  useEffect(() => {
+    if (requestedChapterId == null) return;
+    for (const subject of subjects) {
+      const chapter = (chaptersMap[subject.id] ?? []).find(
+        (item) => item.id === requestedChapterId,
+      );
+      if (!chapter) continue;
+      setExpandedSubjects((prev) => new Set(prev).add(subject.id));
+      setSelection((current) =>
+        current?.type === "chapter" && current.chapterId === chapter.id
+          ? current
+          : {
+              type: "chapter",
+              chapterId: chapter.id,
+              subjectId: subject.id,
+              subjectName: subject.name,
+              chapterTitle: chapter.title,
+            },
+      );
+      break;
+    }
+  }, [requestedChapterId, subjects, chaptersMap]);
 
   // Load chapters when subjects are expanded
   useEffect(() => {
@@ -445,6 +575,7 @@ export function Workspace() {
         chapterId: chapter.id,
         subjectId: modalSubjectId,
         subjectName: subject?.name ?? "",
+        chapterTitle: chapter.title,
       });
     } catch (e) {
       setError(String(e));
@@ -469,6 +600,7 @@ export function Workspace() {
         chapterId: chapter.id,
         subjectId: modalSubjectId,
         subjectName: subject?.name ?? "",
+        chapterTitle: chapter.title,
       });
     } catch (e) {
       setError(String(e));
@@ -488,13 +620,27 @@ export function Workspace() {
     });
   };
 
-  const handleCreateNote = async (folder: string | null) => {
+  const handleCreateNote = async (
+    folder: string | null,
+    seed?: {
+      title?: string;
+      content?: string;
+      subjectId?: number | null;
+      chapterId?: number | null;
+    },
+  ) => {
     try {
-      const note = await createNote("Untitled", folder, null, "");
+      const note = await createNote(
+        seed?.title ?? "Untitled",
+        folder,
+        seed?.subjectId ?? null,
+        seed?.chapterId ?? null,
+        seed?.content ?? "",
+      );
       await loadNotes();
-      setSelection({ type: "note", noteId: note.id });
-    } catch {
-      /* silent */
+      navigate(`/workspace?note=${note.id}`);
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -544,77 +690,139 @@ export function Workspace() {
     }
   };
 
+  const selectedNoteInfo =
+    selection?.type === "note"
+      ? (notes.find((note) => note.id === selection.noteId) ?? null)
+      : null;
+
+  const activeSubjectId =
+    selection?.type === "chapter"
+      ? selection.subjectId
+      : (selectedNoteInfo?.subject_id ?? null);
+
+  const activeSubjectName =
+    selection?.type === "chapter"
+      ? selection.subjectName
+      : (selectedNoteInfo?.subject_name ?? null);
+
+  const activeChapterId =
+    selection?.type === "chapter"
+      ? selection.chapterId
+      : (selectedNoteInfo?.chapter_id ?? null);
+
+  const activeChapterTitle =
+    selection?.type === "chapter"
+      ? selection.chapterTitle
+      : (selectedNoteInfo?.chapter_title ?? null);
+
+  const visibleNotes = activeSubjectId
+    ? notes.filter((note) => note.subject_id === activeSubjectId)
+    : notes;
+
+  const notePanelTitle = activeSubjectName
+    ? `Notes for ${activeSubjectName}`
+    : "Subject Notes";
+
+  const notePanelDescription = activeChapterTitle
+    ? `Capture highlights, questions, and imported material for ${activeChapterTitle}.`
+    : activeSubjectName
+      ? `Capture highlights, questions, and imported material for ${activeSubjectName}.`
+      : "Select a subject or chapter to focus notes around what you are studying.";
+
+  const noteCreationSeed =
+    activeSubjectId == null
+      ? undefined
+      : {
+          subjectId: activeSubjectId,
+          chapterId: activeChapterId,
+        };
+
   // Group notes by folder
-  const rootNotes = notes.filter((n) => !n.file_path.includes("/"));
+  const rootNotes = visibleNotes.filter((n) => !n.file_path.includes("/"));
   const folderNotes = (folder: string) =>
-    notes.filter(
+    visibleNotes.filter(
       (n) =>
         n.file_path.startsWith(`${folder}/`) &&
         !n.file_path.slice(folder.length + 1).includes("/"),
     );
+  const visibleFolders = noteFolders.filter(
+    (folder) => folderNotes(folder).length > 0,
+  );
 
   // --- Render ---
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full bg-[linear-gradient(180deg,rgba(250,248,243,0.6),rgba(244,240,232,0))]">
       {/* ========== SIDEBAR ========== */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-border-subtle bg-panel">
+      <div className="soft-panel m-4 mr-0 flex w-80 shrink-0 flex-col overflow-hidden rounded-[28px]">
         {/* Sidebar header */}
-        <div className="flex items-center justify-between border-b border-border-subtle/60 px-3 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
-            Workspace
-          </span>
-          <div className="relative" ref={plusDropdownRef}>
-            <button
-              type="button"
-              onClick={() => setPlusDropdownOpen((v) => !v)}
-              aria-label="Create new"
-              className="rounded p-1 text-text-muted hover:bg-panel-active hover:text-accent"
-            >
-              <Plus size={12} />
-            </button>
-            {plusDropdownOpen && (
-              <div className="absolute right-0 top-7 z-50 w-44 rounded-lg border border-border bg-panel py-1 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusDropdownOpen(false);
-                    setSidebarModal("create-subject");
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted hover:bg-panel-active hover:text-text"
-                >
-                  <BookOpen size={12} className="text-accent" />
-                  New Study Subject
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusDropdownOpen(false);
-                    setSidebarModal("create-note-folder");
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-muted hover:bg-panel-active hover:text-text"
-                >
-                  <FolderOpen size={12} className="text-purple-400" />
-                  New Note Folder
-                </button>
-              </div>
-            )}
+        <div className="border-b border-border-subtle/60 px-5 py-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="section-kicker">Library</div>
+              <h1 className="serif-heading mt-2 text-2xl font-semibold text-text">
+                Keep everything in one place.
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                Subjects, chapters, imports, and notes stay together so it is
+                easier to pick up exactly where you left off.
+              </p>
+            </div>
+            <div className="relative" ref={plusDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setPlusDropdownOpen((v) => !v)}
+                aria-label="Create new"
+                className="rounded-2xl border border-border bg-panel px-3 py-2 text-sm font-medium text-text-muted hover:border-accent/25 hover:text-accent"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Plus size={14} />
+                  New
+                </span>
+              </button>
+              {plusDropdownOpen && (
+                <div className="absolute right-0 top-12 z-50 w-52 rounded-2xl border border-border bg-panel py-2 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlusDropdownOpen(false);
+                      setSidebarModal("create-subject");
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text-muted hover:bg-panel-active hover:text-text"
+                  >
+                    <BookOpen size={12} className="text-accent" />
+                    New Study Subject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlusDropdownOpen(false);
+                      setSidebarModal("create-note-folder");
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-text-muted hover:bg-panel-active hover:text-text"
+                  >
+                    <FolderOpen size={12} className="text-purple-400" />
+                    New Note Folder
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto px-3 py-3">
           {/* ===== STUDY SECTION ===== */}
-          <div className="px-1 pt-2">
-            <div className="flex items-center justify-between px-2 pb-1">
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-accent">
+          <div className="rounded-2xl border border-border-subtle bg-panel/60 px-2 py-3">
+            <div className="flex items-center justify-between px-3 pb-2">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.12em] text-accent">
                 <BookOpen size={10} />
-                Study
+                Study Subjects
               </span>
               <button
                 type="button"
                 onClick={() => setSidebarModal("create-subject")}
                 aria-label="New subject"
-                className="rounded p-0.5 text-text-muted/40 hover:text-accent"
+                className="rounded-xl p-1 text-text-muted/40 hover:bg-panel-active hover:text-accent"
               >
                 <Plus size={11} />
               </button>
@@ -667,7 +875,11 @@ export function Workspace() {
                 <div key={subject.id}>
                   {/* Subject row — drop target for chapters */}
                   <div
-                    className="group flex items-center"
+                    className={`group my-1 flex items-center rounded-[22px] px-1 py-1 transition-colors ${
+                      isSelectedSubject
+                        ? "bg-accent/10 shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
+                        : "hover:bg-accent/[0.06]"
+                    }`}
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.currentTarget.style.outline =
@@ -706,10 +918,10 @@ export function Workspace() {
                       type="button"
                       onClick={() => toggleSubject(subject.id)}
                       onDragOver={(e) => e.preventDefault()}
-                      className={`flex flex-1 items-center gap-1 rounded px-2 py-1.5 text-xs transition-colors ${
+                      className={`flex flex-1 items-center gap-2 rounded-[18px] px-3 py-2 text-xs transition-colors ${
                         isSelectedSubject
-                          ? "bg-accent/10 font-medium text-accent"
-                          : "text-text-muted hover:bg-panel-active hover:text-text"
+                          ? "font-medium text-accent"
+                          : "text-text-muted hover:text-text"
                       }`}
                     >
                       {isOpen ? (
@@ -749,7 +961,7 @@ export function Workspace() {
                           }
                           setSidebarModal("create-chapter");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-accent"
+                        className="rounded-xl p-1 text-text-muted/30 hover:bg-panel hover:text-accent"
                         aria-label={`New chapter in ${subject.name}`}
                         title="New chapter"
                       >
@@ -767,7 +979,7 @@ export function Workspace() {
                           }
                           setSidebarModal("import-url");
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-accent"
+                        className="rounded-xl p-1 text-text-muted/30 hover:bg-panel hover:text-accent"
                         aria-label={`Import URL to ${subject.name}`}
                         title="Import URL"
                       >
@@ -779,7 +991,7 @@ export function Workspace() {
                           e.stopPropagation();
                           handleDeleteSubject(subject.id);
                         }}
-                        className="rounded p-0.5 text-text-muted/30 hover:text-coral"
+                        className="rounded-xl p-1 text-text-muted/30 hover:bg-panel hover:text-coral"
                         aria-label={`Delete ${subject.name}`}
                         title="Delete subject"
                       >
@@ -859,6 +1071,7 @@ export function Workspace() {
                               chapterId: chapter.id,
                               subjectId: subject.id,
                               subjectName: subject.name,
+                              chapterTitle: chapter.title,
                             })
                           }
                           onContextMenu={(e) => {
@@ -917,12 +1130,12 @@ export function Workspace() {
           </div>
 
           {/* ===== DIVIDER ===== */}
-          <div className="mx-3 my-2 border-t border-border-subtle/60" />
+          <div className="my-3" />
 
           {/* ===== NOTES SECTION ===== */}
-          <div className="px-1 pb-2">
+          <div className="rounded-2xl border border-border-subtle bg-panel/60 px-2 py-3">
             <div
-              className="flex items-center justify-between px-2 pb-1"
+              className="flex items-center justify-between px-3 pb-2"
               onDragOver={(e) => {
                 e.preventDefault();
                 e.currentTarget.style.outline = "2px solid #a78bfa";
@@ -940,16 +1153,21 @@ export function Workspace() {
                 }
               }}
             >
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
-                <FolderOpen size={10} />
-                Notes
-              </span>
+              <div>
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.12em] text-purple-400">
+                  <FolderOpen size={10} />
+                  {notePanelTitle}
+                </span>
+                <p className="mt-1 text-[11px] leading-relaxed text-text-muted/70">
+                  {notePanelDescription}
+                </p>
+              </div>
               <div className="flex gap-0.5">
                 <button
                   type="button"
-                  onClick={() => handleCreateNote(null)}
+                  onClick={() => handleCreateNote(null, noteCreationSeed)}
                   aria-label="New note"
-                  className="rounded p-0.5 text-text-muted/40 hover:text-purple-400"
+                  className="rounded-xl p-1 text-text-muted/40 hover:bg-panel-active hover:text-purple-400"
                   title="New note"
                 >
                   <FileText size={11} />
@@ -958,7 +1176,7 @@ export function Workspace() {
                   type="button"
                   onClick={() => setSidebarModal("create-note-folder")}
                   aria-label="New folder"
-                  className="rounded p-0.5 text-text-muted/40 hover:text-purple-400"
+                  className="rounded-xl p-1 text-text-muted/40 hover:bg-panel-active hover:text-purple-400"
                   title="New folder"
                 >
                   <Plus size={11} />
@@ -991,53 +1209,59 @@ export function Workspace() {
               return (
                 <div
                   key={note.id}
-                  role="button"
-                  tabIndex={0}
-                  draggable="true"
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", "drag");
-                    e.dataTransfer.effectAllowed = "move";
-                    dragRef.current = {
-                      type: "note",
-                      id: note.id,
-                      sourceFolder: "",
-                    };
-                  }}
-                  onClick={() =>
-                    setSelection({ type: "note", noteId: note.id })
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter")
-                      setSelection({ type: "note", noteId: note.id });
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      type: "note",
-                      id: note.id,
-                    });
-                  }}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                  className={`my-1 rounded-[20px] px-1 py-1 transition-colors ${
                     isNoteSelected
-                      ? "bg-purple-400/10 text-purple-400"
-                      : "text-text-muted hover:bg-panel-active hover:text-text"
+                      ? "bg-purple-400/10 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
+                      : "hover:bg-purple-400/[0.05]"
                   }`}
                 >
-                  <FileText size={12} className="shrink-0" />
-                  <span
-                    className="flex-1"
-                    style={{ wordBreak: "break-word", lineHeight: "1.4" }}
+                  <button
+                    type="button"
+                    draggable="true"
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", "drag");
+                      e.dataTransfer.effectAllowed = "move";
+                      dragRef.current = {
+                        type: "note",
+                        id: note.id,
+                        sourceFolder: "",
+                      };
+                    }}
+                    onClick={() => navigate(`/workspace?note=${note.id}`)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        type: "note",
+                        id: note.id,
+                      });
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-[16px] px-3 py-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                      isNoteSelected
+                        ? "text-purple-400"
+                        : "text-text-muted hover:text-text"
+                    }`}
                   >
-                    {note.title}
-                  </span>
+                    <FileText size={12} className="mt-0.5 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block"
+                        style={{ wordBreak: "break-word", lineHeight: "1.4" }}
+                      >
+                        {note.title}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] text-text-muted/50">
+                        {note.chapter_title ?? note.subject_name ?? "Note"}
+                      </span>
+                    </span>
+                  </button>
                 </div>
               );
             })}
 
             {/* Folders with nested notes */}
-            {noteFolders.map((folder) => {
+            {visibleFolders.map((folder) => {
               const isOpen = expandedFolders.has(folder);
               const items = folderNotes(folder);
               return (
@@ -1106,7 +1330,7 @@ export function Workspace() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleCreateNote(folder);
+                          handleCreateNote(folder, noteCreationSeed);
                         }}
                         className="rounded p-0.5 text-text-muted/30 hover:text-purple-400"
                         aria-label={`New note in ${folder}`}
@@ -1135,50 +1359,60 @@ export function Workspace() {
                       return (
                         <div
                           key={note.id}
-                          role="button"
-                          tabIndex={0}
-                          draggable="true"
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/plain", "drag");
-                            e.dataTransfer.effectAllowed = "move";
-                            dragRef.current = {
-                              type: "note",
-                              id: note.id,
-                              sourceFolder: folder,
-                            };
-                          }}
-                          onClick={() =>
-                            setSelection({ type: "note", noteId: note.id })
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter")
-                              setSelection({ type: "note", noteId: note.id });
-                          }}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setContextMenu({
-                              x: e.clientX,
-                              y: e.clientY,
-                              type: "note",
-                              id: note.id,
-                            });
-                          }}
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                          className={`my-1 rounded-[20px] py-1 pl-5 pr-1 transition-colors ${
                             isNoteSelected
-                              ? "bg-purple-400/10 text-purple-400"
-                              : "text-text-muted hover:bg-panel-active hover:text-text"
+                              ? "bg-purple-400/10 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
+                              : "hover:bg-purple-400/[0.05]"
                           }`}
                         >
-                          <FileText size={11} className="shrink-0" />
-                          <span
-                            className="flex-1"
-                            style={{
-                              wordBreak: "break-word",
-                              lineHeight: "1.4",
+                          <button
+                            type="button"
+                            draggable="true"
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", "drag");
+                              e.dataTransfer.effectAllowed = "move";
+                              dragRef.current = {
+                                type: "note",
+                                id: note.id,
+                                sourceFolder: folder,
+                              };
                             }}
+                            onClick={() =>
+                              navigate(`/workspace?note=${note.id}`)
+                            }
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setContextMenu({
+                                x: e.clientX,
+                                y: e.clientY,
+                                type: "note",
+                                id: note.id,
+                              });
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-[16px] px-3 py-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                              isNoteSelected
+                                ? "text-purple-400"
+                                : "text-text-muted hover:text-text"
+                            }`}
                           >
-                            {note.title}
-                          </span>
+                            <FileText size={11} className="mt-0.5 shrink-0" />
+                            <span className="min-w-0 flex-1">
+                              <span
+                                className="block"
+                                style={{
+                                  wordBreak: "break-word",
+                                  lineHeight: "1.4",
+                                }}
+                              >
+                                {note.title}
+                              </span>
+                              <span className="mt-0.5 block text-[10px] text-text-muted/50">
+                                {note.chapter_title ??
+                                  note.subject_name ??
+                                  "Note"}
+                              </span>
+                            </span>
+                          </button>
                         </div>
                       );
                     })}
@@ -1186,11 +1420,15 @@ export function Workspace() {
               );
             })}
 
-            {noteFolders.length === 0 &&
+            {visibleFolders.length === 0 &&
               rootNotes.length === 0 &&
               sidebarModal !== "create-note-folder" && (
                 <div className="px-4 py-6 text-center">
-                  <p className="text-[10px] text-text-muted/40">No notes yet</p>
+                  <p className="text-[10px] text-text-muted/40">
+                    {activeSubjectName
+                      ? `No notes for ${activeSubjectName} yet`
+                      : "No subject notes yet"}
+                  </p>
                 </div>
               )}
           </div>
@@ -1225,6 +1463,12 @@ export function Workspace() {
             key={selection.noteId}
             noteId={selection.noteId}
             onNoteChanged={loadNotes}
+            onNavigateToNote={(noteId) =>
+              setSelection({ type: "note", noteId })
+            }
+            onDeleteNote={() => {
+              setSelection(null);
+            }}
           />
         ) : (
           <div className="flex h-full items-center justify-center">

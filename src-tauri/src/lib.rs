@@ -1,5 +1,5 @@
-pub mod db;
 mod commands;
+pub mod db;
 pub mod services;
 
 use db::Database;
@@ -30,14 +30,20 @@ fn ensure_vault_dirs(vault: &Path) -> Result<(), String> {
 
 #[tauri::command]
 fn get_config(state: tauri::State<'_, AppState>) -> Result<AppConfig, String> {
-    let config = state.config.read().map_err(|e| format!("Config lock error: {e}"))?;
+    let config = state
+        .config
+        .read()
+        .map_err(|e| format!("Config lock error: {e}"))?;
     Ok(config.clone())
 }
 
 #[tauri::command]
 fn save_config(state: tauri::State<'_, AppState>, config: AppConfig) -> Result<(), String> {
     config.save(&state.config_path)?;
-    let mut current = state.config.write().map_err(|e| format!("Config lock error: {e}"))?;
+    let mut current = state
+        .config
+        .write()
+        .map_err(|e| format!("Config lock error: {e}"))?;
     *current = config;
     Ok(())
 }
@@ -150,6 +156,7 @@ pub fn run() {
             commands::cards::update_card,
             commands::cards::get_practice_cards,
             commands::cards::delete_card,
+            commands::cards::get_practice_bucket_counts,
             commands::library::create_subject,
             commands::library::list_subjects,
             commands::library::delete_subject,
@@ -168,6 +175,7 @@ pub fn run() {
             commands::export::list_snapshots_cmd,
             commands::queue::get_queue_dashboard,
             commands::queue::get_progress_report,
+            commands::queue::list_navigation_chapters,
             commands::reader::load_reader_session,
             commands::reader::mark_section_read,
             commands::reader::submit_section_check,
@@ -178,6 +186,7 @@ pub fn run() {
             commands::quiz::list_quizzes,
             commands::quiz::delete_quiz,
             commands::quiz::generate_quiz,
+            commands::quiz::generate_subject_quiz,
             commands::quiz::submit_quiz_answer,
             commands::quiz::submit_quiz_self_rating,
             commands::quiz::get_quiz,
@@ -186,6 +195,8 @@ pub fn run() {
             commands::teachback::submit_teachback,
             commands::teachback::submit_teachback_self_rating,
             commands::teachback::list_teachbacks,
+            commands::ui_state::get_last_surface,
+            commands::ui_state::set_last_surface,
             commands::notes::create_note,
             commands::notes::get_note,
             commands::notes::update_note,

@@ -11,8 +11,12 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Check, Pencil, Tag, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AskAiInlineForm } from "../components/editor/AskAiInlineForm";
+import { askAiExtension } from "../components/editor/cm-ask-ai";
+import type { AskAiHandler } from "../components/editor/cm-ask-ai";
 import { livePreviewDecorations } from "../components/editor/cm-decorations";
 import { slashCommands } from "../components/editor/cm-slash";
+import type { SlashActionHandler } from "../components/editor/cm-slash";
 import { parchmentTheme } from "../components/editor/cm-theme";
 import { wikilinkExtension } from "../components/editor/cm-wikilink";
 import { BacklinksPanel } from "../components/notes/BacklinksPanel";
@@ -28,9 +32,16 @@ import type { NoteDetail } from "../lib/tauri";
 interface NoteEditorProps {
   noteId: number;
   onNoteChanged?: () => void;
+  onNavigateToNote?: (noteId: number) => void;
+  onDeleteNote?: () => void;
 }
 
-export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
+export function NoteEditor({
+  noteId,
+  onNoteChanged,
+  onNavigateToNote,
+  onDeleteNote,
+}: NoteEditorProps) {
   const navigate = useNavigate();
 
   const [note, setNote] = useState<NoteDetail | null>(null);
@@ -40,12 +51,66 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [backlinksPanelCollapsed, setBacklinksPanelCollapsed] = useState(false);
+  const [askAiForm, setAskAiForm] = useState<{
+    top: number;
+    left: number;
+    selectedText: string;
+    insertPos: number;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingContentRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
+
+  const handleAskAi: AskAiHandler = useCallback((selectedText, coords) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const sel = view.state.selection.main;
+    setAskAiForm({
+      top: coords.top,
+      left: coords.left,
+      selectedText,
+      insertPos: sel.to,
+    });
+  }, []);
+
+  const handleSlashAction: SlashActionHandler = useCallback(
+    (action, view, pos) => {
+      if (action !== "ask-ai") return;
+      const coords = view.coordsAtPos(pos);
+      const line = view.state.doc.lineAt(pos);
+      const selectedText = view.state.sliceDoc(line.from, line.to).trim();
+      if (!coords || !selectedText) return;
+      setAskAiForm({
+        top: coords.bottom + 4,
+        left: coords.left,
+        selectedText,
+        insertPos: pos,
+      });
+    },
+    [],
+  );
+
+  const handleAiInsertCallout = useCallback(
+    (markdown: string) => {
+      const view = viewRef.current;
+      if (!view || !askAiForm) return;
+      const insertAt = askAiForm.insertPos;
+      const prefix =
+        view.state.doc.lineAt(insertAt).to === insertAt ? "\n" : "\n\n";
+      view.dispatch({
+        changes: { from: insertAt, insert: prefix + markdown },
+        selection: { anchor: insertAt + prefix.length + markdown.length },
+      });
+      view.focus();
+      setAskAiForm(null);
+    },
+    [askAiForm],
+  );
 
   // Load note
   const loadNote = useCallback(async () => {
@@ -62,38 +127,86 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   }, [noteId]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadNote();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [loadNote]);
 
   // Auto-save debounce
-  const debouncedSave = useCallback(
-    (content: string) => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-      saveTimerRef.current = setTimeout(async () => {
+  const saveContent = useCallback(
+    async (content: string) => {
+      if (mountedRef.current) {
         setSaving(true);
-        try {
-          await updateNote(noteIdRef.current, content);
-          onNoteChanged?.();
-        } catch {
-          // Silently fail - next save will retry
-        } finally {
+      }
+      try {
+        await updateNote(noteIdRef.current, content);
+        if (pendingContentRef.current === content) {
+          pendingContentRef.current = null;
+        }
+        onNoteChanged?.();
+        if (mountedRef.current) {
           setSaving(false);
         }
-      }, 1000);
+      } catch {
+        if (mountedRef.current) {
+          setSaving(false);
+        }
+        // Silently fail - next save will retry
+      }
     },
     [onNoteChanged],
   );
 
-  // Cleanup save timer on unmount
-  useEffect(() => {
-    return () => {
+  const flushPendingSave = useCallback(() => {
+    const pending = pendingContentRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (pending == null) return;
+    void saveContent(pending);
+  }, [saveContent]);
+
+  const debouncedSave = useCallback(
+    (content: string) => {
+      pendingContentRef.current = content;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
+      if (mountedRef.current) {
+        setSaving(true);
+      }
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = null;
+        void saveContent(content);
+      }, 1000);
+    },
+    [saveContent],
+  );
+
+  useEffect(() => {
+    const handleBlur = () => {
+      flushPendingSave();
     };
-  }, []);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSave();
+      }
+    };
+
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+      flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   // Track initial content to avoid re-creating editor
   const initialContentRef = useRef<string | null>(null);
@@ -102,6 +215,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
   useEffect(() => {
     if (note && initialContentRef.current === null) {
       initialContentRef.current = note.content;
+      pendingContentRef.current = null;
     }
   }, [note]);
 
@@ -116,7 +230,8 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
       extensions: [
         parchmentTheme,
         livePreviewDecorations,
-        slashCommands(),
+        slashCommands(handleSlashAction),
+        askAiExtension(handleAskAi),
         wikilinkExtension(() => getNoteTitles()),
         markdown({
           base: markdownLanguage,
@@ -181,7 +296,7 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
       viewRef.current = null;
       initialContentRef.current = null;
     };
-  }, [note, debouncedSave]);
+  }, [note, debouncedSave, handleAskAi, handleSlashAction]);
 
   const handleRename = async () => {
     const trimmed = titleDraft.trim();
@@ -201,9 +316,17 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
 
   const handleDelete = async () => {
     try {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      pendingContentRef.current = null;
       await deleteNote(noteId);
       onNoteChanged?.();
-      navigate("/notes");
+      onDeleteNote?.();
+      if (!onDeleteNote) {
+        navigate("/workspace");
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -265,6 +388,22 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
                 </button>
               )}
 
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-text-muted/70">
+                <span className="rounded-full border border-border px-2 py-0.5">
+                  Note
+                </span>
+                {note.info.subject_name && (
+                  <span className="rounded-full bg-accent/8 px-2 py-0.5 text-accent">
+                    {note.info.subject_name}
+                  </span>
+                )}
+                {note.info.chapter_title && (
+                  <span className="rounded-full bg-panel-alt px-2 py-0.5">
+                    {note.info.chapter_title}
+                  </span>
+                )}
+              </div>
+
               {/* Tags */}
               {note.info.tags.length > 0 && (
                 <div className="mt-1 flex items-center gap-1.5">
@@ -312,7 +451,18 @@ export function NoteEditor({ noteId, onNoteChanged }: NoteEditorProps) {
         noteId={noteId}
         collapsed={backlinksPanelCollapsed}
         onToggle={() => setBacklinksPanelCollapsed((v) => !v)}
+        onNavigateToNote={
+          onNavigateToNote ?? ((id) => navigate(`/workspace?note=${id}`))
+        }
       />
+      {askAiForm && (
+        <AskAiInlineForm
+          position={{ top: askAiForm.top, left: askAiForm.left }}
+          selectedText={askAiForm.selectedText}
+          onInsertCallout={handleAiInsertCallout}
+          onDismiss={() => setAskAiForm(null)}
+        />
+      )}
     </div>
   );
 }

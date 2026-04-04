@@ -1,17 +1,20 @@
+use crate::services::vault_fs::VaultFs;
 use chrono::Utc;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct NoteInfo {
     pub id: i64,
     pub title: String,
     pub file_path: String,
     pub subject_id: Option<i64>,
     pub subject_name: Option<String>,
+    pub chapter_id: Option<i64>,
+    pub chapter_title: Option<String>,
     pub tags: Vec<String>,
     pub created_at: String,
     pub modified_at: String,
@@ -22,6 +25,33 @@ pub struct NoteDetail {
     pub info: NoteInfo,
     pub content: String,
 }
+
+struct NoteContext {
+    subject_id: Option<i64>,
+    subject_name: Option<String>,
+    chapter_id: Option<i64>,
+    chapter_title: Option<String>,
+}
+
+struct NoteRowData {
+    id: i64,
+    title: String,
+    file_path: String,
+    subject_id: Option<i64>,
+    chapter_id: Option<i64>,
+    created_at: String,
+    modified_at: String,
+}
+
+type StoredNoteContext = (
+    String,
+    String,
+    Option<i64>,
+    Option<i64>,
+    String,
+    Option<String>,
+    Option<String>,
+);
 
 #[derive(Serialize)]
 pub struct NoteSearchResult {
@@ -36,6 +66,7 @@ pub struct Frontmatter {
     pub title: Option<String>,
     pub tags: Option<Vec<String>>,
     pub subject: Option<String>,
+    pub chapter: Option<String>,
     pub created: Option<String>,
     pub modified: Option<String>,
 }
@@ -69,6 +100,7 @@ pub fn build_frontmatter(
     title: &str,
     tags: &[String],
     subject: Option<&str>,
+    chapter: Option<&str>,
     created: &str,
     modified: &str,
 ) -> String {
@@ -82,16 +114,104 @@ pub fn build_frontmatter(
     if let Some(s) = subject {
         fm.push_str(&format!("subject: \"{}\"\n", s.replace('"', "\\\"")));
     }
-    fm.push_str(&format!(
-        "created: {}\nmodified: {}\n",
-        created, modified
-    ));
+    if let Some(chapter_name) = chapter {
+        fm.push_str(&format!(
+            "chapter: \"{}\"\n",
+            chapter_name.replace('"', "\\\"")
+        ));
+    }
+    fm.push_str(&format!("created: {}\nmodified: {}\n", created, modified));
     fm.push_str("---\n\n");
     fm
 }
 
 pub fn notes_dir(vault: &Path) -> PathBuf {
     vault.join("notes")
+}
+
+fn validate_notes_subpath(vault: &Path, relative: &str) -> Result<PathBuf, String> {
+    VaultFs::new(notes_dir(vault)).validate_path(relative)
+}
+
+fn normalize_notes_relative_path(vault: &Path, relative: &str) -> Result<String, String> {
+    let _ = validate_notes_subpath(vault, relative)?;
+    let normalized = Path::new(relative)
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    Ok(normalized)
+}
+
+fn note_path_in_use(
+    conn: &Connection,
+    rel_path: &str,
+    exclude_note_id: Option<i64>,
+) -> Result<bool, String> {
+    let found = if let Some(note_id) = exclude_note_id {
+        conn.query_row(
+            "SELECT 1 FROM notes WHERE file_path = ?1 AND id != ?2 LIMIT 1",
+            rusqlite::params![rel_path, note_id],
+            |_| Ok(()),
+        )
+        .optional()
+    } else {
+        conn.query_row(
+            "SELECT 1 FROM notes WHERE file_path = ?1 LIMIT 1",
+            [rel_path],
+            |_| Ok(()),
+        )
+        .optional()
+    }
+    .map_err(|e| format!("Failed to check note collisions: {e}"))?;
+
+    Ok(found.is_some())
+}
+
+fn ensure_note_destination_available(
+    conn: &Connection,
+    vault: &Path,
+    rel_path: &str,
+    existing_path: Option<&str>,
+    note_id: Option<i64>,
+) -> Result<(), String> {
+    if existing_path == Some(rel_path) {
+        return Ok(());
+    }
+
+    if note_path_in_use(conn, rel_path, note_id)? {
+        return Err(format!("A note already exists at {rel_path}"));
+    }
+
+    let full_path = notes_dir(vault).join(rel_path);
+    if full_path.exists() {
+        return Err(format!("A file already exists at {rel_path}"));
+    }
+
+    Ok(())
+}
+
+fn with_transaction<T>(
+    conn: &Connection,
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    conn.execute_batch("BEGIN IMMEDIATE;")
+        .map_err(|e| format!("Failed to begin transaction: {e}"))?;
+
+    match f() {
+        Ok(value) => {
+            conn.execute_batch("COMMIT;")
+                .map_err(|e| format!("Failed to commit transaction: {e}"))?;
+            Ok(value)
+        }
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            Err(err)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,13 +245,52 @@ pub fn slugify(title: &str) -> String {
     result
 }
 
-pub fn resolve_subject_id(conn: &Connection, subject_name: &str) -> Option<i64> {
-    conn.query_row(
-        "SELECT id FROM subjects WHERE name = ?1",
-        [subject_name],
-        |row| row.get(0),
-    )
-    .ok()
+fn resolve_note_context(
+    conn: &Connection,
+    requested_subject_id: Option<i64>,
+    requested_chapter_id: Option<i64>,
+) -> Result<NoteContext, String> {
+    let mut subject_id = requested_subject_id;
+    let mut subject_name = None;
+    let mut chapter_id = requested_chapter_id;
+    let mut chapter_title = None;
+
+    if let Some(cid) = requested_chapter_id {
+        let (chapter_subject_id, title): (i64, String) = conn
+            .query_row(
+                "SELECT subject_id, title FROM chapters WHERE id = ?1",
+                [cid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| format!("Chapter not found: {e}"))?;
+
+        if let Some(sid) = requested_subject_id {
+            if sid != chapter_subject_id {
+                return Err("Chapter does not belong to the selected subject".to_string());
+            }
+        } else {
+            subject_id = Some(chapter_subject_id);
+        }
+
+        chapter_id = Some(cid);
+        chapter_title = Some(title);
+    }
+
+    if let Some(sid) = subject_id {
+        let name = conn
+            .query_row("SELECT name FROM subjects WHERE id = ?1", [sid], |row| {
+                row.get(0)
+            })
+            .map_err(|e| format!("Subject not found: {e}"))?;
+        subject_name = Some(name);
+    }
+
+    Ok(NoteContext {
+        subject_id,
+        subject_name,
+        chapter_id,
+        chapter_title,
+    })
 }
 
 pub fn get_tags_for_note(conn: &Connection, note_id: i64) -> Vec<String> {
@@ -176,31 +335,29 @@ pub fn index_note(
     Ok(())
 }
 
-pub fn note_info_from_row(
-    conn: &Connection,
-    id: i64,
-    title: String,
-    file_path: String,
-    subject_id: Option<i64>,
-    created_at: String,
-    modified_at: String,
-) -> NoteInfo {
-    let tags = get_tags_for_note(conn, id);
-    let subject_name = subject_id.and_then(|sid| {
-        conn.query_row("SELECT name FROM subjects WHERE id = ?1", [sid], |row| {
+fn note_info_from_row(conn: &Connection, row: NoteRowData) -> NoteInfo {
+    let tags = get_tags_for_note(conn, row.id);
+    let subject_name = row.subject_id.and_then(|sid| {
+        conn.query_row("SELECT name FROM subjects WHERE id = ?1", [sid], |row| row.get(0))
+            .ok()
+    });
+    let chapter_title = row.chapter_id.and_then(|cid| {
+        conn.query_row("SELECT title FROM chapters WHERE id = ?1", [cid], |row| {
             row.get(0)
         })
         .ok()
     });
     NoteInfo {
-        id,
-        title,
-        file_path,
-        subject_id,
+        id: row.id,
+        title: row.title,
+        file_path: row.file_path,
+        subject_id: row.subject_id,
         subject_name,
+        chapter_id: row.chapter_id,
+        chapter_title,
         tags,
-        created_at,
-        modified_at,
+        created_at: row.created_at,
+        modified_at: row.modified_at,
     }
 }
 
@@ -213,71 +370,119 @@ pub fn create_note(
     vault: &Path,
     title: &str,
     folder: Option<&str>,
-    subject_name: Option<&str>,
+    subject_id: Option<i64>,
+    chapter_id: Option<i64>,
     body: &str,
 ) -> Result<NoteInfo, String> {
     let slug = slugify(title);
     let filename = format!("{slug}.md");
-    let rel_path = match folder {
-        Some(f) if !f.is_empty() => format!("{f}/{filename}"),
-        _ => filename,
+    let folder_rel = match folder {
+        Some(f) if !f.is_empty() => Some(normalize_notes_relative_path(vault, f)?),
+        _ => None,
+    };
+    let rel_path = match &folder_rel {
+        Some(f) => format!("{f}/{filename}"),
+        None => filename.clone(),
     };
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let subject_id = subject_name.and_then(|name| resolve_subject_id(conn, name));
+    let note_context = resolve_note_context(conn, subject_id, chapter_id)?;
 
-    let frontmatter = build_frontmatter(title, &[], subject_name, &now, &now);
+    let frontmatter = build_frontmatter(
+        title,
+        &[],
+        note_context.subject_name.as_deref(),
+        note_context.chapter_title.as_deref(),
+        &now,
+        &now,
+    );
     let full_content = format!("{frontmatter}{body}");
     let hash = content_hash(&full_content);
 
-    // Write file atomically
-    let dir = match folder {
-        Some(f) if !f.is_empty() => notes_dir(vault).join(f),
-        _ => notes_dir(vault),
+    ensure_note_destination_available(conn, vault, &rel_path, None, None)?;
+
+    // Write file atomically before touching SQLite.
+    let dir = match &folder_rel {
+        Some(f) => notes_dir(vault).join(f),
+        None => notes_dir(vault),
     };
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create dir: {e}"))?;
 
-    let file_path = dir.join(format!("{slug}.md"));
+    let file_path = dir.join(&filename);
     let tmp_path = dir.join(format!(".{slug}.md.tmp"));
     std::fs::write(&tmp_path, &full_content)
         .map_err(|e| format!("Failed to write temp file: {e}"))?;
     std::fs::rename(&tmp_path, &file_path)
         .map_err(|e| format!("Failed to rename temp file: {e}"))?;
 
-    // Insert into SQLite
-    conn.execute(
-        "INSERT INTO notes (title, file_path, subject_id, content_hash, created_at, modified_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![title, rel_path, subject_id, hash, now, now],
-    )
-    .map_err(|e| format!("Failed to insert note: {e}"))?;
+    let note_id = match with_transaction(conn, || {
+        conn.execute(
+            "INSERT INTO notes (title, file_path, subject_id, chapter_id, content_hash, created_at, modified_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                title,
+                rel_path.as_str(),
+                note_context.subject_id,
+                note_context.chapter_id,
+                hash,
+                now,
+                now
+            ],
+        )
+        .map_err(|e| format!("Failed to insert note: {e}"))?;
 
-    let note_id = conn.last_insert_rowid();
+        let note_id = conn.last_insert_rowid();
 
-    // Index for FTS
-    index_note(conn, note_id, title, body, &[])?;
+        index_note(conn, note_id, title, body, &[])?;
 
-    // Parse and store wikilinks
-    let targets = crate::services::note_links::parse_wikilinks(body);
-    crate::services::note_links::update_links(conn, note_id, &targets)?;
+        let targets = crate::services::note_links::parse_wikilinks(body);
+        crate::services::note_links::update_links(conn, note_id, &targets)?;
+
+        Ok(note_id)
+    }) {
+        Ok(note_id) => note_id,
+        Err(err) => {
+            let _ = std::fs::remove_file(&file_path);
+            return Err(err);
+        }
+    };
 
     Ok(note_info_from_row(
-        conn, note_id, title.to_string(), rel_path, subject_id, now.clone(), now,
+        conn,
+        NoteRowData {
+            id: note_id,
+            title: title.to_string(),
+            file_path: rel_path,
+            subject_id: note_context.subject_id,
+            chapter_id: note_context.chapter_id,
+            created_at: now.clone(),
+            modified_at: now,
+        },
     ))
 }
 
 pub fn get_note(conn: &Connection, vault: &Path, note_id: i64) -> Result<NoteDetail, String> {
-    let (title, file_path, subject_id, created_at, modified_at): (
+    let (title, file_path, subject_id, chapter_id, created_at, modified_at): (
         String,
         String,
+        Option<i64>,
         Option<i64>,
         String,
         String,
     ) = conn
         .query_row(
-            "SELECT title, file_path, subject_id, created_at, modified_at FROM notes WHERE id = ?1",
+            "SELECT title, file_path, subject_id, chapter_id, created_at, modified_at FROM notes WHERE id = ?1",
             [note_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
         )
         .map_err(|e| format!("Note not found: {e}"))?;
 
@@ -296,9 +501,23 @@ pub fn get_note(conn: &Connection, vault: &Path, note_id: i64) -> Result<NoteDet
         body = stripped;
     }
 
-    let info = note_info_from_row(conn, note_id, title, file_path, subject_id, created_at, modified_at);
+    let info = note_info_from_row(
+        conn,
+        NoteRowData {
+            id: note_id,
+            title,
+            file_path,
+            subject_id,
+            chapter_id,
+            created_at,
+            modified_at,
+        },
+    );
 
-    Ok(NoteDetail { info, content: body.to_string() })
+    Ok(NoteDetail {
+        info,
+        content: body.to_string(),
+    })
 }
 
 pub fn update_note(
@@ -307,19 +526,25 @@ pub fn update_note(
     note_id: i64,
     new_body: &str,
 ) -> Result<NoteInfo, String> {
-    let (title, file_path, subject_id, created_at, subject_name): (
-        String,
-        String,
-        Option<i64>,
-        String,
-        Option<String>,
-    ) = conn
+    let (title, file_path, subject_id, chapter_id, created_at, subject_name, chapter_title): StoredNoteContext = conn
         .query_row(
-            "SELECT n.title, n.file_path, n.subject_id, n.created_at, s.name
-             FROM notes n LEFT JOIN subjects s ON s.id = n.subject_id
+            "SELECT n.title, n.file_path, n.subject_id, n.chapter_id, n.created_at, s.name, ch.title
+             FROM notes n
+             LEFT JOIN subjects s ON s.id = n.subject_id
+             LEFT JOIN chapters ch ON ch.id = n.chapter_id
              WHERE n.id = ?1",
             [note_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
         )
         .map_err(|e| format!("Note not found: {e}"))?;
 
@@ -335,6 +560,7 @@ pub fn update_note(
         &title,
         &tags,
         subject_name.as_deref(),
+        chapter_title.as_deref(),
         &created_at,
         &now,
     );
@@ -343,46 +569,56 @@ pub fn update_note(
 
     // Write file atomically
     let parent = full_path.parent().ok_or("No parent dir")?;
-    let tmp_path = parent.join(format!(".{}.tmp", full_path.file_name().unwrap().to_string_lossy()));
+    let tmp_path = parent.join(format!(
+        ".{}.tmp",
+        full_path.file_name().unwrap().to_string_lossy()
+    ));
     std::fs::write(&tmp_path, &full_content)
         .map_err(|e| format!("Failed to write temp file: {e}"))?;
     std::fs::rename(&tmp_path, &full_path)
         .map_err(|e| format!("Failed to rename temp file: {e}"))?;
 
-    // Update SQLite
-    conn.execute(
-        "UPDATE notes SET content_hash = ?2, modified_at = ?3 WHERE id = ?1",
-        rusqlite::params![note_id, hash, now],
-    )
-    .map_err(|e| format!("Failed to update note: {e}"))?;
+    with_transaction(conn, || {
+        conn.execute(
+            "UPDATE notes SET content_hash = ?2, modified_at = ?3 WHERE id = ?1",
+            rusqlite::params![note_id, hash, now],
+        )
+        .map_err(|e| format!("Failed to update note: {e}"))?;
 
-    // Re-index
-    index_note(conn, note_id, &title, new_body, &tags)?;
+        index_note(conn, note_id, &title, new_body, &tags)?;
 
-    // Update wikilinks
-    let targets = crate::services::note_links::parse_wikilinks(new_body);
-    crate::services::note_links::update_links(conn, note_id, &targets)?;
+        let targets = crate::services::note_links::parse_wikilinks(new_body);
+        crate::services::note_links::update_links(conn, note_id, &targets)?;
+
+        Ok(())
+    })?;
 
     Ok(note_info_from_row(
-        conn, note_id, title, file_path, subject_id, created_at, now,
+        conn,
+        NoteRowData {
+            id: note_id,
+            title,
+            file_path,
+            subject_id,
+            chapter_id,
+            created_at,
+            modified_at: now,
+        },
     ))
 }
 
-pub fn delete_note(
-    conn: &Connection,
-    vault: &Path,
-    note_id: i64,
-) -> Result<(), String> {
+pub fn delete_note(conn: &Connection, vault: &Path, note_id: i64) -> Result<(), String> {
     let file_path: String = conn
-        .query_row("SELECT file_path FROM notes WHERE id = ?1", [note_id], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT file_path FROM notes WHERE id = ?1",
+            [note_id],
+            |row| row.get(0),
+        )
         .map_err(|e| format!("Note not found: {e}"))?;
 
     let full_path = notes_dir(vault).join(&file_path);
     if full_path.exists() {
-        std::fs::remove_file(&full_path)
-            .map_err(|e| format!("Failed to delete file: {e}"))?;
+        std::fs::remove_file(&full_path).map_err(|e| format!("Failed to delete file: {e}"))?;
     }
 
     // Clean FTS
@@ -400,10 +636,11 @@ pub fn list_notes(
     conn: &Connection,
     folder: Option<&str>,
     subject_id: Option<i64>,
+    chapter_id: Option<i64>,
     tag: Option<&str>,
 ) -> Result<Vec<NoteInfo>, String> {
     let mut sql = String::from(
-        "SELECT DISTINCT n.id, n.title, n.file_path, n.subject_id, n.created_at, n.modified_at
+        "SELECT DISTINCT n.id, n.title, n.file_path, n.subject_id, n.chapter_id, n.created_at, n.modified_at
          FROM notes n",
     );
 
@@ -424,6 +661,12 @@ pub fn list_notes(
     if let Some(sid) = subject_id {
         conditions.push(format!("n.subject_id = ?{param_idx}"));
         params.push(Box::new(sid));
+        param_idx += 1;
+    }
+
+    if let Some(cid) = chapter_id {
+        conditions.push(format!("n.chapter_id = ?{param_idx}"));
+        params.push(Box::new(cid));
         param_idx += 1;
     }
 
@@ -450,15 +693,29 @@ pub fn list_notes(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, Option<i64>>(3)?,
-                row.get::<_, String>(4)?,
+                row.get::<_, Option<i64>>(4)?,
                 row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .map(|(id, title, file_path, subject_id, created_at, modified_at)| {
-            note_info_from_row(conn, id, title, file_path, subject_id, created_at, modified_at)
-        })
+        .map(
+            |(id, title, file_path, subject_id, chapter_id, created_at, modified_at)| {
+                note_info_from_row(
+                    conn,
+                    NoteRowData {
+                        id,
+                        title,
+                        file_path,
+                        subject_id,
+                        chapter_id,
+                        created_at,
+                        modified_at,
+                    },
+                )
+            },
+        )
         .collect();
 
     Ok(notes)
@@ -509,19 +766,33 @@ pub fn rename_note(
     note_id: i64,
     new_title: &str,
 ) -> Result<NoteInfo, String> {
-    let (old_title, old_file_path, subject_id, created_at, subject_name): (
-        String,
-        String,
-        Option<i64>,
-        String,
-        Option<String>,
-    ) = conn
+    let (
+        old_title,
+        old_file_path,
+        subject_id,
+        chapter_id,
+        created_at,
+        subject_name,
+        chapter_title,
+    ): StoredNoteContext = conn
         .query_row(
-            "SELECT n.title, n.file_path, n.subject_id, n.created_at, s.name
-             FROM notes n LEFT JOIN subjects s ON s.id = n.subject_id
+            "SELECT n.title, n.file_path, n.subject_id, n.chapter_id, n.created_at, s.name, ch.title
+             FROM notes n
+             LEFT JOIN subjects s ON s.id = n.subject_id
+             LEFT JOIN chapters ch ON ch.id = n.chapter_id
              WHERE n.id = ?1",
             [note_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            },
         )
         .map_err(|e| format!("Note not found: {e}"))?;
 
@@ -532,7 +803,11 @@ pub fn rename_note(
     let old_path = PathBuf::from(&old_file_path);
     let folder = old_path.parent().and_then(|p| {
         let s = p.to_string_lossy().to_string();
-        if s.is_empty() || s == "." { None } else { Some(s) }
+        if s.is_empty() || s == "." {
+            None
+        } else {
+            Some(s)
+        }
     });
 
     let new_rel_path = match &folder {
@@ -548,37 +823,17 @@ pub fn rename_note(
     let tags: Vec<String> = old_fm.and_then(|fm| fm.tags).unwrap_or_default();
 
     let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let frontmatter = build_frontmatter(new_title, &tags, subject_name.as_deref(), &created_at, &now);
+    let frontmatter = build_frontmatter(
+        new_title,
+        &tags,
+        subject_name.as_deref(),
+        chapter_title.as_deref(),
+        &created_at,
+        &now,
+    );
     let full_content = format!("{frontmatter}{body}");
     let hash = content_hash(&full_content);
 
-    // Write new file
-    let new_full_path = notes_dir(vault).join(&new_rel_path);
-    let parent = new_full_path.parent().ok_or("No parent dir")?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {e}"))?;
-    let tmp_path = parent.join(format!(".{new_slug}.md.tmp"));
-    std::fs::write(&tmp_path, &full_content)
-        .map_err(|e| format!("Failed to write temp file: {e}"))?;
-    std::fs::rename(&tmp_path, &new_full_path)
-        .map_err(|e| format!("Failed to rename temp file: {e}"))?;
-
-    // Delete old file (if it's different from new)
-    if old_full_path != new_full_path && old_full_path.exists() {
-        std::fs::remove_file(&old_full_path)
-            .map_err(|e| format!("Failed to remove old file: {e}"))?;
-    }
-
-    // Update SQLite
-    conn.execute(
-        "UPDATE notes SET title = ?2, file_path = ?3, content_hash = ?4, modified_at = ?5 WHERE id = ?1",
-        rusqlite::params![note_id, new_title, new_rel_path, hash, now],
-    )
-    .map_err(|e| format!("Failed to update note: {e}"))?;
-
-    // Re-index
-    index_note(conn, note_id, new_title, body, &tags)?;
-
-    // Update backlinks: find all notes that link to old_title and update them
     let mut link_stmt = conn
         .prepare(
             "SELECT DISTINCT nl.source_note_id, n.file_path
@@ -594,13 +849,58 @@ pub fn rename_note(
         .filter_map(|r| r.ok())
         .collect();
 
+    ensure_note_destination_available(
+        conn,
+        vault,
+        &new_rel_path,
+        Some(&old_file_path),
+        Some(note_id),
+    )?;
+
+    // Write new file
+    let new_full_path = notes_dir(vault).join(&new_rel_path);
+    let parent = new_full_path.parent().ok_or("No parent dir")?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create dir: {e}"))?;
+    let tmp_path = parent.join(format!(".{new_slug}.md.tmp"));
+    std::fs::write(&tmp_path, &full_content)
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    std::fs::rename(&tmp_path, &new_full_path)
+        .map_err(|e| format!("Failed to rename temp file: {e}"))?;
+
+    with_transaction(conn, || {
+        conn.execute(
+            "UPDATE notes SET title = ?2, file_path = ?3, content_hash = ?4, modified_at = ?5 WHERE id = ?1",
+            rusqlite::params![note_id, new_title, new_rel_path, hash, now],
+        )
+        .map_err(|e| format!("Failed to update note: {e}"))?;
+
+        index_note(conn, note_id, new_title, body, &tags)?;
+
+        conn.execute(
+            "UPDATE note_links SET target_title = ?2 WHERE target_title = ?1",
+            rusqlite::params![old_title, new_title],
+        )
+        .map_err(|e| format!("Failed to update link targets: {e}"))?;
+
+        Ok(())
+    })
+    .inspect_err(|_| {
+        if new_full_path != old_full_path {
+            let _ = std::fs::remove_file(&new_full_path);
+        }
+    })?;
+
+    // Delete old file (if it's different from new)
+    if old_full_path != new_full_path && old_full_path.exists() {
+        std::fs::remove_file(&old_full_path)
+            .map_err(|e| format!("Failed to remove old file: {e}"))?;
+    }
+
     for (linking_id, linking_path) in &linking_notes {
         let linking_full = notes_dir(vault).join(linking_path);
         if let Ok(linking_content) = std::fs::read_to_string(&linking_full) {
-            let updated = linking_content.replace(
-                &format!("[[{old_title}]]"),
-                &format!("[[{new_title}]]"),
-            );
+            let updated =
+                linking_content.replace(&format!("[[{old_title}]]"), &format!("[[{new_title}]]"));
             if updated != linking_content {
                 let link_parent = linking_full.parent().ok_or("No parent dir")?;
                 let link_tmp = link_parent.join(format!(
@@ -623,15 +923,17 @@ pub fn rename_note(
         }
     }
 
-    // Update note_links.target_title for all links pointing to old title
-    conn.execute(
-        "UPDATE note_links SET target_title = ?2 WHERE target_title = ?1",
-        rusqlite::params![old_title, new_title],
-    )
-    .map_err(|e| format!("Failed to update link targets: {e}"))?;
-
     Ok(note_info_from_row(
-        conn, note_id, new_title.to_string(), new_rel_path, subject_id, created_at, now,
+        conn,
+        NoteRowData {
+            id: note_id,
+            title: new_title.to_string(),
+            file_path: new_rel_path,
+            subject_id,
+            chapter_id,
+            created_at,
+            modified_at: now,
+        },
     ))
 }
 
@@ -641,17 +943,18 @@ pub fn move_note(
     note_id: i64,
     target_folder: Option<&str>,
 ) -> Result<NoteInfo, String> {
-    let (title, old_file_path, subject_id, created_at): (
+    let (title, old_file_path, subject_id, chapter_id, created_at): (
         String,
         String,
         Option<i64>,
+        Option<i64>,
         String,
-    ) = conn
-        .query_row(
-            "SELECT title, file_path, subject_id, created_at
+    ) =
+        conn.query_row(
+            "SELECT title, file_path, subject_id, chapter_id, created_at
              FROM notes WHERE id = ?1",
             [note_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )
         .map_err(|e| format!("Note not found: {e}"))?;
 
@@ -663,15 +966,29 @@ pub fn move_note(
         .to_string_lossy()
         .to_string();
 
-    let new_rel_path = match target_folder {
-        Some(f) if !f.is_empty() => format!("{f}/{filename}"),
-        _ => filename.clone(),
+    let target_folder_rel = match target_folder {
+        Some(f) if !f.is_empty() => Some(normalize_notes_relative_path(vault, f)?),
+        _ => None,
+    };
+
+    let new_rel_path = match &target_folder_rel {
+        Some(f) => format!("{f}/{filename}"),
+        None => filename.clone(),
     };
 
     // If the path is the same, nothing to do
     if new_rel_path == old_file_path {
         return Ok(note_info_from_row(
-            conn, note_id, title, old_file_path, subject_id, created_at.clone(), created_at,
+            conn,
+            NoteRowData {
+                id: note_id,
+                title,
+                file_path: old_file_path,
+                subject_id,
+                chapter_id,
+                created_at: created_at.clone(),
+                modified_at: created_at,
+            },
         ));
     }
 
@@ -680,6 +997,14 @@ pub fn move_note(
     let content = std::fs::read_to_string(&old_full_path)
         .map_err(|e| format!("Failed to read note file: {e}"))?;
     let hash = content_hash(&content);
+
+    ensure_note_destination_available(
+        conn,
+        vault,
+        &new_rel_path,
+        Some(&old_file_path),
+        Some(note_id),
+    )?;
 
     // Write to new location
     let new_full_path = notes_dir(vault).join(&new_rel_path);
@@ -692,10 +1017,26 @@ pub fn move_note(
         .to_string_lossy()
         .to_string();
     let tmp_path = parent.join(format!(".{slug}.md.tmp"));
-    std::fs::write(&tmp_path, &content)
-        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    std::fs::write(&tmp_path, &content).map_err(|e| format!("Failed to write temp file: {e}"))?;
     std::fs::rename(&tmp_path, &new_full_path)
         .map_err(|e| format!("Failed to rename temp file: {e}"))?;
+
+    let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+
+    with_transaction(conn, || {
+        conn.execute(
+            "UPDATE notes SET file_path = ?2, content_hash = ?3, modified_at = ?4 WHERE id = ?1",
+            rusqlite::params![note_id, new_rel_path, hash, now],
+        )
+        .map_err(|e| format!("Failed to update note: {e}"))?;
+
+        Ok(())
+    })
+    .inspect_err(|_| {
+        if new_full_path != old_full_path {
+            let _ = std::fs::remove_file(&new_full_path);
+        }
+    })?;
 
     // Delete old file (if different)
     if old_full_path != new_full_path && old_full_path.exists() {
@@ -703,35 +1044,33 @@ pub fn move_note(
             .map_err(|e| format!("Failed to remove old file: {e}"))?;
     }
 
-    let now = Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-
-    // Update SQLite
-    conn.execute(
-        "UPDATE notes SET file_path = ?2, content_hash = ?3, modified_at = ?4 WHERE id = ?1",
-        rusqlite::params![note_id, new_rel_path, hash, now],
-    )
-    .map_err(|e| format!("Failed to update note: {e}"))?;
-
     Ok(note_info_from_row(
-        conn, note_id, title, new_rel_path, subject_id, created_at, now,
+        conn,
+        NoteRowData {
+            id: note_id,
+            title,
+            file_path: new_rel_path,
+            subject_id,
+            chapter_id,
+            created_at,
+            modified_at: now,
+        },
     ))
 }
 
 pub fn delete_folder(vault: &Path, folder: &str) -> Result<(), String> {
-    let dir = notes_dir(vault).join(folder);
+    let normalized = normalize_notes_relative_path(vault, folder)?;
+    let dir = notes_dir(vault).join(&normalized);
     if !dir.exists() {
         return Ok(());
     }
-    // Only delete if empty (no files inside)
-    let has_files = std::fs::read_dir(&dir)
-        .map_err(|e| format!("Failed to read folder: {e}"))?
-        .any(|entry| {
-            entry
-                .ok()
-                .map(|e| e.file_type().ok().map(|ft| ft.is_file()).unwrap_or(false))
-                .unwrap_or(false)
-        });
-    if has_files {
+    let has_descendants = walkdir::WalkDir::new(&dir)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .next()
+        .is_some();
+    if has_descendants {
         return Err("Folder is not empty — move or delete its notes first".to_string());
     }
     std::fs::remove_dir_all(&dir).map_err(|e| format!("Failed to delete folder: {e}"))?;
@@ -761,7 +1100,8 @@ pub fn list_folders(vault: &Path) -> Result<Vec<String>, String> {
 }
 
 pub fn create_folder(vault: &Path, path: &str) -> Result<(), String> {
-    let dir = notes_dir(vault).join(path);
+    let normalized = normalize_notes_relative_path(vault, path)?;
+    let dir = notes_dir(vault).join(normalized);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create folder: {e}"))
 }
 
@@ -830,6 +1170,7 @@ mod tests {
             "Test",
             &["rust".to_string()],
             Some("CS"),
+            Some("Trees"),
             "2026-01-01",
             "2026-01-02",
         );
@@ -852,7 +1193,8 @@ mod tests {
     fn test_create_note_writes_file_and_indexes() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let note = create_note(conn, tmp.path(), "My Note", None, None, "Hello world").unwrap();
+            let note =
+                create_note(conn, tmp.path(), "My Note", None, None, None, "Hello world").unwrap();
             assert_eq!(note.title, "My Note");
             assert!(note.file_path.ends_with("my-note.md"));
             let full_path = tmp.path().join("notes").join(&note.file_path);
@@ -861,81 +1203,148 @@ mod tests {
             assert!(content.contains("title: \"My Note\""));
             assert!(content.contains("Hello world"));
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_get_note_returns_content() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let note = create_note(conn, tmp.path(), "Test Note", None, None, "Body text").unwrap();
+            let note =
+                create_note(conn, tmp.path(), "Test Note", None, None, None, "Body text").unwrap();
             let detail = get_note(conn, tmp.path(), note.id).unwrap();
             assert_eq!(detail.info.title, "Test Note");
             assert!(detail.content.contains("Body text"));
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_create_note_in_folder() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let note = create_note(conn, tmp.path(), "Sub Note", Some("project/ideas"), None, "In subfolder").unwrap();
+            let note = create_note(
+                conn,
+                tmp.path(),
+                "Sub Note",
+                Some("project/ideas"),
+                None,
+                None,
+                "In subfolder",
+            )
+            .unwrap();
             assert!(note.file_path.starts_with("project/ideas/"));
             let full_path = tmp.path().join("notes").join(&note.file_path);
             assert!(full_path.exists());
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_create_note_rejects_existing_file_collision() {
+        let (db, tmp) = setup();
+        let notes_root = tmp.path().join("notes");
+        std::fs::write(notes_root.join("collision.md"), "original content").unwrap();
+
+        db.with_conn(|conn| {
+            let err =
+                create_note(conn, tmp.path(), "Collision", None, None, None, "New content")
+                    .unwrap_err();
+            assert!(err.contains("already exists"));
+            let content = std::fs::read_to_string(notes_root.join("collision.md")).unwrap();
+            assert_eq!(content, "original content");
+            Ok(())
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_delete_note_removes_file_and_index() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let note = create_note(conn, tmp.path(), "To Delete", None, None, "Gone").unwrap();
+            let note =
+                create_note(conn, tmp.path(), "To Delete", None, None, None, "Gone").unwrap();
             let full_path = tmp.path().join("notes").join(&note.file_path);
             assert!(full_path.exists());
             delete_note(conn, tmp.path(), note.id).unwrap();
             assert!(!full_path.exists());
-            let count: i64 = conn.query_row("SELECT COUNT(*) FROM notes WHERE id = ?1", [note.id], |r| r.get(0)).unwrap();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM notes WHERE id = ?1", [note.id], |r| {
+                    r.get(0)
+                })
+                .unwrap();
             assert_eq!(count, 0);
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_list_notes_filters() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            create_note(conn, tmp.path(), "Root Note", None, None, "At root").unwrap();
-            create_note(conn, tmp.path(), "Project Note", Some("projects"), None, "In projects").unwrap();
-            let all = list_notes(conn, None, None, None).unwrap();
+            create_note(conn, tmp.path(), "Root Note", None, None, None, "At root").unwrap();
+            create_note(
+                conn,
+                tmp.path(),
+                "Project Note",
+                Some("projects"),
+                None,
+                None,
+                "In projects",
+            )
+            .unwrap();
+            let all = list_notes(conn, None, None, None, None).unwrap();
             assert_eq!(all.len(), 2);
-            let filtered = list_notes(conn, Some("projects"), None, None).unwrap();
+            let filtered = list_notes(conn, Some("projects"), None, None, None).unwrap();
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].title, "Project Note");
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_search_notes() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            create_note(conn, tmp.path(), "Rust Guide", None, None, "Rust is a systems programming language").unwrap();
-            create_note(conn, tmp.path(), "Python Guide", None, None, "Python is great for scripting").unwrap();
+            create_note(
+                conn,
+                tmp.path(),
+                "Rust Guide",
+                None,
+                None,
+                None,
+                "Rust is a systems programming language",
+            )
+            .unwrap();
+            create_note(
+                conn,
+                tmp.path(),
+                "Python Guide",
+                None,
+                None,
+                None,
+                "Python is great for scripting",
+            )
+            .unwrap();
             let results = search_notes(conn, "systems programming").unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].title, "Rust Guide");
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
     fn test_rename_note() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let note = create_note(conn, tmp.path(), "Old Title", None, None, "Content").unwrap();
+            let note =
+                create_note(conn, tmp.path(), "Old Title", None, None, None, "Content").unwrap();
             let renamed = rename_note(conn, tmp.path(), note.id, "New Title").unwrap();
             assert_eq!(renamed.title, "New Title");
             assert!(renamed.file_path.contains("new-title"));
@@ -946,6 +1355,70 @@ mod tests {
             let new_path = tmp.path().join("notes").join(&renamed.file_path);
             assert!(new_path.exists());
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_rename_note_rejects_collision() {
+        let (db, tmp) = setup();
+        db.with_conn(|conn| {
+            let first =
+                create_note(conn, tmp.path(), "First Note", None, None, None, "First").unwrap();
+            let second =
+                create_note(conn, tmp.path(), "Target Note", None, None, None, "Second").unwrap();
+
+            let err = rename_note(conn, tmp.path(), first.id, "Target Note").unwrap_err();
+            assert!(err.contains("already exists"));
+
+            let first_path = tmp.path().join("notes").join(&first.file_path);
+            let second_path = tmp.path().join("notes").join(&second.file_path);
+            assert!(first_path.exists());
+            assert!(second_path.exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_move_note_rejects_collision() {
+        let (db, tmp) = setup();
+        db.with_conn(|conn| {
+            let note =
+                create_note(conn, tmp.path(), "Move Me", None, None, None, "Move me").unwrap();
+            let blocker =
+                create_note(conn, tmp.path(), "Move Me", Some("dest"), None, None, "Blocker")
+                    .unwrap();
+
+            let err = move_note(conn, tmp.path(), note.id, Some("dest")).unwrap_err();
+            assert!(err.contains("already exists"), "err was {err}");
+
+            let original_path = tmp.path().join("notes").join(&note.file_path);
+            let blocker_path = tmp.path().join("notes").join(&blocker.file_path);
+            assert!(original_path.exists());
+            assert!(blocker_path.exists());
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_folder_validation_rejects_traversal() {
+        let (_db, tmp) = setup();
+        let err = create_folder(tmp.path(), "../escape").unwrap_err();
+        assert!(err.contains("traversal"));
+    }
+
+    #[test]
+    fn test_delete_folder_rejects_nested_subtree() {
+        let (_db, tmp) = setup();
+        create_folder(tmp.path(), "project").unwrap();
+        let nested = tmp.path().join("notes/project/nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("note.md"), "content").unwrap();
+
+        let err = delete_folder(tmp.path(), "project").unwrap_err();
+        assert!(err.contains("not empty"), "err was {err}");
+        assert!(tmp.path().join("notes/project").exists());
     }
 }

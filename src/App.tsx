@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
+import { PathwayGenerationProvider } from "./components/layout/PathwayGenerationProvider";
 import { Shell } from "./components/layout/Shell";
 import { ThemeProvider } from "./components/layout/ThemeProvider";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
-import { checkAiStatus } from "./lib/tauri";
+import { sanitizeRestorableRoute } from "./lib/routes";
+import { getConfig, getLastSurface } from "./lib/tauri";
 import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
 import { Graph } from "./pages/Graph";
@@ -25,25 +27,36 @@ import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 
 function AppContent() {
-  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  const [bootState, setBootState] = useState<{
+    initialRoute: string;
+    showOnboarding: boolean;
+  } | null>(null);
 
   useEffect(() => {
-    // Show onboarding if AI is not configured (first-run heuristic)
-    checkAiStatus()
-      .then((status) => {
-        setShowOnboarding(!status.configured);
-      })
-      .catch(() => {
-        setShowOnboarding(true);
-      });
+    (async () => {
+      try {
+        const config = await getConfig();
+        if (!config.onboarding_completed) {
+          setBootState({ initialRoute: "/", showOnboarding: true });
+          return;
+        }
+        const lastSurface = await getLastSurface();
+        setBootState({
+          initialRoute: sanitizeRestorableRoute(lastSurface),
+          showOnboarding: false,
+        });
+      } catch {
+        setBootState({ initialRoute: "/", showOnboarding: true });
+      }
+    })();
   }, []);
 
   const handleOnboardingComplete = useCallback(() => {
-    setShowOnboarding(false);
+    setBootState({ initialRoute: "/", showOnboarding: false });
   }, []);
 
   // Loading state
-  if (showOnboarding === null) {
+  if (bootState === null) {
     return (
       <div className="flex h-screen items-center justify-center bg-bg">
         <p className="text-sm text-text-muted">Loading...</p>
@@ -51,7 +64,7 @@ function AppContent() {
     );
   }
 
-  if (showOnboarding) {
+  if (bootState.showOnboarding) {
     return (
       <MemoryRouter>
         <Routes>
@@ -65,7 +78,7 @@ function AppContent() {
   }
 
   return (
-    <MemoryRouter initialEntries={["/workspace"]}>
+    <MemoryRouter initialEntries={[bootState.initialRoute]}>
       <Routes>
         <Route element={<Shell />}>
           <Route path="/" element={<Queue />} />
@@ -86,6 +99,7 @@ function AppContent() {
           <Route path="/notes" element={<Notes />} />
           <Route path="/graph" element={<Graph />} />
           <Route path="/pathway" element={<Pathway />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -96,7 +110,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AppContent />
+        <PathwayGenerationProvider>
+          <AppContent />
+        </PathwayGenerationProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

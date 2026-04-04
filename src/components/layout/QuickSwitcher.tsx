@@ -1,10 +1,26 @@
-import { BookOpen, FileText, Search, StickyNote } from "lucide-react";
+import {
+  BarChart3,
+  BookOpen,
+  FileText,
+  FolderOpen,
+  Layers,
+  Network,
+  Repeat,
+  Search,
+  Settings,
+  Sparkles,
+  StickyNote,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listChapters, listNotes, listSubjects } from "../../lib/tauri";
+import {
+  listNavigationChapters,
+  listNotes,
+  listSubjects,
+} from "../../lib/tauri";
 
 interface SwitcherItem {
-  type: "subject" | "chapter" | "note";
+  type: "route" | "subject" | "chapter" | "note";
   id: number;
   name: string;
   subjectName?: string;
@@ -14,6 +30,54 @@ interface SwitcherItem {
 interface Props {
   open: boolean;
   onClose: () => void;
+}
+
+const STATIC_ITEMS: SwitcherItem[] = [
+  { type: "route", id: 1, name: "Queue", path: "/" },
+  { type: "route", id: 2, name: "Library", path: "/workspace" },
+  { type: "route", id: 3, name: "Reader", path: "/reader" },
+  { type: "route", id: 4, name: "Review", path: "/review" },
+  { type: "route", id: 5, name: "Settings", path: "/settings" },
+  { type: "route", id: 6, name: "Cards", path: "/cards" },
+  { type: "route", id: 7, name: "Quizzes", path: "/quizzes" },
+  { type: "route", id: 8, name: "Progress", path: "/progress" },
+  { type: "route", id: 9, name: "Graph", path: "/graph" },
+  { type: "route", id: 10, name: "Pathway", path: "/pathway" },
+];
+
+function iconForItem(item: SwitcherItem) {
+  if (item.type === "subject") {
+    return <BookOpen size={14} className="shrink-0 text-accent/60" />;
+  }
+  if (item.type === "note") {
+    return <StickyNote size={14} className="shrink-0 text-coral/60" />;
+  }
+  if (item.type === "route") {
+    const iconClass = "shrink-0 text-text-muted/70";
+    switch (item.path) {
+      case "/workspace":
+        return <FolderOpen size={14} className={iconClass} />;
+      case "/reader":
+        return <BookOpen size={14} className={iconClass} />;
+      case "/review":
+        return <Repeat size={14} className={iconClass} />;
+      case "/cards":
+        return <Layers size={14} className={iconClass} />;
+      case "/quizzes":
+        return <FileText size={14} className={iconClass} />;
+      case "/progress":
+        return <BarChart3 size={14} className={iconClass} />;
+      case "/graph":
+        return <Network size={14} className={iconClass} />;
+      case "/pathway":
+        return <Sparkles size={14} className={iconClass} />;
+      case "/settings":
+        return <Settings size={14} className={iconClass} />;
+      default:
+        return <BookOpen size={14} className={iconClass} />;
+    }
+  }
+  return <FileText size={14} className="shrink-0" />;
 }
 
 export function QuickSwitcher({ open, onClose }: Props) {
@@ -33,26 +97,33 @@ export function QuickSwitcher({ open, onClose }: Props) {
     (async () => {
       try {
         const subjects = await listSubjects();
-        const all: SwitcherItem[] = subjects.map((s) => ({
-          type: "subject" as const,
-          id: s.id,
-          name: s.name,
-          path: "/workspace",
-        }));
-
-        const chapterLists = await Promise.all(
-          subjects.map((s) => listChapters(s.id)),
-        );
-        for (let i = 0; i < subjects.length; i++) {
-          for (const ch of chapterLists[i]) {
-            all.push({
-              type: "chapter",
-              id: ch.id,
-              name: ch.title,
-              subjectName: subjects[i].name,
-              path: `/chapter?id=${ch.id}`,
-            });
+        const chapters = await listNavigationChapters();
+        const firstChapterBySubject = new Map<number, number>();
+        for (const chapter of chapters) {
+          if (!firstChapterBySubject.has(chapter.subject_id)) {
+            firstChapterBySubject.set(chapter.subject_id, chapter.id);
           }
+        }
+        const all: SwitcherItem[] = [...STATIC_ITEMS];
+        all.push(
+          ...subjects.map((s) => ({
+            type: "subject" as const,
+            id: s.id,
+            name: s.name,
+            path: firstChapterBySubject.has(s.id)
+              ? `/chapter?id=${firstChapterBySubject.get(s.id)}`
+              : "/workspace",
+          })),
+        );
+
+        for (const chapter of chapters) {
+          all.push({
+            type: "chapter",
+            id: chapter.id,
+            name: chapter.title,
+            subjectName: chapter.subject_name,
+            path: `/chapter?id=${chapter.id}`,
+          });
         }
 
         // Load notes
@@ -64,7 +135,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
               id: note.id,
               name: note.title,
               subjectName: note.subject_name ?? undefined,
-              path: `/notes?id=${note.id}`,
+              path: `/workspace?note=${note.id}`,
             });
           }
         } catch {
@@ -144,7 +215,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search subjects, chapters, and notes..."
+            placeholder="Search subjects, chapters, cards, quizzes, and notes..."
             className="flex-1 bg-transparent text-sm text-text placeholder:text-text-muted/60 focus:outline-none"
           />
           <kbd className="rounded-md border border-border-subtle bg-panel-alt px-1.5 py-0.5 text-[10px] text-text-muted">
@@ -163,13 +234,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
                   : "text-text-muted hover:bg-panel-alt"
               }`}
             >
-              {item.type === "subject" ? (
-                <BookOpen size={14} className="shrink-0 text-accent/60" />
-              ) : item.type === "note" ? (
-                <StickyNote size={14} className="shrink-0 text-purple-400/60" />
-              ) : (
-                <FileText size={14} className="shrink-0" />
-              )}
+              {iconForItem(item)}
               <span className="flex-1 truncate">{item.name}</span>
               {item.subjectName && (
                 <span className="text-xs text-text-muted/60">

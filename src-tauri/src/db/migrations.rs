@@ -4,10 +4,21 @@ use rusqlite::Connection;
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../../migrations/001_foundation.sql")),
     (2, include_str!("../../migrations/002_section_status.sql")),
-    (3, include_str!("../../migrations/003_teachback_miss_source.sql")),
+    (
+        3,
+        include_str!("../../migrations/003_teachback_miss_source.sql"),
+    ),
     (4, include_str!("../../migrations/004_notes.sql")),
-    (5, include_str!("../../migrations/005_ai_generated_source.sql")),
+    (
+        5,
+        include_str!("../../migrations/005_ai_generated_source.sql"),
+    ),
     (6, include_str!("../../migrations/006_ai_inline_source.sql")),
+    (
+        7,
+        include_str!("../../migrations/007_chapter_raw_markdown.sql"),
+    ),
+    (8, include_str!("../../migrations/008_study_notes.sql")),
 ];
 
 pub fn read_user_version(conn: &Connection) -> Result<u32, String> {
@@ -21,18 +32,19 @@ pub fn run_all(conn: &Connection) -> Result<(), String> {
 
     for &(version, sql) in MIGRATIONS {
         if version > current {
-            conn.execute_batch("BEGIN;")
+            conn.execute_batch("BEGIN IMMEDIATE;")
                 .map_err(|e| format!("Migration {version} BEGIN failed: {e}"))?;
 
             match conn.execute_batch(sql) {
                 Ok(()) => {
-                    conn.execute_batch("COMMIT;")
-                        .map_err(|e| format!("Migration {version} COMMIT failed: {e}"))?;
-                    // Set version AFTER commit succeeds so a crash between
-                    // commit and pragma leaves the migration applied but
-                    // unversioned — next launch re-runs it (safe due to IF NOT EXISTS).
-                    conn.pragma_update(None, "user_version", version)
-                        .map_err(|e| format!("Failed to set user_version to {version}: {e}"))?;
+                    if let Err(e) = conn.pragma_update(None, "user_version", version) {
+                        let _ = conn.execute_batch("ROLLBACK;");
+                        return Err(format!("Failed to set user_version to {version}: {e}"));
+                    }
+                    if let Err(e) = conn.execute_batch("COMMIT;") {
+                        let _ = conn.execute_batch("ROLLBACK;");
+                        return Err(format!("Migration {version} COMMIT failed: {e}"));
+                    }
                 }
                 Err(e) => {
                     let _ = conn.execute_batch("ROLLBACK;");
@@ -58,7 +70,7 @@ mod tests {
         run_all(&conn).expect("second run (idempotent)");
 
         let version = read_user_version(&conn).unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 8);
     }
 
     #[test]

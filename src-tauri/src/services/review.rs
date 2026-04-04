@@ -1,6 +1,6 @@
+use crate::services::fsrs;
 use rusqlite::Connection;
 use serde::Serialize;
-use crate::services::fsrs;
 
 #[derive(Serialize)]
 pub struct DueCard {
@@ -71,7 +71,12 @@ pub fn submit_rating(conn: &Connection, card_id: i64, rating: i32) -> Result<Rat
         .map_err(|e| format!("Card schedule not found: {e}"))?;
 
     // 2. Run FSRS calculation
-    let state = fsrs::ScheduleState { stability, difficulty, reps, lapses };
+    let state = fsrs::ScheduleState {
+        stability,
+        difficulty,
+        reps,
+        lapses,
+    };
     let output = fsrs::schedule(&state, rating);
 
     // 3. Update card_schedule
@@ -108,7 +113,11 @@ pub fn submit_rating(conn: &Connection, card_id: i64, rating: i32) -> Result<Rat
 
     // 5. Log study event
     let subject_id: Option<i64> = conn
-        .query_row("SELECT subject_id FROM cards WHERE id = ?1", [card_id], |row| row.get(0))
+        .query_row(
+            "SELECT subject_id FROM cards WHERE id = ?1",
+            [card_id],
+            |row| row.get(0),
+        )
         .ok();
 
     let payload = serde_json::json!({ "card_id": card_id, "rating": rating });
@@ -122,7 +131,10 @@ pub fn submit_rating(conn: &Connection, card_id: i64, rating: i32) -> Result<Rat
     // 6. Count remaining due cards
     let remaining: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM card_schedule WHERE next_review <= datetime('now')",
+            "SELECT COUNT(*)
+             FROM card_schedule cs
+             JOIN cards c ON c.id = cs.card_id
+             WHERE c.status = 'active' AND cs.next_review <= datetime('now')",
             [],
             |row| row.get(0),
         )
@@ -202,6 +214,30 @@ mod tests {
             let result = submit_rating(conn, 1, 3)?; // Good
             assert_eq!(result.next_review_days, 5); // new card + Good = 5 days
             assert_eq!(result.cards_remaining, 0); // card now in future
+            Ok(())
+        })
+        .expect("test failed");
+    }
+
+    #[test]
+    fn test_submit_rating_counts_only_active_due_cards() {
+        let db = setup_test_db_with_card();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO cards (subject_id, source_type, prompt, answer, card_type, status, created_at)
+                 VALUES (1, 'manual', 'Suspended?', 'Nope', 'basic', 'suspended', datetime('now'))",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute(
+                "INSERT INTO card_schedule (card_id, next_review, stability, difficulty, reps, lapses)
+                 VALUES (2, datetime('now', '-1 hour'), 1.0, 5.0, 0, 0)",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+
+            let result = submit_rating(conn, 1, 3)?;
+            assert_eq!(result.cards_remaining, 0);
             Ok(())
         })
         .expect("test failed");

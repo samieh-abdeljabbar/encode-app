@@ -153,10 +153,12 @@ mod tests {
 
     #[test]
     fn test_diff_detects_changed_files() {
-        let current: HashMap<String, String> =
-            [("file.md".into(), "new-hash".into())].into_iter().collect();
-        let stored: HashMap<String, String> =
-            [("file.md".into(), "old-hash".into())].into_iter().collect();
+        let current: HashMap<String, String> = [("file.md".into(), "new-hash".into())]
+            .into_iter()
+            .collect();
+        let stored: HashMap<String, String> = [("file.md".into(), "old-hash".into())]
+            .into_iter()
+            .collect();
 
         let (added, changed, removed) = diff_hashes(&current, &stored);
         assert!(added.is_empty());

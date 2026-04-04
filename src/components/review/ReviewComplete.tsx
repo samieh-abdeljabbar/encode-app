@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 export function ReviewComplete({
   stats,
+  practiceMode,
+  practiceSubjectId,
 }: {
   stats: {
     reviewed: number;
@@ -11,8 +13,21 @@ export function ReviewComplete({
     good: number;
     easy: number;
   };
+  practiceMode?: string | null;
+  practiceSubjectId?: number | null;
 }) {
   const navigate = useNavigate();
+  const isPracticeSession = practiceMode !== null && practiceMode !== undefined;
+  const emptyMessage = isPracticeSession
+    ? "No cards matched this practice lane"
+    : "No cards due for review";
+  const primaryRoute = practiceSubjectId
+    ? `/review?practice=all&subject=${practiceSubjectId}`
+    : "/cards";
+  const primaryLabel = practiceSubjectId
+    ? "Practice this subject again"
+    : "Browse Cards";
+
   return (
     <div className="flex h-full items-center justify-center">
       <div className="text-center">
@@ -23,7 +38,7 @@ export function ReviewComplete({
         <p className="mb-6 text-sm text-text-muted">
           {stats.reviewed > 0
             ? `Reviewed ${stats.reviewed} card${stats.reviewed !== 1 ? "s" : ""}`
-            : "No cards due for review"}
+            : emptyMessage}
         </p>
         {stats.reviewed > 0 && (
           <div className="flex justify-center gap-4 text-xs">
@@ -44,17 +59,17 @@ export function ReviewComplete({
         <div className="mt-6 flex flex-col items-center gap-2">
           <button
             type="button"
-            onClick={() => navigate("/review?practice=all")}
+            onClick={() => navigate(primaryRoute)}
             className="text-sm text-accent hover:underline"
           >
-            Practice anyway
+            {primaryLabel}
           </button>
           <button
             type="button"
             onClick={() => navigate("/cards")}
             className="text-xs text-text-muted hover:text-text"
           >
-            Browse Cards
+            Back to Cards
           </button>
         </div>
       </div>

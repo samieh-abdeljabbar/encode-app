@@ -27,6 +27,7 @@ regex = "1"                                          # HTML-to-markdown import p
 serde_yaml_ng = "0.10"                               # YAML frontmatter parsing for notes
 walkdir = "2"                                        # vault directory scanning for indexer
 notify = "8"                                         # file watcher for incremental index
+meval = "0.2"
 
 [features]
 test-utils = []

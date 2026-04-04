@@ -3,11 +3,19 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   deleteQuiz,
-  listChapters,
+  listNavigationChapters,
   listQuizzes,
   listSubjects,
 } from "../lib/tauri";
-import type { Chapter, QuizListItem, Subject } from "../lib/tauri";
+import type { NavigationChapter, QuizListItem, Subject } from "../lib/tauri";
+
+function isQuizRecommendedStatus(status: string): boolean {
+  return ["ready_for_quiz", "mastering", "stable"].includes(status);
+}
+
+function formatChapterStatus(status: string): string {
+  return status.replace(/_/g, " ");
+}
 
 function formatRelativeDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -95,11 +103,11 @@ export function Quizzes() {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState<QuizListItem[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [allChapters, setAllChapters] = useState<NavigationChapter[]>([]);
   const [filterSubjectId, setFilterSubjectId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showChapterPicker, setShowChapterPicker] = useState(false);
-  const [availableChapters, setAvailableChapters] = useState<Chapter[]>([]);
 
   const loadQuizzes = useCallback(async () => {
     try {
@@ -116,7 +124,18 @@ export function Quizzes() {
     listSubjects()
       .then(setSubjects)
       .catch(() => {});
+
+    listNavigationChapters()
+      .then(setAllChapters)
+      .catch(() => {});
   }, []);
+
+  const filteredChapters = allChapters.filter(
+    (chapter) =>
+      filterSubjectId == null || chapter.subject_id === filterSubjectId,
+  );
+  const selectedSubject =
+    subjects.find((subject) => subject.id === filterSubjectId) ?? null;
 
   useEffect(() => {
     setLoading(true);
@@ -161,26 +180,8 @@ export function Quizzes() {
             </select>
             <button
               type="button"
-              onClick={async () => {
-                // Load chapters that are ready for quiz
-                try {
-                  const chapterLists = await Promise.all(
-                    subjects.map((s) => listChapters(s.id)),
-                  );
-                  const allChapters = subjects.flatMap((s, i) =>
-                    chapterLists[i]
-                      .filter((c) =>
-                        ["ready_for_quiz", "mastering", "stable"].includes(
-                          c.status,
-                        ),
-                      )
-                      .map((c) => ({ ...c, subjectName: s.name })),
-                  );
-                  setAvailableChapters(allChapters);
-                  setShowChapterPicker(true);
-                } catch {
-                  setError("Failed to load chapters");
-                }
+              onClick={() => {
+                setShowChapterPicker(true);
               }}
               className="flex h-11 items-center gap-1.5 rounded-xl bg-accent px-4 text-xs font-semibold text-white shadow-sm transition-all hover:bg-accent/90"
             >
@@ -198,9 +199,7 @@ export function Quizzes() {
           {showChapterPicker && (
             <div className="mb-6 rounded-xl border border-border bg-panel p-5">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-text">
-                  Select a chapter to quiz
-                </h3>
+                <h3 className="text-sm font-medium text-text">Start a quiz</h3>
                 <button
                   type="button"
                   onClick={() => setShowChapterPicker(false)}
@@ -209,14 +208,44 @@ export function Quizzes() {
                   Cancel
                 </button>
               </div>
-              {availableChapters.length === 0 ? (
+
+              <div className="mb-4 rounded-xl border border-border-subtle bg-panel-alt/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-text">
+                      Subject Test
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Generate one mixed quiz across the whole selected subject.
+                    </p>
+                  </div>
+                  {selectedSubject ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/quiz?subject=${selectedSubject.id}`)
+                      }
+                      className="rounded-lg border border-accent/20 bg-accent/8 px-3 py-2 text-xs font-medium text-accent transition-all hover:border-accent/30 hover:bg-accent/12"
+                    >
+                      Test {selectedSubject.name}
+                    </button>
+                  ) : (
+                    <span className="text-[11px] text-text-muted">
+                      Choose a subject above
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {filteredChapters.length === 0 ? (
                 <p className="py-4 text-center text-xs text-text-muted">
-                  No chapters are ready for quiz yet. Complete reading and
-                  synthesis first.
+                  {filterSubjectId == null
+                    ? "No chapters are available yet."
+                    : "No chapters are available in this subject yet."}
                 </p>
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  {availableChapters.map((ch) => (
+                  {filteredChapters.map((ch) => (
                     <button
                       type="button"
                       key={ch.id}
@@ -228,8 +257,16 @@ export function Quizzes() {
                           {ch.title}
                         </p>
                         <p className="text-[10px] text-text-muted">
-                          {ch.status} &middot; {ch.section_count} sections
+                          {ch.subject_name} &middot;{" "}
+                          {formatChapterStatus(ch.status)} &middot;{" "}
+                          {ch.section_count} sections
                         </p>
+                        {!isQuizRecommendedStatus(ch.status) && (
+                          <p className="mt-1 text-[10px] text-amber">
+                            Early quiz. Useful for a baseline, but it may feel
+                            rough before you read the chapter.
+                          </p>
+                        )}
                       </div>
                       <span className="text-xs text-accent">Start &rarr;</span>
                     </button>
@@ -301,7 +338,7 @@ export function Quizzes() {
               <p className="mt-1 text-xs text-text-muted/60">
                 {filterSubjectId
                   ? "Try selecting a different subject"
-                  : "Complete reading a chapter to unlock quizzes"}
+                  : "Start a quiz from any chapter when you want a baseline check"}
               </p>
             </div>
           )}

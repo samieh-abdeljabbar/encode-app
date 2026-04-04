@@ -94,8 +94,8 @@ pub async fn generate_pathway_chapter(
     })?;
 
     let clean = strip_fences(&response.content);
-    let content: pathway::ChapterContent = serde_json::from_str(clean)
-        .map_err(|e| format!("Failed to parse chapter content: {e}"))?;
+    let content: pathway::ChapterContent =
+        serde_json::from_str(clean).map_err(|e| format!("Failed to parse chapter content: {e}"))?;
 
     Ok(content)
 }

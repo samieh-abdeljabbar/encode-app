@@ -2,7 +2,9 @@
 //! These exercise the full backend service layer with an in-memory SQLite database.
 
 use app_lib::db::Database;
-use app_lib::services::{cards, chunker, notes, note_links, quiz, queue, reader, review, teachback};
+use app_lib::services::{
+    cards, chunker, note_links, notes, queue, quiz, reader, review, teachback,
+};
 
 fn setup() -> Database {
     let db = Database::open_memory().expect("Failed to create in-memory DB");
@@ -113,24 +115,24 @@ fn test_full_study_loop() {
 
         // 4. Submit section checks — mix of ratings
         // Section 0: correct
-        let r0 = reader::process_check(conn, chapter_id, 0, "Arrays, linked lists, stacks, queues, trees, hash tables", "correct").unwrap();
+        let r0 = reader::process_check(conn, chapter_id, 0, "Arrays, linked lists, stacks, queues, trees, hash tables", "correct", None, false).unwrap();
         assert_eq!(r0.outcome, "correct");
         assert!(!r0.repair_card_created);
 
         // Section 1: partial (gets one retry)
-        let r1 = reader::process_check(conn, chapter_id, 1, "Stack is LIFO", "partial").unwrap();
+        let r1 = reader::process_check(conn, chapter_id, 1, "Stack is LIFO", "partial", None, false).unwrap();
         assert!(r1.can_retry);
 
         // Retry section 1: correct this time
-        let r1b = reader::process_check(conn, chapter_id, 1, "Stack is LIFO, Queue is FIFO", "correct").unwrap();
+        let r1b = reader::process_check(conn, chapter_id, 1, "Stack is LIFO, Queue is FIFO", "correct", None, false).unwrap();
         assert!(!r1b.can_retry);
 
         // Section 2: off_track — should create repair card
-        let r2 = reader::process_check(conn, chapter_id, 2, "Trees have three children", "off_track").unwrap();
+        let r2 = reader::process_check(conn, chapter_id, 2, "Trees have three children", "off_track", None, false).unwrap();
         assert!(r2.repair_card_created);
 
         // Section 3: correct — this completes all sections
-        let r3 = reader::process_check(conn, chapter_id, 3, "Hash tables use hashing for O(1) lookup", "correct").unwrap();
+        let r3 = reader::process_check(conn, chapter_id, 3, "Hash tables use hashing for O(1) lookup", "correct", None, false).unwrap();
         assert!(r3.chapter_complete);
 
         // Verify chapter is now awaiting_synthesis
@@ -183,7 +185,7 @@ fn test_full_study_loop() {
                     let r = quiz::submit_answer(conn, quiz_id, idx as i64, &q.correct_answer).unwrap();
                     assert_eq!(r.verdict, "correct");
                 }
-                "fill_blank" => {
+                "fill_blank" | "math_input" | "step_order" | "code_output" | "complete_snippet" => {
                     // Answer correctly
                     let r = quiz::submit_answer(conn, quiz_id, idx as i64, &q.correct_answer).unwrap();
                     assert_eq!(r.verdict, "correct");
@@ -225,34 +227,46 @@ fn test_card_crud_and_review() {
 
     db.with_conn(|conn| {
         // Create basic card
-        let basic = cards::create_card(conn, &cards::CardCreateInput {
-            subject_id: 1,
-            chapter_id: None,
-            prompt: "What is a binary tree?".to_string(),
-            answer: "A tree where each node has at most two children".to_string(),
-            card_type: "basic".to_string(),
-        }).unwrap();
+        let basic = cards::create_card(
+            conn,
+            &cards::CardCreateInput {
+                subject_id: 1,
+                chapter_id: None,
+                prompt: "What is a binary tree?".to_string(),
+                answer: "A tree where each node has at most two children".to_string(),
+                card_type: "basic".to_string(),
+            },
+        )
+        .unwrap();
         assert_eq!(basic.card_type, "basic");
         assert_eq!(basic.source_type, "manual");
 
         // Create cloze card
-        let cloze = cards::create_card(conn, &cards::CardCreateInput {
-            subject_id: 1,
-            chapter_id: None,
-            prompt: "A {{stack}} uses LIFO ordering".to_string(),
-            answer: "LIFO data structure".to_string(),
-            card_type: "cloze".to_string(),
-        }).unwrap();
+        let cloze = cards::create_card(
+            conn,
+            &cards::CardCreateInput {
+                subject_id: 1,
+                chapter_id: None,
+                prompt: "A {{stack}} uses LIFO ordering".to_string(),
+                answer: "LIFO data structure".to_string(),
+                card_type: "cloze".to_string(),
+            },
+        )
+        .unwrap();
         assert_eq!(cloze.card_type, "cloze");
 
         // Create reversed card (creates 2 cards)
-        cards::create_card(conn, &cards::CardCreateInput {
-            subject_id: 1,
-            chapter_id: None,
-            prompt: "FIFO".to_string(),
-            answer: "Queue".to_string(),
-            card_type: "reversed".to_string(),
-        }).unwrap();
+        cards::create_card(
+            conn,
+            &cards::CardCreateInput {
+                subject_id: 1,
+                chapter_id: None,
+                prompt: "FIFO".to_string(),
+                answer: "Queue".to_string(),
+                card_type: "reversed".to_string(),
+            },
+        )
+        .unwrap();
 
         // List all cards — should be 4 (basic + cloze + 2 reversed)
         let all = cards::list_cards(conn, None, None).unwrap();
@@ -279,7 +293,8 @@ fn test_card_crud_and_review() {
         assert_eq!(due_after.len(), 3, "Rated card should no longer be due");
 
         Ok(())
-    }).expect("test");
+    })
+    .expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -295,13 +310,17 @@ fn test_quiz_failure_and_retest() {
         // Fast-track to ready_for_quiz
         for i in 0..4 {
             reader::mark_section_seen(conn, chapter_id, i).unwrap();
-            reader::process_check(conn, chapter_id, i, "answer", "correct").unwrap();
+            reader::process_check(conn, chapter_id, i, "answer", "correct", None, false).unwrap();
         }
         reader::process_synthesis(conn, chapter_id, "synthesis").unwrap();
 
-        let status: String = conn.query_row(
-            "SELECT status FROM chapters WHERE id = ?1", [chapter_id], |r| r.get(0)
-        ).unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM chapters WHERE id = ?1",
+                [chapter_id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(status, "ready_for_quiz");
 
         // Generate quiz and answer everything wrong
@@ -318,25 +337,43 @@ fn test_quiz_failure_and_retest() {
         }
 
         let summary = quiz::complete_quiz(conn, quiz_id).unwrap();
-        assert!(summary.score < 0.8, "Score should be below passing: {}", summary.score);
+        assert!(
+            summary.score < 0.8,
+            "Score should be below passing: {}",
+            summary.score
+        );
         assert!(summary.retest_scheduled);
-        assert_eq!(summary.incorrect, summary.total, "All should be incorrect (no partials expected)");
+        assert_eq!(
+            summary.incorrect, summary.total,
+            "All should be incorrect (no partials expected)"
+        );
 
         // Chapter should stay at ready_for_quiz
-        let status: String = conn.query_row(
-            "SELECT status FROM chapters WHERE id = ?1", [chapter_id], |r| r.get(0)
-        ).unwrap();
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM chapters WHERE id = ?1",
+                [chapter_id],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(status, "ready_for_quiz");
 
         // Repair cards should have been created
-        let repair_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cards WHERE source_type = 'quiz_miss'",
-            [], |r| r.get(0)
-        ).unwrap();
-        assert!(repair_count > 0, "Should have repair cards from quiz misses");
+        let repair_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cards WHERE source_type = 'quiz_miss'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            repair_count > 0,
+            "Should have repair cards from quiz misses"
+        );
 
         Ok(())
-    }).expect("test");
+    })
+    .expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -406,7 +443,7 @@ fn test_quiz_list() {
         // Fast-track to ready_for_quiz
         for i in 0..4 {
             reader::mark_section_seen(conn, chapter_id, i).unwrap();
-            reader::process_check(conn, chapter_id, i, "a", "correct").unwrap();
+            reader::process_check(conn, chapter_id, i, "a", "correct", None, false).unwrap();
         }
         reader::process_synthesis(conn, chapter_id, "s").unwrap();
 
@@ -437,7 +474,8 @@ fn test_quiz_list() {
         assert_eq!(empty.len(), 0);
 
         Ok(())
-    }).expect("test");
+    })
+    .expect("test");
 }
 
 // ──────────────────────────────────────────────
@@ -501,7 +539,8 @@ fn test_teachback_flow() {
             example: 50,
             jargon: 50,
         };
-        let result2 = teachback::submit_self_rating(conn, start2.id, "Better explanation", &ratings).unwrap();
+        let result2 =
+            teachback::submit_self_rating(conn, start2.id, "Better explanation", &ratings).unwrap();
         assert_eq!(result2.mastery, "solid"); // avg = 70
         assert!(result2.repair_card_id.is_none());
 
@@ -522,11 +561,29 @@ fn test_notes_full_flow() {
 
     db.with_conn(|conn| {
         // 1. Create notes with wikilinks
-        let note_a = notes::create_note(conn, tmp.path(), "Binary Trees", None, None, "A binary tree has at most two children. See [[Hash Tables]] for comparison.").unwrap();
+        let note_a = notes::create_note(
+            conn,
+            tmp.path(),
+            "Binary Trees",
+            None,
+            None,
+            None,
+            "A binary tree has at most two children. See [[Hash Tables]] for comparison.",
+        )
+        .unwrap();
         assert_eq!(note_a.title, "Binary Trees");
         assert!(note_a.file_path.ends_with(".md"));
 
-        let note_b = notes::create_note(conn, tmp.path(), "Hash Tables", None, None, "Hash tables provide O(1) lookup. Related: [[Binary Trees]].").unwrap();
+        let note_b = notes::create_note(
+            conn,
+            tmp.path(),
+            "Hash Tables",
+            None,
+            None,
+            None,
+            "Hash tables provide O(1) lookup. Related: [[Binary Trees]].",
+        )
+        .unwrap();
 
         // 2. Resolve links and verify backlinks
         note_links::resolve_links(conn).unwrap();
@@ -563,18 +620,27 @@ fn test_notes_full_flow() {
 
         // 8. Create note in folder
         notes::create_folder(tmp.path(), "algorithms").unwrap();
-        let foldered = notes::create_note(conn, tmp.path(), "Sorting", Some("algorithms"), None, "Merge sort and quicksort").unwrap();
+        let foldered = notes::create_note(
+            conn,
+            tmp.path(),
+            "Sorting",
+            Some("algorithms"),
+            None,
+            None,
+            "Merge sort and quicksort",
+        )
+        .unwrap();
         assert!(foldered.file_path.starts_with("algorithms/"));
 
         // 9. List with filter
-        let all = notes::list_notes(conn, None, None, None).unwrap();
+        let all = notes::list_notes(conn, None, None, None, None).unwrap();
         assert_eq!(all.len(), 3);
-        let in_folder = notes::list_notes(conn, Some("algorithms"), None, None).unwrap();
+        let in_folder = notes::list_notes(conn, Some("algorithms"), None, None, None).unwrap();
         assert_eq!(in_folder.len(), 1);
 
         // 10. Delete
         notes::delete_note(conn, tmp.path(), foldered.id).unwrap();
-        let after_delete = notes::list_notes(conn, None, None, None).unwrap();
+        let after_delete = notes::list_notes(conn, None, None, None, None).unwrap();
         assert_eq!(after_delete.len(), 2);
 
         // 11. Note titles for autocomplete

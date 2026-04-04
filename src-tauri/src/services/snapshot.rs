@@ -1,5 +1,6 @@
 //! SQLite snapshot service — periodic database backups with rotation.
 
+use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
 const MAX_SNAPSHOTS: usize = 5;
@@ -9,16 +10,29 @@ pub fn create_snapshot(db_path: &Path, snapshot_dir: &Path) -> Result<PathBuf, S
     std::fs::create_dir_all(snapshot_dir)
         .map_err(|e| format!("Failed to create snapshot directory: {e}"))?;
 
+    checkpoint_wal(db_path)?;
+
     let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
     let snapshot_name = format!("encode-{timestamp}.db");
     let snapshot_path = snapshot_dir.join(&snapshot_name);
 
-    std::fs::copy(db_path, &snapshot_path)
-        .map_err(|e| format!("Failed to copy database: {e}"))?;
+    std::fs::copy(db_path, &snapshot_path).map_err(|e| format!("Failed to copy database: {e}"))?;
 
     rotate_snapshots(snapshot_dir)?;
 
     Ok(snapshot_path)
+}
+
+fn checkpoint_wal(db_path: &Path) -> Result<(), String> {
+    if !db_path.exists() {
+        return Err(format!("Database file not found: {}", db_path.display()));
+    }
+
+    let conn = Connection::open(db_path)
+        .map_err(|e| format!("Failed to open database for checkpoint: {e}"))?;
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(|e| format!("Failed to checkpoint WAL: {e}"))?;
+    Ok(())
 }
 
 /// List available snapshots sorted by name (newest first).
@@ -60,7 +74,13 @@ mod tests {
 
     fn create_test_db(dir: &Path) -> PathBuf {
         let db_path = dir.join("encode.db");
-        std::fs::write(&db_path, "test database content").expect("write db");
+        let conn = Connection::open(&db_path).expect("open db");
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             CREATE TABLE subjects (slug TEXT PRIMARY KEY, name TEXT NOT NULL);
+             INSERT INTO subjects (slug, name) VALUES ('seed', 'Seed Subject');",
+        )
+        .expect("seed db");
         db_path
     }
 
@@ -73,8 +93,44 @@ mod tests {
         let result = create_snapshot(&db_path, &snap_dir).expect("snapshot");
         assert!(result.exists());
 
-        let content = std::fs::read_to_string(&result).expect("read");
-        assert_eq!(content, "test database content");
+        let snap_conn = Connection::open(&result).expect("open snapshot");
+        let count: i64 = snap_conn
+            .query_row(
+                "SELECT COUNT(*) FROM subjects WHERE slug = 'seed'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_create_snapshot_checkpoints_wal_changes() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let db_path = dir.path().join("encode.db");
+        let snap_dir = dir.path().join("snapshots");
+
+        let db = crate::db::Database::open(&db_path).expect("open db");
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO subjects (slug, name) VALUES ('wal-test', 'WAL Test')",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .expect("insert");
+
+        let snapshot = create_snapshot(&db_path, &snap_dir).expect("snapshot");
+        let snap_conn = Connection::open(&snapshot).expect("open snapshot");
+        let count: i64 = snap_conn
+            .query_row(
+                "SELECT COUNT(*) FROM subjects WHERE slug = 'wal-test'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query snapshot");
+        assert_eq!(count, 1);
     }
 
     #[test]
@@ -113,7 +169,11 @@ mod tests {
         create_snapshot(&db_path, &snap_dir).expect("snapshot");
 
         let list = list_snapshots(&snap_dir).expect("list");
-        assert!(list.len() <= MAX_SNAPSHOTS, "should keep at most {MAX_SNAPSHOTS} snapshots, got {}", list.len());
+        assert!(
+            list.len() <= MAX_SNAPSHOTS,
+            "should keep at most {MAX_SNAPSHOTS} snapshots, got {}",
+            list.len()
+        );
     }
 
     #[test]

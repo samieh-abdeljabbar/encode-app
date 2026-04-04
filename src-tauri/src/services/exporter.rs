@@ -3,6 +3,24 @@
 use rusqlite::Connection;
 use std::path::Path;
 
+type ChapterExportRow = (i64, String, String, String, Option<i64>, String, String);
+
+fn chapter_body(raw_markdown: &str, sections: &[(Option<String>, String)]) -> String {
+    if !raw_markdown.trim().is_empty() {
+        return raw_markdown.trim_end().to_string();
+    }
+
+    let mut content = String::new();
+    for (heading, body) in sections {
+        if let Some(h) = heading {
+            content.push_str(&format!("## {h}\n\n"));
+        }
+        content.push_str(body);
+        content.push_str("\n\n");
+    }
+    content.trim_end().to_string()
+}
+
 /// Export a single subject as a markdown bundle.
 pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> Result<(), String> {
     let (slug, name, description): (String, String, String) = conn
@@ -20,9 +38,8 @@ pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> 
         .map_err(|e| format!("Failed to create export directory: {e}"))?;
 
     // Write _subject.md
-    let subject_md = format!(
-        "---\nsubject: {name}\nslug: {slug}\ntype: subject\n---\n\n{description}\n"
-    );
+    let subject_md =
+        format!("---\nsubject: {name}\nslug: {slug}\ntype: subject\n---\n\n{description}\n");
     atomic_write(&subject_dir.join("_subject.md"), &subject_md)?;
 
     // Create placeholder directories for future artifact types
@@ -34,12 +51,12 @@ pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> 
     // Export chapters in creation order
     let mut chapter_stmt = conn
         .prepare(
-            "SELECT id, title, slug, status, estimated_minutes, created_at
+            "SELECT id, title, slug, status, estimated_minutes, raw_markdown, created_at
              FROM chapters WHERE subject_id = ?1 ORDER BY created_at",
         )
         .map_err(|e| format!("Failed to query chapters: {e}"))?;
 
-    let chapters: Vec<(i64, String, String, String, Option<i64>, String)> = chapter_stmt
+    let chapters: Vec<ChapterExportRow> = chapter_stmt
         .query_map(rusqlite::params![subject_id], |row| {
             Ok((
                 row.get(0)?,
@@ -48,6 +65,7 @@ pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> 
                 row.get(3)?,
                 row.get(4)?,
                 row.get(5)?,
+                row.get(6)?,
             ))
         })
         .map_err(|e| format!("Failed to map chapters: {e}"))?
@@ -61,7 +79,7 @@ pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> 
         )
         .map_err(|e| format!("Failed to prepare section query: {e}"))?;
 
-    for (chapter_id, title, chapter_slug, status, est_min, created_at) in &chapters {
+    for (chapter_id, title, chapter_slug, status, est_min, raw_markdown, created_at) in &chapters {
         let sections: Vec<(Option<String>, String)> = section_stmt
             .query_map(rusqlite::params![chapter_id], |row| {
                 Ok((row.get(0)?, row.get(1)?))
@@ -77,14 +95,7 @@ pub fn export_subject(conn: &Connection, subject_id: i64, output_dir: &Path) -> 
             content.push_str(&format!("estimated_minutes: {mins}\n"));
         }
         content.push_str("---\n\n");
-
-        for (heading, body) in &sections {
-            if let Some(h) = heading {
-                content.push_str(&format!("## {h}\n\n"));
-            }
-            content.push_str(body);
-            content.push_str("\n\n");
-        }
+        content.push_str(&chapter_body(raw_markdown, &sections));
 
         atomic_write(
             &chapters_dir.join(format!("{chapter_slug}.md")),
@@ -119,7 +130,8 @@ fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     tmp_name.push(".tmp");
     let tmp = std::path::PathBuf::from(tmp_name);
 
-    std::fs::write(&tmp, content).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    std::fs::write(&tmp, content)
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("Failed to rename to {}: {e}", path.display())
@@ -143,7 +155,14 @@ mod tests {
                 let sid = conn.last_insert_rowid();
 
                 conn.execute(
-                    "INSERT INTO chapters (subject_id, title, slug, estimated_minutes) VALUES (?1, 'Algebra Basics', 'algebra-basics', 15)",
+                    r#"INSERT INTO chapters (subject_id, title, slug, estimated_minutes, raw_markdown)
+                       VALUES (?1, 'Algebra Basics', 'algebra-basics', 15, '## Overview
+
+Canonical body
+
+### Details
+
+More depth.')"#,
                     rusqlite::params![sid],
                 )
                 .map_err(|e| e.to_string())?;
@@ -205,16 +224,15 @@ mod tests {
         db.with_conn(|conn| export_subject(conn, sid, dir.path()))
             .expect("export");
 
-        let content =
-            std::fs::read_to_string(dir.path().join("math/chapters/algebra-basics.md")).expect("read");
+        let content = std::fs::read_to_string(dir.path().join("math/chapters/algebra-basics.md"))
+            .expect("read");
 
         assert!(content.contains("subject: Mathematics"));
         assert!(content.contains("topic: Algebra Basics"));
         assert!(content.contains("type: chapter"));
-
-        let vars_pos = content.find("## Variables").expect("Variables heading");
-        let eqs_pos = content.find("## Equations").expect("Equations heading");
-        assert!(vars_pos < eqs_pos, "sections should be in index order");
+        assert!(content.contains("## Overview"));
+        assert!(content.contains("### Details"));
+        assert!(content.contains("Canonical body"));
     }
 
     #[test]

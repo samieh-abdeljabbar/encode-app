@@ -464,6 +464,7 @@ function AiConfigSection() {
         cli_args: [],
       },
       profile: { role: "", domain: "", learning_context: "" },
+      onboarding_completed: false,
     };
 
     const ai = { ...base.ai, provider };
@@ -503,6 +504,7 @@ function AiConfigSection() {
         domain,
         learning_context: learningContext,
       },
+      onboarding_completed: base.onboarding_completed,
     };
   };
 
@@ -553,11 +555,12 @@ function AiConfigSection() {
       <section className="mb-10">
         <div className="mb-4 flex items-center gap-2.5">
           <Bot size={14} className="text-accent" />
-          <h2 className="text-sm font-semibold text-text">AI Provider</h2>
+          <h2 className="text-sm font-semibold text-text">Study AI</h2>
         </div>
         <p className="mb-6 max-w-2xl text-sm leading-relaxed text-text-muted">
-          Configure which AI provider to use for section checks, synthesis
-          evaluation, and quiz generation.
+          AI is used for section help, synthesis evaluation, quizzes, teach-back
+          scoring, and inline study help. It is not meant to be a general chat
+          mode.
         </p>
 
         <div className="rounded-xl border border-border bg-panel p-6">
@@ -746,11 +749,11 @@ function AiConfigSection() {
       <section className="mb-10">
         <div className="mb-4 flex items-center gap-2.5">
           <User size={14} className="text-accent" />
-          <h2 className="text-sm font-semibold text-text">Profile</h2>
+          <h2 className="text-sm font-semibold text-text">Study Profile</h2>
         </div>
         <p className="mb-6 max-w-2xl text-sm leading-relaxed text-text-muted">
-          Tell the AI about yourself so it can tailor responses to your
-          background.
+          Give the study features just enough context to tailor explanations to
+          your background and goals.
         </p>
 
         <div className="rounded-xl border border-border bg-panel p-6">

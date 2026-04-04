@@ -51,7 +51,9 @@ pub fn create_snapshot_cmd(state: tauri::State<'_, AppState>) -> Result<String, 
     let snap_dir = state.vault_path.join(".encode").join("snapshots");
     let path = snapshot::create_snapshot(&db_path, &snap_dir)?;
 
-    state.db.with_conn(|conn| touch_setting(conn, "last_snapshot_at"))?;
+    state
+        .db
+        .with_conn(|conn| touch_setting(conn, "last_snapshot_at"))?;
 
     Ok(path.display().to_string())
 }
@@ -86,5 +88,8 @@ pub fn get_export_status(state: tauri::State<'_, AppState>) -> Result<ExportStat
 pub fn list_snapshots_cmd(state: tauri::State<'_, AppState>) -> Result<Vec<SnapshotInfo>, String> {
     let snap_dir = state.vault_path.join(".encode").join("snapshots");
     let names = snapshot::list_snapshots(&snap_dir)?;
-    Ok(names.into_iter().map(|name| SnapshotInfo { name }).collect())
+    Ok(names
+        .into_iter()
+        .map(|name| SnapshotInfo { name })
+        .collect())
 }

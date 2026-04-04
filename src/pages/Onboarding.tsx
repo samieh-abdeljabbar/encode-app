@@ -84,21 +84,6 @@ export function Onboarding({
     }
   }, [provider, apiKey, ollamaUrl, cliCommand]);
 
-  const saveProfile = useCallback(async () => {
-    setSaving(true);
-    try {
-      const cfg = await getConfig();
-      await saveConfig({
-        ...cfg,
-        profile: { role, domain, learning_context: context },
-      });
-    } catch {
-      // non-critical
-    } finally {
-      setSaving(false);
-    }
-  }, [role, domain, context]);
-
   const handleTestConnection = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
@@ -126,11 +111,19 @@ export function Onboarding({
   }, [subjectName]);
 
   const handleFinish = useCallback(async () => {
-    // Save profile if filled
-    if (role || domain || context) await saveProfile();
+    const cfg = await getConfig();
+    const nextConfig = {
+      ...cfg,
+      onboarding_completed: true,
+      profile:
+        role || domain || context
+          ? { role, domain, learning_context: context }
+          : cfg.profile,
+    };
+    await saveConfig(nextConfig);
     onComplete();
-    navigate("/workspace");
-  }, [role, domain, context, saveProfile, onComplete, navigate]);
+    navigate("/");
+  }, [role, domain, context, onComplete, navigate]);
 
   const inputClass =
     "h-11 w-full rounded-xl border border-border bg-surface px-4 text-sm text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none";
@@ -298,8 +291,8 @@ export function Onboarding({
 
               {provider === "none" && (
                 <p className="text-xs text-text-muted/60">
-                  You can configure AI later in Settings. Quizzes require an AI
-                  provider.
+                  You can configure AI later in Settings. The app still works in
+                  no-AI mode, with deterministic fallbacks where available.
                 </p>
               )}
             </div>
@@ -315,7 +308,7 @@ export function Onboarding({
               <button
                 type="button"
                 onClick={async () => {
-                  if (provider !== "none") await saveAiConfig();
+                  await saveAiConfig();
                   setStep("profile");
                 }}
                 disabled={saving}

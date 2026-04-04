@@ -1,11 +1,14 @@
 import { useEffect } from "react";
-import type { QuestionResult } from "../../lib/tauri";
+import type { QuestionResult, QuizQuestion } from "../../lib/tauri";
+import { QuizRichValue } from "./QuizRichValue";
 
 export function QuizFeedback({
+  question,
   result,
   userAnswer,
   onNext,
 }: {
+  question: QuizQuestion;
   result: QuestionResult;
   userAnswer: string;
   onNext: () => void;
@@ -70,9 +73,7 @@ export function QuizFeedback({
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
           Your answer
         </p>
-        <p className="rounded-lg bg-surface p-3 text-xs leading-relaxed text-text-muted">
-          {userAnswer}
-        </p>
+        <QuizRichValue question={question} value={userAnswer} muted />
       </div>
 
       {/* Correct answer */}
@@ -81,9 +82,7 @@ export function QuizFeedback({
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
             Correct answer
           </p>
-          <p className="rounded-lg bg-surface p-3 text-xs leading-relaxed text-text">
-            {result.correct_answer}
-          </p>
+          <QuizRichValue question={question} value={result.correct_answer} />
         </div>
       )}
 

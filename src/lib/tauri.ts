@@ -36,6 +36,10 @@ export interface ChapterWithSections {
   sections: Section[];
 }
 
+export interface NavigationChapter extends Chapter {
+  subject_name: string;
+}
+
 export interface SearchResult {
   chapter_id: number;
   chapter_title: string;
@@ -65,6 +69,7 @@ export interface AppConfig {
     domain: string;
     learning_context: string;
   };
+  onboarding_completed: boolean;
 }
 
 // AI status types
@@ -90,6 +95,9 @@ export interface AiRunInfo {
 export const getConfig = () => invoke<AppConfig>("get_config");
 export const saveConfig = (config: AppConfig) =>
   invoke<void>("save_config", { config });
+export const getLastSurface = () => invoke<string | null>("get_last_surface");
+export const setLastSurface = (route: string) =>
+  invoke<void>("set_last_surface", { route });
 export const getVaultPath = () => invoke<string>("get_vault_path");
 export const getSchemaVersion = () => invoke<number>("get_schema_version");
 export const readFile = (relativePath: string) =>
@@ -153,6 +161,8 @@ export const listSnapshots = () => invoke<SnapshotInfo[]>("list_snapshots_cmd");
 // Reader types
 export interface ReaderChapter {
   id: number;
+  subject_id: number;
+  subject_name: string;
   title: string;
   status: string;
   estimated_minutes: number | null;
@@ -179,6 +189,8 @@ export interface CheckResult {
   can_retry: boolean;
   repair_card_created: boolean;
   chapter_complete: boolean;
+  feedback: string | null;
+  evaluated_by_ai: boolean;
 }
 
 export interface SynthesisResult {
@@ -197,20 +209,30 @@ export const submitSectionCheck = (
   chapterId: number,
   sectionIndex: number,
   response: string,
-  selfRating: string,
+  selfRating?: string | null,
+  useAi?: boolean | null,
 ) =>
   invoke<CheckResult>("submit_section_check", {
     chapterId,
     sectionIndex,
     response,
-    selfRating,
+    selfRating: selfRating ?? null,
+    useAi: useAi ?? null,
   });
 
 export const submitSynthesis = (chapterId: number, synthesisText: string) =>
   invoke<SynthesisResult>("submit_synthesis", { chapterId, synthesisText });
 
-export const generateSectionPrompt = (heading: string | null, body: string) =>
-  invoke<string>("generate_section_prompt", { heading, body });
+export const generateSectionPrompt = (
+  heading: string | null,
+  body: string,
+  useAi?: boolean | null,
+) =>
+  invoke<string>("generate_section_prompt", {
+    heading,
+    body,
+    useAi: useAi ?? null,
+  });
 
 // Review types
 export interface DueCard {
@@ -292,6 +314,9 @@ export interface ProgressReport {
 export const getProgressReport = () =>
   invoke<ProgressReport>("get_progress_report");
 
+export const listNavigationChapters = () =>
+  invoke<NavigationChapter[]>("list_navigation_chapters");
+
 // Card management types
 export interface CardInfo {
   id: number;
@@ -347,10 +372,27 @@ export const updateCard = (
 export const deleteCard = (cardId: number) =>
   invoke<void>("delete_card", { cardId });
 
-export const getPracticeCards = (subjectId?: number, limit?: number) =>
+export const getPracticeCards = (
+  subjectId?: number,
+  limit?: number,
+  mode?: string,
+) =>
   invoke<DueCard[]>("get_practice_cards", {
     subjectId: subjectId ?? null,
     limit: limit ?? 50,
+    mode: mode ?? null,
+  });
+
+export interface PracticeBucketCounts {
+  new_cards: number;
+  struggling: number;
+  building: number;
+  all: number;
+}
+
+export const getPracticeBucketCounts = (subjectId?: number) =>
+  invoke<PracticeBucketCounts>("get_practice_bucket_counts", {
+    subjectId: subjectId ?? null,
   });
 
 // Editor IPC
@@ -368,7 +410,38 @@ export interface QuizQuestion {
   correct_answer: string;
   section_id: number;
   section_heading: string | null;
+  question_data: QuizQuestionData | null;
 }
+
+export interface MathInputQuestionData {
+  grader: "numeric" | "expression_equivalence";
+  prompt_latex?: string | null;
+  accepted_answers: string[];
+  tolerance?: number | null;
+}
+
+export interface StepOrderQuestionData {
+  items: string[];
+  correct_order: string[];
+}
+
+export interface CodeOutputQuestionData {
+  language: "python" | "javascript";
+  snippet: string;
+}
+
+export interface CompleteSnippetQuestionData {
+  language: "python" | "javascript";
+  starter_code: string;
+  placeholder_token: string;
+  accepted_answers: string[];
+}
+
+export type QuizQuestionData =
+  | MathInputQuestionData
+  | StepOrderQuestionData
+  | CodeOutputQuestionData
+  | CompleteSnippetQuestionData;
 
 export interface QuestionResult {
   verdict: string;
@@ -427,6 +500,19 @@ export const generateQuiz = (
 ) =>
   invoke<QuizState>("generate_quiz", {
     chapterId,
+    difficulty,
+    questionCount,
+    questionType,
+  });
+
+export const generateSubjectQuiz = (
+  subjectId: number,
+  difficulty: string,
+  questionCount: number,
+  questionType = "mixed",
+) =>
+  invoke<QuizState>("generate_subject_quiz", {
+    subjectId,
     difficulty,
     questionCount,
     questionType,
@@ -525,6 +611,8 @@ export interface NoteInfo {
   file_path: string;
   subject_id: number | null;
   subject_name: string | null;
+  chapter_id: number | null;
+  chapter_title: string | null;
   tags: string[];
   created_at: string;
   modified_at: string;
@@ -575,9 +663,17 @@ export interface GraphData {
 export const createNote = (
   title: string,
   folder: string | null,
-  subjectName: string | null,
+  subjectId: number | null,
+  chapterId: number | null,
   content: string,
-) => invoke<NoteInfo>("create_note", { title, folder, subjectName, content });
+) =>
+  invoke<NoteInfo>("create_note", {
+    title,
+    folder,
+    subjectId,
+    chapterId,
+    content,
+  });
 
 export const getNote = (noteId: number) =>
   invoke<NoteDetail>("get_note", { noteId });
@@ -588,10 +684,16 @@ export const updateNote = (noteId: number, content: string) =>
 export const deleteNote = (noteId: number) =>
   invoke<void>("delete_note", { noteId });
 
-export const listNotes = (folder?: string, subjectId?: number, tag?: string) =>
+export const listNotes = (
+  folder?: string,
+  subjectId?: number,
+  chapterId?: number,
+  tag?: string,
+) =>
   invoke<NoteInfo[]>("list_notes", {
     folder: folder ?? null,
     subjectId: subjectId ?? null,
+    chapterId: chapterId ?? null,
     tag: tag ?? null,
   });
 

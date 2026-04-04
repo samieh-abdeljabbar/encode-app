@@ -10,6 +10,8 @@ pub struct AppConfig {
     pub ai: AiConfig,
     #[serde(default)]
     pub profile: ProfileConfig,
+    #[serde(default)]
+    pub onboarding_completed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +157,7 @@ mod tests {
         assert_eq!(config.ai.provider, "none");
         assert_eq!(config.ai.ollama_model, "llama3.1:8b");
         assert_eq!(config.ai.ollama_url, "http://localhost:11434");
+        assert!(!config.onboarding_completed);
     }
 
     #[test]
@@ -166,6 +169,7 @@ mod tests {
         config.ai.provider = "claude".to_string();
         config.ai.claude_api_key = "sk-test-123".to_string();
         config.profile.role = "student".to_string();
+        config.onboarding_completed = true;
 
         config.save(&path).expect("save");
         let loaded = AppConfig::load(&path).expect("load");
@@ -173,6 +177,7 @@ mod tests {
         assert_eq!(loaded.ai.provider, "claude");
         assert_eq!(loaded.ai.claude_api_key, "sk-test-123");
         assert_eq!(loaded.profile.role, "student");
+        assert!(loaded.onboarding_completed);
     }
 
     #[test]

@@ -1,5 +1,44 @@
 use crate::services::{ai, teachback};
 use crate::AppState;
+use rusqlite::OptionalExtension;
+
+fn chapter_body(conn: &rusqlite::Connection, chapter_id: i64) -> Result<String, String> {
+    let raw_markdown: String = conn
+        .query_row(
+            "SELECT raw_markdown FROM chapters WHERE id = ?1",
+            [chapter_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+
+    if !raw_markdown.trim().is_empty() {
+        return Ok(raw_markdown);
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT heading, body_markdown FROM chapter_sections
+             WHERE chapter_id = ?1 ORDER BY section_index",
+        )
+        .map_err(|e| e.to_string())?;
+    let texts: Vec<String> = stmt
+        .query_map([chapter_id], |row| {
+            let heading: Option<String> = row.get(0)?;
+            let body: String = row.get(1)?;
+            Ok(if let Some(h) = heading {
+                format!("## {h}\n\n{body}")
+            } else {
+                body
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    Ok(texts.join("\n\n"))
+}
 
 #[tauri::command]
 pub async fn start_teachback(
@@ -12,28 +51,7 @@ pub async fn start_teachback(
 
     let config = state.config.read().map_err(|e| e.to_string())?.clone();
     if config.ai.provider != "none" {
-        let sections_text = state.db.with_conn(|conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT heading, body_markdown FROM chapter_sections
-                     WHERE chapter_id = ?1 ORDER BY section_index",
-                )
-                .map_err(|e| e.to_string())?;
-            let texts: Vec<String> = stmt
-                .query_map([chapter_id], |row| {
-                    let heading: Option<String> = row.get(0)?;
-                    let body: String = row.get(1)?;
-                    Ok(if let Some(h) = heading {
-                        format!("## {h}\n{body}")
-                    } else {
-                        body
-                    })
-                })
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            Ok(texts.join("\n\n"))
-        })?;
+        let sections_text = state.db.with_conn(|conn| chapter_body(conn, chapter_id))?;
 
         let ai_req = ai::AiRequest {
             feature: "teachback.generate_prompt".to_string(),
@@ -83,7 +101,11 @@ pub async fn submit_teachback(
         return Ok(teachback::TeachbackResult {
             mastery: String::new(),
             scores: teachback::RubricScores {
-                accuracy: 0, clarity: 0, completeness: 0, example: 0, jargon: 0,
+                accuracy: 0,
+                clarity: 0,
+                completeness: 0,
+                example: 0,
+                jargon: 0,
             },
             overall: 0,
             strongest: String::new(),
@@ -105,28 +127,7 @@ pub async fn submit_teachback(
     })?;
 
     let sections_text = if let Some(ch_id) = chapter_id {
-        state.db.with_conn(|conn| {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT heading, body_markdown FROM chapter_sections
-                     WHERE chapter_id = ?1 ORDER BY section_index",
-                )
-                .map_err(|e| e.to_string())?;
-            let texts: Vec<String> = stmt
-                .query_map([ch_id], |row| {
-                    let heading: Option<String> = row.get(0)?;
-                    let body: String = row.get(1)?;
-                    Ok(if let Some(h) = heading {
-                        format!("## {h}\n{body}")
-                    } else {
-                        body
-                    })
-                })
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            Ok(texts.join("\n\n"))
-        })?
+        state.db.with_conn(|conn| chapter_body(conn, ch_id))?
     } else {
         String::new()
     };
@@ -143,42 +144,58 @@ pub async fn submit_teachback(
     };
 
     match ai::ai_request(&state.http, &config.ai, &config.profile, ai_req).await {
-        Ok(ai_response) => {
-            match serde_json::from_str::<serde_json::Value>(&ai_response.content) {
-                Ok(json) => {
-                    let scores = teachback::RubricScores {
-                        accuracy: json["scores"]["accuracy"].as_i64().unwrap_or(50) as i32,
-                        clarity: json["scores"]["clarity"].as_i64().unwrap_or(50) as i32,
-                        completeness: json["scores"]["completeness"].as_i64().unwrap_or(50) as i32,
-                        example: json["scores"]["example"].as_i64().unwrap_or(50) as i32,
-                        jargon: json["scores"]["jargon"].as_i64().unwrap_or(50) as i32,
-                    };
-                    let strongest = json["strongest"].as_str().unwrap_or("").to_string();
-                    let biggest_gap = json["biggest_gap"].as_str().unwrap_or("").to_string();
+        Ok(ai_response) => match serde_json::from_str::<serde_json::Value>(&ai_response.content) {
+            Ok(json) => {
+                let scores = teachback::RubricScores {
+                    accuracy: json["scores"]["accuracy"].as_i64().unwrap_or(50) as i32,
+                    clarity: json["scores"]["clarity"].as_i64().unwrap_or(50) as i32,
+                    completeness: json["scores"]["completeness"].as_i64().unwrap_or(50) as i32,
+                    example: json["scores"]["example"].as_i64().unwrap_or(50) as i32,
+                    jargon: json["scores"]["jargon"].as_i64().unwrap_or(50) as i32,
+                };
+                let strongest = json["strongest"].as_str().unwrap_or("").to_string();
+                let biggest_gap = json["biggest_gap"].as_str().unwrap_or("").to_string();
 
-                    let result = state.db.with_conn(|conn| {
-                        ai::log_result(conn, "teachback.evaluate", Ok(&ai_response));
-                        teachback::finalize_teachback(
-                            conn, teachback_id, &response, &scores,
-                            &strongest, &biggest_gap, None,
-                        )
-                    })?;
-                    Ok(result)
-                }
-                Err(_) => {
-                    state.db.with_conn(|conn| {
-                        ai::log_result(conn, "teachback.evaluate", Err("Failed to parse AI response as JSON"));
-                        Ok(())
-                    })?;
-                    Ok(teachback::TeachbackResult {
-                        mastery: String::new(),
-                        scores: teachback::RubricScores { accuracy: 0, clarity: 0, completeness: 0, example: 0, jargon: 0 },
-                        overall: 0, strongest: String::new(), biggest_gap: String::new(),
-                        repair_card_id: None, needs_self_rating: true,
-                    })
-                }
+                let result = state.db.with_conn(|conn| {
+                    ai::log_result(conn, "teachback.evaluate", Ok(&ai_response));
+                    teachback::finalize_teachback(
+                        conn,
+                        teachback_id,
+                        &response,
+                        &scores,
+                        &strongest,
+                        &biggest_gap,
+                        None,
+                    )
+                })?;
+                Ok(result)
             }
-        }
+            Err(_) => {
+                state.db.with_conn(|conn| {
+                    ai::log_result(
+                        conn,
+                        "teachback.evaluate",
+                        Err("Failed to parse AI response as JSON"),
+                    );
+                    Ok(())
+                })?;
+                Ok(teachback::TeachbackResult {
+                    mastery: String::new(),
+                    scores: teachback::RubricScores {
+                        accuracy: 0,
+                        clarity: 0,
+                        completeness: 0,
+                        example: 0,
+                        jargon: 0,
+                    },
+                    overall: 0,
+                    strongest: String::new(),
+                    biggest_gap: String::new(),
+                    repair_card_id: None,
+                    needs_self_rating: true,
+                })
+            }
+        },
         Err(e) => {
             state.db.with_conn(|conn| {
                 ai::log_result(conn, "teachback.evaluate", Err(&e));
@@ -186,9 +203,18 @@ pub async fn submit_teachback(
             })?;
             Ok(teachback::TeachbackResult {
                 mastery: String::new(),
-                scores: teachback::RubricScores { accuracy: 0, clarity: 0, completeness: 0, example: 0, jargon: 0 },
-                overall: 0, strongest: String::new(), biggest_gap: String::new(),
-                repair_card_id: None, needs_self_rating: true,
+                scores: teachback::RubricScores {
+                    accuracy: 0,
+                    clarity: 0,
+                    completeness: 0,
+                    example: 0,
+                    jargon: 0,
+                },
+                overall: 0,
+                strongest: String::new(),
+                biggest_gap: String::new(),
+                repair_card_id: None,
+                needs_self_rating: true,
             })
         }
     }
@@ -201,9 +227,9 @@ pub fn submit_teachback_self_rating(
     response: String,
     ratings: teachback::RubricScores,
 ) -> Result<teachback::TeachbackResult, String> {
-    state.db.with_conn(|conn| {
-        teachback::submit_self_rating(conn, teachback_id, &response, &ratings)
-    })
+    state
+        .db
+        .with_conn(|conn| teachback::submit_self_rating(conn, teachback_id, &response, &ratings))
 }
 
 #[tauri::command]
@@ -211,5 +237,7 @@ pub fn list_teachbacks(
     state: tauri::State<'_, AppState>,
     subject_id: Option<i64>,
 ) -> Result<Vec<teachback::TeachbackListItem>, String> {
-    state.db.with_conn(|conn| teachback::list_teachbacks(conn, subject_id))
+    state
+        .db
+        .with_conn(|conn| teachback::list_teachbacks(conn, subject_id))
 }

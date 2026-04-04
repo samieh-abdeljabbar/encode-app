@@ -131,7 +131,10 @@ pub fn get_progress(conn: &Connection) -> Result<ProgressReport, String> {
 fn get_summary(conn: &Connection) -> Result<QueueSummary, String> {
     let due_cards: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM card_schedule WHERE next_review <= datetime('now')",
+            "SELECT COUNT(*)
+             FROM card_schedule cs
+             JOIN cards c ON c.id = cs.card_id
+             WHERE c.status = 'active' AND cs.next_review <= datetime('now')",
             [],
             |row| row.get(0),
         )
@@ -218,12 +221,20 @@ fn get_due_card_items(conn: &Connection) -> Result<Vec<QueueItem>, String> {
             };
 
             let base = if item_type == "repair_card" { 75 } else { 60 };
-            let overdue_boost = if overdue_days > 1 { 25.min(overdue_days as i32 * 5) } else { 0 };
+            let overdue_boost = if overdue_days > 1 {
+                25.min(overdue_days as i32 * 5)
+            } else {
+                0
+            };
             let stability_boost = if stability < 3.0 { 10 } else { 0 };
             let score = (base + overdue_boost + stability_boost).min(100);
 
             let reason = if overdue_days > 0 {
-                format!("Overdue by {} day{}", overdue_days, if overdue_days == 1 { "" } else { "s" })
+                format!(
+                    "Overdue by {} day{}",
+                    overdue_days,
+                    if overdue_days == 1 { "" } else { "s" }
+                )
             } else {
                 "Due now".to_string()
             };
@@ -444,7 +455,9 @@ pub fn get_dashboard(conn: &Connection) -> Result<QueueDashboard, String> {
 
     // Sort by score descending, then by estimated_minutes ascending (tie-breaker)
     items.sort_by(|a, b| {
-        b.score.cmp(&a.score).then(a.estimated_minutes.cmp(&b.estimated_minutes))
+        b.score
+            .cmp(&a.score)
+            .then(a.estimated_minutes.cmp(&b.estimated_minutes))
     });
 
     items.truncate(20);
@@ -478,7 +491,8 @@ mod tests {
             assert_eq!(dash.summary.chapters_in_progress, 0);
             assert_eq!(dash.items.len(), 0);
             Ok(())
-        }).expect("test_empty_dashboard failed");
+        })
+        .expect("test_empty_dashboard failed");
     }
 
     #[test]
@@ -542,6 +556,36 @@ mod tests {
     }
 
     #[test]
+    fn test_due_summary_ignores_suspended_cards() {
+        let db = setup_test_db();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO cards (subject_id, source_type, prompt, answer, card_type, status, created_at)
+                 VALUES (1, 'manual', 'Active card', 'A', 'basic', 'active', datetime('now'))",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO card_schedule (card_id, next_review, stability, difficulty, reps, lapses)
+                 VALUES (1, datetime('now', '-1 hour'), 2.0, 5.0, 1, 0)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO cards (subject_id, source_type, prompt, answer, card_type, status, created_at)
+                 VALUES (1, 'manual', 'Suspended card', 'A', 'basic', 'suspended', datetime('now'))",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO card_schedule (card_id, next_review, stability, difficulty, reps, lapses)
+                 VALUES (2, datetime('now', '-1 hour'), 2.0, 5.0, 1, 0)",
+                [],
+            ).unwrap();
+            let dash = get_dashboard(conn).unwrap();
+            assert_eq!(dash.summary.due_cards, 1);
+            Ok(())
+        }).expect("test_due_summary_ignores_suspended_cards failed");
+    }
+
+    #[test]
     fn test_repair_card_scores_higher_than_due_card() {
         let db = setup_test_db();
         db.with_conn(|conn| {
@@ -583,16 +627,19 @@ mod tests {
                 "INSERT INTO study_events (subject_id, event_type, created_at)
                  VALUES (1, 'section_check_submitted', datetime('now'))",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
             conn.execute(
                 "INSERT INTO study_events (subject_id, event_type, created_at)
                  VALUES (1, 'section_check_submitted', datetime('now'))",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
             let dash = get_dashboard(conn).unwrap();
             assert_eq!(dash.summary.sections_studied_today, 2);
             Ok(())
-        }).expect("test_summary_counts_sections_studied_today failed");
+        })
+        .expect("test_summary_counts_sections_studied_today failed");
     }
 
     #[test]

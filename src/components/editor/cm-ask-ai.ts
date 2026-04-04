@@ -19,11 +19,11 @@ function createAskAiPlugin(onAskAi: AskAiHandler) {
         this.view = view;
         this.tooltip = document.createElement("div");
         this.tooltip.className = "cm-ask-ai-toolbar";
-        this.tooltip.innerHTML = `<button class="cm-ask-ai-btn" title="Ask AI about selection">
+        this.tooltip.innerHTML = `<button class="cm-ask-ai-btn" title="Ask for study help about this selection">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
             <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor"/>
           </svg>
-          <span>Ask AI</span>
+          <span>Study Help</span>
         </button>`;
         this.tooltip.style.display = "none";
         view.dom.parentElement?.appendChild(this.tooltip);

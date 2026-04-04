@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ReviewCard } from "../components/review/ReviewCard";
 import { ReviewComplete } from "../components/review/ReviewComplete";
 import { getDueCards, getPracticeCards, submitCardRating } from "../lib/tauri";
@@ -14,12 +14,18 @@ interface SessionStats {
 }
 
 export function Review() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const practiceMode = searchParams.get("practice");
+  const practiceSubjectId = searchParams.get("subject")
+    ? Number(searchParams.get("subject"))
+    : null;
   const [cards, setCards] = useState<DueCard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [ratingError, setRatingError] = useState<string | null>(null);
   const [stats, setStats] = useState<SessionStats>({
     reviewed: 0,
     again: 0,
@@ -29,17 +35,23 @@ export function Review() {
   });
 
   const loadCards = useCallback(async () => {
+    setLoadError(null);
     try {
       const data = practiceMode
-        ? await getPracticeCards(undefined, 50)
+        ? await getPracticeCards(
+            practiceSubjectId ?? undefined,
+            50,
+            practiceMode,
+          )
         : await getDueCards(50);
       setCards(data);
-    } catch {
-      // Non-critical
+    } catch (e) {
+      console.error("Failed to load review cards", e);
+      setLoadError("Couldn't load this study session.");
     } finally {
       setLoading(false);
     }
-  }, [practiceMode]);
+  }, [practiceMode, practiceSubjectId]);
 
   useEffect(() => {
     loadCards();
@@ -50,6 +62,7 @@ export function Review() {
       const card = cards[currentIndex];
       if (!card) return;
       setLoading(true);
+      setRatingError(null);
       try {
         await submitCardRating(card.id, rating);
         const ratingKeys = ["again", "hard", "good", "easy"] as const;
@@ -61,8 +74,9 @@ export function Review() {
         }));
         setCurrentIndex((prev) => prev + 1);
         setRevealed(false);
-      } catch {
-        // Non-critical
+      } catch (e) {
+        console.error("Failed to submit card rating", e);
+        setRatingError("Couldn't save that rating. Try again.");
       } finally {
         setLoading(false);
       }
@@ -110,8 +124,47 @@ export function Review() {
     );
   }
 
+  if (loadError && cards.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md rounded-[28px] border border-coral/20 bg-coral/5 p-6 text-center">
+          <p className="text-base font-semibold text-coral">{loadError}</p>
+          <p className="mt-2 text-sm text-text-muted">
+            Try reloading this session or go back to Cards and choose a
+            different practice lane.
+          </p>
+          <div className="mt-5 flex justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                loadCards();
+              }}
+              className="rounded-xl border border-coral/20 px-4 py-2 text-sm font-medium text-coral transition-all hover:bg-coral/10"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/cards")}
+              className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-muted transition-all hover:border-accent/20 hover:text-text"
+            >
+              Back to Cards
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (cards.length === 0 || currentIndex >= cards.length) {
-    return <ReviewComplete stats={stats} />;
+    return (
+      <ReviewComplete
+        stats={stats}
+        practiceMode={practiceMode}
+        practiceSubjectId={practiceSubjectId}
+      />
+    );
   }
 
   const card = cards[currentIndex];
@@ -122,7 +175,16 @@ export function Review() {
       <div className="shrink-0 border-b border-border-subtle px-7 py-4">
         <div className="mx-auto flex max-w-2xl items-center justify-between">
           <p className="text-sm font-medium text-text">
-            Card {currentIndex + 1} of {cards.length}
+            {practiceMode
+              ? practiceMode === "new"
+                ? "New Cards"
+                : practiceMode === "struggling"
+                  ? "Struggling Cards"
+                  : practiceMode === "building"
+                    ? "Building Cards"
+                    : "Practice"
+              : "Review"}{" "}
+            {currentIndex + 1} of {cards.length}
           </p>
           <p className="text-xs text-text-muted">{stats.reviewed} reviewed</p>
         </div>
@@ -130,14 +192,21 @@ export function Review() {
 
       {/* Card area */}
       <div className="flex flex-1 items-center justify-center overflow-auto px-7 py-7">
-        <ReviewCard
-          prompt={card.prompt}
-          answer={card.answer}
-          revealed={revealed}
-          sourceType={card.source_type}
-          cardType={card.card_type}
-          onReveal={() => setRevealed(true)}
-        />
+        <div className="w-full">
+          {ratingError && (
+            <div className="mx-auto mb-4 max-w-2xl rounded-2xl border border-coral/20 bg-coral/5 px-4 py-3 text-sm text-coral">
+              {ratingError}
+            </div>
+          )}
+          <ReviewCard
+            prompt={card.prompt}
+            answer={card.answer}
+            revealed={revealed}
+            sourceType={card.source_type}
+            cardType={card.card_type}
+            onReveal={() => setRevealed(true)}
+          />
+        </div>
       </div>
 
       {/* Rating buttons */}

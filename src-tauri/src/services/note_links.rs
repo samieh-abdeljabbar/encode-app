@@ -40,14 +40,22 @@ pub struct GraphData {
     pub edges: Vec<GraphEdge>,
 }
 
-pub fn update_links(conn: &rusqlite::Connection, note_id: i64, targets: &[String]) -> Result<(), String> {
-    conn.execute("DELETE FROM note_links WHERE source_note_id = ?1", [note_id])
-        .map_err(|e| e.to_string())?;
+pub fn update_links(
+    conn: &rusqlite::Connection,
+    note_id: i64,
+    targets: &[String],
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM note_links WHERE source_note_id = ?1",
+        [note_id],
+    )
+    .map_err(|e| e.to_string())?;
     for target in targets {
         conn.execute(
             "INSERT INTO note_links (source_note_id, target_title) VALUES (?1, ?2)",
             rusqlite::params![note_id, target],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -157,11 +165,7 @@ pub fn get_graph_data(conn: &Connection) -> Result<GraphData, String> {
     Ok(GraphData { nodes, edges })
 }
 
-pub fn get_local_graph(
-    conn: &Connection,
-    note_id: i64,
-    depth: i32,
-) -> Result<GraphData, String> {
+pub fn get_local_graph(conn: &Connection, note_id: i64, depth: i32) -> Result<GraphData, String> {
     let mut visited = std::collections::HashSet::new();
     let mut queue = std::collections::VecDeque::new();
     visited.insert(note_id);
@@ -323,18 +327,13 @@ mod tests {
                 "Note A",
                 None,
                 None,
+                None,
                 "Links to [[Note B]]",
             )
             .unwrap();
-            let b = notes::create_note(
-                conn,
-                tmp.path(),
-                "Note B",
-                None,
-                None,
-                "Standalone",
-            )
-            .unwrap();
+            let b =
+                notes::create_note(conn, tmp.path(), "Note B", None, None, None, "Standalone")
+                    .unwrap();
             resolve_links(conn).unwrap();
             let backlinks = get_backlinks(conn, b.id).unwrap();
             assert_eq!(backlinks.len(), 1);
@@ -354,18 +353,13 @@ mod tests {
                 "Note A",
                 None,
                 None,
+                None,
                 "Links to [[Note B]] and [[Missing]]",
             )
             .unwrap();
-            let _b = notes::create_note(
-                conn,
-                tmp.path(),
-                "Note B",
-                None,
-                None,
-                "Exists",
-            )
-            .unwrap();
+            let _b =
+                notes::create_note(conn, tmp.path(), "Note B", None, None, None, "Exists")
+                    .unwrap();
             resolve_links(conn).unwrap();
             let outgoing = get_outgoing_links(conn, a.id).unwrap();
             assert_eq!(outgoing.len(), 2);
@@ -382,24 +376,12 @@ mod tests {
     fn test_get_graph_data() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let _a = notes::create_note(
-                conn,
-                tmp.path(),
-                "A",
-                None,
-                None,
-                "Links to [[B]]",
-            )
-            .unwrap();
-            let _b = notes::create_note(
-                conn,
-                tmp.path(),
-                "B",
-                None,
-                None,
-                "Links to [[A]]",
-            )
-            .unwrap();
+            let _a =
+                notes::create_note(conn, tmp.path(), "A", None, None, None, "Links to [[B]]")
+                    .unwrap();
+            let _b =
+                notes::create_note(conn, tmp.path(), "B", None, None, None, "Links to [[A]]")
+                    .unwrap();
             resolve_links(conn).unwrap();
             let graph = get_graph_data(conn).unwrap();
             assert_eq!(graph.nodes.len(), 2);
@@ -413,33 +395,13 @@ mod tests {
     fn test_get_local_graph_depth() {
         let (db, tmp) = setup();
         db.with_conn(|conn| {
-            let a = notes::create_note(
-                conn,
-                tmp.path(),
-                "A",
-                None,
-                None,
-                "Links to [[B]]",
-            )
-            .unwrap();
-            let _b = notes::create_note(
-                conn,
-                tmp.path(),
-                "B",
-                None,
-                None,
-                "Links to [[C]]",
-            )
-            .unwrap();
-            let _c = notes::create_note(
-                conn,
-                tmp.path(),
-                "C",
-                None,
-                None,
-                "Leaf",
-            )
-            .unwrap();
+            let a =
+                notes::create_note(conn, tmp.path(), "A", None, None, None, "Links to [[B]]")
+                    .unwrap();
+            let _b =
+                notes::create_note(conn, tmp.path(), "B", None, None, None, "Links to [[C]]")
+                    .unwrap();
+            let _c = notes::create_note(conn, tmp.path(), "C", None, None, None, "Leaf").unwrap();
             resolve_links(conn).unwrap();
 
             let local1 = get_local_graph(conn, a.id, 1).unwrap();

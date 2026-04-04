@@ -1,6 +1,6 @@
-use crate::AppState;
 use crate::services::cards;
 use crate::services::review;
+use crate::AppState;
 
 #[tauri::command]
 pub fn create_card(
@@ -27,7 +27,9 @@ pub fn list_cards(
     subject_id: Option<i64>,
     search: Option<String>,
 ) -> Result<Vec<cards::CardInfo>, String> {
-    state.db.with_conn(|conn| cards::list_cards(conn, subject_id, search.as_deref()))
+    state
+        .db
+        .with_conn(|conn| cards::list_cards(conn, subject_id, search.as_deref()))
 }
 
 #[tauri::command]
@@ -39,15 +41,18 @@ pub fn update_card(
     status: Option<String>,
 ) -> Result<cards::CardInfo, String> {
     state.db.with_conn(|conn| {
-        cards::update_card(conn, card_id, prompt.as_deref(), answer.as_deref(), status.as_deref())
+        cards::update_card(
+            conn,
+            card_id,
+            prompt.as_deref(),
+            answer.as_deref(),
+            status.as_deref(),
+        )
     })
 }
 
 #[tauri::command]
-pub fn delete_card(
-    state: tauri::State<'_, AppState>,
-    card_id: i64,
-) -> Result<(), String> {
+pub fn delete_card(state: tauri::State<'_, AppState>, card_id: i64) -> Result<(), String> {
     state.db.with_conn(|conn| cards::delete_card(conn, card_id))
 }
 
@@ -56,6 +61,19 @@ pub fn get_practice_cards(
     state: tauri::State<'_, AppState>,
     subject_id: Option<i64>,
     limit: i64,
+    mode: Option<String>,
 ) -> Result<Vec<review::DueCard>, String> {
-    state.db.with_conn(|conn| cards::get_practice_cards(conn, subject_id, limit))
+    state
+        .db
+        .with_conn(|conn| cards::get_practice_cards(conn, subject_id, limit, mode.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_practice_bucket_counts(
+    state: tauri::State<'_, AppState>,
+    subject_id: Option<i64>,
+) -> Result<cards::PracticeBucketCounts, String> {
+    state
+        .db
+        .with_conn(|conn| cards::get_practice_bucket_counts(conn, subject_id))
 }

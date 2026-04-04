@@ -17,7 +17,11 @@ fn parse_heading(line: &str) -> Option<(u8, String)> {
         Some((3, rest.trim().to_string()))
     } else if let Some(rest) = trimmed.strip_prefix("## ") {
         Some((2, rest.trim().to_string()))
-    } else { trimmed.strip_prefix("# ").map(|rest| (1, rest.trim().to_string())) }
+    } else {
+        trimmed
+            .strip_prefix("# ")
+            .map(|rest| (1, rest.trim().to_string()))
+    }
 }
 
 /// Split markdown content into sections on heading boundaries (H1, H2, H3).
@@ -32,7 +36,10 @@ pub fn split_into_sections(markdown: &str) -> Vec<SectionData> {
     for line in markdown.lines() {
         if let Some((_level, title)) = parse_heading(line) {
             // Flush the previous section
-            if !current_body.is_empty() || current_heading.is_some() || has_content_before_first_heading {
+            if !current_body.is_empty()
+                || current_heading.is_some()
+                || has_content_before_first_heading
+            {
                 let body = current_body.trim().to_string();
                 let wc = count_words(&body);
                 sections.push(SectionData {

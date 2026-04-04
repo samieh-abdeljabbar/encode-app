@@ -1,0 +1,60 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="56" x2="440" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D67A2E"/>
+      <stop offset="1" stop-color="#B85B24"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="28" y="28" width="456" height="456" rx="112" fill="url(#bg)"/>
+  <rect x="44" y="44" width="424" height="424" rx="96" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
+
+  <g shape-rendering="crispEdges">
+    <!-- Outer cat silhouette -->
+    <path
+      d="M128 208V160H144V128H176V96H192V64H224V96H240V128H272V144H288V128H320V96H336V64H368V96H384V128H400V160H416V208H432V336H400V384H368V416H144V384H112V336H80V208H128Z"
+      fill="#5B3624"
+    />
+    <path d="M304 96H320V112H304V96Z" fill="url(#bg)"/>
+    <path d="M336 80H352V96H336V80Z" fill="url(#bg)"/>
+
+    <!-- Inner cat fur -->
+    <path
+      d="M144 224V192H176V160H192V128H208V112H304V128H320V160H336V192H368V224H384V320H352V352H160V320H128V224H144Z"
+      fill="#F4E5CC"
+    />
+
+    <!-- Exposed brain -->
+    <path
+      d="M176 160V128H192V112H224V96H256V112H272V96H304V112H320V128H336V160H304V176H208V176H176V160Z"
+      fill="#E55C78"
+    />
+    <path
+      d="M208 112H224V128H240V112H272V128H288V112H304V128H320V160H304V176H288V160H272V176H256V160H240V176H224V160H208V144H192V128H208V112Z"
+      fill="#F49CAE"
+    />
+    <rect x="304" y="112" width="16" height="16" fill="#F4C35A"/>
+    <rect x="192" y="128" width="16" height="16" fill="#5FB4A8"/>
+    <rect x="224" y="144" width="16" height="16" fill="#D84B68"/>
+    <rect x="272" y="144" width="16" height="16" fill="#D84B68"/>
+    <rect x="208" y="176" width="96" height="12" fill="#5B3624"/>
+
+    <!-- Inner ears -->
+    <path d="M192 128V112H208V96H224V128H192Z" fill="#EFC18E"/>
+    <path d="M288 128V112H304V96H320V128H288Z" fill="#EFC18E"/>
+
+    <!-- Eyes -->
+    <rect x="176" y="240" width="48" height="16" rx="8" fill="#5B3624"/>
+    <rect x="288" y="240" width="48" height="16" rx="8" fill="#5B3624"/>
+
+    <!-- Nose and mouth -->
+    <rect x="232" y="272" width="48" height="32" rx="12" fill="#D8A064"/>
+    <rect x="248" y="304" width="16" height="16" fill="#5B3624"/>
+    <rect x="232" y="320" width="16" height="16" fill="#5B3624"/>
+    <rect x="264" y="320" width="16" height="16" fill="#5B3624"/>
+
+    <!-- Cheeks -->
+    <rect x="160" y="304" width="32" height="16" rx="8" fill="#EDC89D"/>
+    <rect x="320" y="304" width="32" height="16" rx="8" fill="#EDC89D"/>
+  </g>
+</svg>

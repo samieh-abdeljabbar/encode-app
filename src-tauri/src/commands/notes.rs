@@ -6,7 +6,8 @@ pub fn create_note(
     state: tauri::State<'_, AppState>,
     title: String,
     folder: Option<String>,
-    subject_name: Option<String>,
+    subject_id: Option<i64>,
+    chapter_id: Option<i64>,
     content: String,
 ) -> Result<notes::NoteInfo, String> {
     state.db.with_conn(|conn| {
@@ -15,7 +16,8 @@ pub fn create_note(
             &state.vault_path,
             &title,
             folder.as_deref(),
-            subject_name.as_deref(),
+            subject_id,
+            chapter_id,
             &content,
         )
     })
@@ -43,10 +45,7 @@ pub fn update_note(
 }
 
 #[tauri::command]
-pub fn delete_note(
-    state: tauri::State<'_, AppState>,
-    note_id: i64,
-) -> Result<(), String> {
+pub fn delete_note(state: tauri::State<'_, AppState>, note_id: i64) -> Result<(), String> {
     state
         .db
         .with_conn(|conn| notes::delete_note(conn, &state.vault_path, note_id))
@@ -57,11 +56,18 @@ pub fn list_notes(
     state: tauri::State<'_, AppState>,
     folder: Option<String>,
     subject_id: Option<i64>,
+    chapter_id: Option<i64>,
     tag: Option<String>,
 ) -> Result<Vec<notes::NoteInfo>, String> {
-    state
-        .db
-        .with_conn(|conn| notes::list_notes(conn, folder.as_deref(), subject_id, tag.as_deref()))
+    state.db.with_conn(|conn| {
+        notes::list_notes(
+            conn,
+            folder.as_deref(),
+            subject_id,
+            chapter_id,
+            tag.as_deref(),
+        )
+    })
 }
 
 #[tauri::command]
@@ -80,9 +86,7 @@ pub fn search_notes(
     state: tauri::State<'_, AppState>,
     query: String,
 ) -> Result<Vec<notes::NoteSearchResult>, String> {
-    state
-        .db
-        .with_conn(|conn| notes::search_notes(conn, &query))
+    state.db.with_conn(|conn| notes::search_notes(conn, &query))
 }
 
 #[tauri::command]
@@ -106,12 +110,8 @@ pub fn get_outgoing_links(
 }
 
 #[tauri::command]
-pub fn get_graph_data(
-    state: tauri::State<'_, AppState>,
-) -> Result<note_links::GraphData, String> {
-    state
-        .db
-        .with_conn(note_links::get_graph_data)
+pub fn get_graph_data(state: tauri::State<'_, AppState>) -> Result<note_links::GraphData, String> {
+    state.db.with_conn(note_links::get_graph_data)
 }
 
 #[tauri::command]
@@ -126,17 +126,12 @@ pub fn get_local_graph(
 }
 
 #[tauri::command]
-pub fn list_note_folders(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+pub fn list_note_folders(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     notes::list_folders(&state.vault_path)
 }
 
 #[tauri::command]
-pub fn create_note_folder(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+pub fn create_note_folder(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     notes::create_folder(&state.vault_path, &path)
 }
 
@@ -152,18 +147,11 @@ pub fn move_note(
 }
 
 #[tauri::command]
-pub fn delete_note_folder(
-    state: tauri::State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+pub fn delete_note_folder(state: tauri::State<'_, AppState>, path: String) -> Result<(), String> {
     notes::delete_folder(&state.vault_path, &path)
 }
 
 #[tauri::command]
-pub fn get_note_titles(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<(i64, String)>, String> {
-    state
-        .db
-        .with_conn(notes::get_note_titles)
+pub fn get_note_titles(state: tauri::State<'_, AppState>) -> Result<Vec<(i64, String)>, String> {
+    state.db.with_conn(notes::get_note_titles)
 }

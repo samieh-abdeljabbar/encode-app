@@ -120,7 +120,9 @@ pub fn finalize_teachback(
     biggest_gap: &str,
     chapter_id_override: Option<i64>,
 ) -> Result<TeachbackResult, String> {
-    let overall = (scores.accuracy + scores.clarity + scores.completeness + scores.example + scores.jargon) / 5;
+    let overall =
+        (scores.accuracy + scores.clarity + scores.completeness + scores.example + scores.jargon)
+            / 5;
     let mastery = mastery_band(overall).to_string();
 
     // Query subject_id and chapter_id once for both repair card and study event
@@ -137,8 +139,13 @@ pub fn finalize_teachback(
     if mastery == "weak" || mastery == "developing" {
         let ch_id = chapter_id_override.or(chapter_id);
         let card_id = cards::insert_card_with_schedule_pub(
-            conn, subject_id, ch_id, "teachback_miss",
-            biggest_gap, &format!("Review: {}", biggest_gap), "basic",
+            conn,
+            subject_id,
+            ch_id,
+            "teachback_miss",
+            biggest_gap,
+            &format!("Review: {}", biggest_gap),
+            "basic",
         )?;
         repair_card_id = Some(card_id);
     }
@@ -302,14 +309,17 @@ mod tests {
             assert!(!result.prompt.is_empty());
             assert!(result.id > 0);
 
-            let mastery: Option<String> = conn.query_row(
-                "SELECT mastery FROM teachbacks WHERE id = ?1",
-                [result.id],
-                |row| row.get(0),
-            ).unwrap();
+            let mastery: Option<String> = conn
+                .query_row(
+                    "SELECT mastery FROM teachbacks WHERE id = ?1",
+                    [result.id],
+                    |row| row.get(0),
+                )
+                .unwrap();
             assert!(mastery.is_none());
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
@@ -318,23 +328,37 @@ mod tests {
         db.with_conn(|conn| {
             let start = start_teachback(conn, 1).unwrap();
             let scores = RubricScores {
-                accuracy: 80, clarity: 75, completeness: 65, example: 70, jargon: 60,
+                accuracy: 80,
+                clarity: 75,
+                completeness: 65,
+                example: 70,
+                jargon: 60,
             };
             let result = finalize_teachback(
-                conn, start.id, "My explanation of arrays...", &scores,
-                "Good accuracy", "Missing linked list comparison", None,
-            ).unwrap();
+                conn,
+                start.id,
+                "My explanation of arrays...",
+                &scores,
+                "Good accuracy",
+                "Missing linked list comparison",
+                None,
+            )
+            .unwrap();
             assert_eq!(result.mastery, "solid"); // avg = 70
             assert!(result.repair_card_id.is_none());
             assert!(!result.needs_self_rating);
 
-            let mastery: String = conn.query_row(
-                "SELECT mastery FROM teachbacks WHERE id = ?1",
-                [start.id], |row| row.get(0),
-            ).unwrap();
+            let mastery: String = conn
+                .query_row(
+                    "SELECT mastery FROM teachbacks WHERE id = ?1",
+                    [start.id],
+                    |row| row.get(0),
+                )
+                .unwrap();
             assert_eq!(mastery, "solid");
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
@@ -343,22 +367,36 @@ mod tests {
         db.with_conn(|conn| {
             let start = start_teachback(conn, 1).unwrap();
             let scores = RubricScores {
-                accuracy: 30, clarity: 20, completeness: 25, example: 10, jargon: 15,
+                accuracy: 30,
+                clarity: 20,
+                completeness: 25,
+                example: 10,
+                jargon: 15,
             };
             let result = finalize_teachback(
-                conn, start.id, "I don't remember", &scores,
-                "Attempted", "Missed all key concepts", None,
-            ).unwrap();
+                conn,
+                start.id,
+                "I don't remember",
+                &scores,
+                "Attempted",
+                "Missed all key concepts",
+                None,
+            )
+            .unwrap();
             assert_eq!(result.mastery, "weak"); // avg = 20
             assert!(result.repair_card_id.is_some());
 
-            let card_source: String = conn.query_row(
-                "SELECT source_type FROM cards WHERE id = ?1",
-                [result.repair_card_id.unwrap()], |row| row.get(0),
-            ).unwrap();
+            let card_source: String = conn
+                .query_row(
+                    "SELECT source_type FROM cards WHERE id = ?1",
+                    [result.repair_card_id.unwrap()],
+                    |row| row.get(0),
+                )
+                .unwrap();
             assert_eq!(card_source, "teachback_miss");
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
@@ -367,16 +405,27 @@ mod tests {
         db.with_conn(|conn| {
             let start = start_teachback(conn, 1).unwrap();
             let scores = RubricScores {
-                accuracy: 55, clarity: 50, completeness: 45, example: 40, jargon: 50,
+                accuracy: 55,
+                clarity: 50,
+                completeness: 45,
+                example: 40,
+                jargon: 50,
             };
             let result = finalize_teachback(
-                conn, start.id, "Arrays are data structures", &scores,
-                "Basic understanding", "No concrete example", None,
-            ).unwrap();
+                conn,
+                start.id,
+                "Arrays are data structures",
+                &scores,
+                "Basic understanding",
+                "No concrete example",
+                None,
+            )
+            .unwrap();
             assert_eq!(result.mastery, "developing"); // avg = 48
             assert!(result.repair_card_id.is_some());
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
@@ -396,7 +445,8 @@ mod tests {
             assert_eq!(result.overall, 60);
             assert_eq!(result.mastery, "solid");
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 
     #[test]
@@ -404,8 +454,23 @@ mod tests {
         let db = setup();
         db.with_conn(|conn| {
             let start = start_teachback(conn, 1).unwrap();
-            let scores = RubricScores { accuracy: 80, clarity: 80, completeness: 80, example: 80, jargon: 80 };
-            finalize_teachback(conn, start.id, "Great explanation", &scores, "All good", "Minor gaps", None).unwrap();
+            let scores = RubricScores {
+                accuracy: 80,
+                clarity: 80,
+                completeness: 80,
+                example: 80,
+                jargon: 80,
+            };
+            finalize_teachback(
+                conn,
+                start.id,
+                "Great explanation",
+                &scores,
+                "All good",
+                "Minor gaps",
+                None,
+            )
+            .unwrap();
 
             let all = list_teachbacks(conn, None).unwrap();
             assert_eq!(all.len(), 1);
@@ -418,6 +483,7 @@ mod tests {
             let empty = list_teachbacks(conn, Some(999)).unwrap();
             assert_eq!(empty.len(), 0);
             Ok(())
-        }).expect("test failed");
+        })
+        .expect("test failed");
     }
 }

@@ -13,6 +13,43 @@ import {
 } from "../lib/tauri";
 import type { ReaderSession } from "../lib/tauri";
 
+type ChapterMarkdownSource = ReaderSession & {
+  markdown?: string;
+  content?: string;
+  raw_markdown?: string;
+  canonical_markdown?: string;
+  chapter?: ReaderSession["chapter"] & {
+    markdown?: string;
+    content?: string;
+    raw_markdown?: string;
+    canonical_markdown?: string;
+  };
+};
+
+export function buildChapterMarkdown(data: ChapterMarkdownSource): string {
+  const candidates = [
+    data.markdown,
+    data.content,
+    data.raw_markdown,
+    data.canonical_markdown,
+    data.chapter?.markdown,
+    data.chapter?.content,
+    data.chapter?.raw_markdown,
+    data.chapter?.canonical_markdown,
+  ];
+  const canonical = candidates.find((value) => value !== undefined);
+  if (canonical !== undefined) {
+    return canonical;
+  }
+
+  return data.sections
+    .map((s) => {
+      const heading = s.heading ? `## ${s.heading}\n\n` : "";
+      return heading + s.body_markdown;
+    })
+    .join("\n\n");
+}
+
 export function ChapterView() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -29,6 +66,8 @@ export function ChapterView() {
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingContentRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
   const editorViewRef = useRef<EditorView | null>(null);
 
   const handleNavigateLine = useCallback((line: number) => {
@@ -47,16 +86,12 @@ export function ChapterView() {
   const load = useCallback(async () => {
     if (!chapterId) return;
     try {
-      const data = await loadReaderSession(chapterId);
+      const data = (await loadReaderSession(
+        chapterId,
+      )) as ChapterMarkdownSource;
       setSession(data);
-      // Always prepare editor content when session loads
-      const md = data.sections
-        .map((s) => {
-          const heading = s.heading ? `## ${s.heading}\n\n` : "";
-          return heading + s.body_markdown;
-        })
-        .join("\n\n");
-      setEditorContent(md);
+      setEditorContent(buildChapterMarkdown(data));
+      pendingContentRef.current = null;
     } catch (e) {
       setError(String(e));
     }
@@ -85,27 +120,73 @@ export function ChapterView() {
   }, [chapterId]);
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [load]);
 
-  // Cleanup debounced save timer on unmount
+  const saveContent = useCallback(
+    async (content: string) => {
+      if (mountedRef.current) {
+        setSaveStatus("saving");
+      }
+      try {
+        await updateChapterContent(chapterId, content);
+        if (pendingContentRef.current === content) {
+          pendingContentRef.current = null;
+        }
+        if (mountedRef.current) {
+          setSaveStatus("saved");
+        }
+      } catch {
+        if (mountedRef.current) {
+          setSaveStatus("idle");
+        }
+      }
+    },
+    [chapterId],
+  );
+
+  const flushPendingSave = useCallback(() => {
+    const pending = pendingContentRef.current;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (pending == null) return;
+    void saveContent(pending);
+  }, [saveContent]);
+
+  // Cleanup debounced save timer on unmount and on window blur.
   useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const handleBlur = () => {
+      flushPendingSave();
     };
-  }, []);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingSave();
+      }
+    };
+
+    window.addEventListener("blur", handleBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   const handleEditorChange = (value: string) => {
     setEditorContent(value);
     setSaveStatus("saving");
+    pendingContentRef.current = value;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        await updateChapterContent(chapterId, value);
-        setSaveStatus("saved");
-      } catch {
-        setSaveStatus("idle");
-      }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void saveContent(value);
     }, 2000);
   };
 

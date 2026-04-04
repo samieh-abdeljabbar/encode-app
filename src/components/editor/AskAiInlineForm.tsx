@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { askInlineQuestion, createCard } from "../../lib/tauri";
+import { askInlineQuestion } from "../../lib/tauri";
 
 type Phase = "asking" | "loading" | "answer";
 
 export function AskAiInlineForm({
   position,
   selectedText,
-  subjectId,
-  chapterId,
   onInsertCallout,
   onDismiss,
 }: {
   position: { top: number; left: number };
   selectedText: string;
-  subjectId?: number;
-  chapterId?: number;
   onInsertCallout: (markdown: string) => void;
   onDismiss: () => void;
 }) {
@@ -22,7 +18,6 @@ export function AskAiInlineForm({
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -67,46 +62,9 @@ export function AskAiInlineForm({
   }, [question, selectedText]);
 
   const handleKeepAsNote = useCallback(() => {
-    const callout = `> [!ai] Q: ${question.trim()}\n> ${answer.replace(/\n/g, "\n> ")}\n`;
+    const callout = `> [!study-help] ${question.trim()}\n> ${answer.replace(/\n/g, "\n> ")}\n`;
     onInsertCallout(callout);
   }, [question, answer, onInsertCallout]);
-
-  const handleKeepAsFlashcard = useCallback(async () => {
-    if (subjectId == null) return;
-    setSaving(true);
-    try {
-      await createCard(
-        subjectId,
-        chapterId ?? null,
-        question.trim(),
-        answer,
-        "basic",
-      );
-      onDismiss();
-    } catch (e) {
-      setError(String(e));
-      setSaving(false);
-    }
-  }, [subjectId, chapterId, question, answer, onDismiss]);
-
-  const handleKeepBoth = useCallback(async () => {
-    if (subjectId == null) return;
-    setSaving(true);
-    try {
-      await createCard(
-        subjectId,
-        chapterId ?? null,
-        question.trim(),
-        answer,
-        "basic",
-      );
-      const callout = `> [!ai] Q: ${question.trim()}\n> ${answer.replace(/\n/g, "\n> ")}\n`;
-      onInsertCallout(callout);
-    } catch (e) {
-      setError(String(e));
-      setSaving(false);
-    }
-  }, [subjectId, chapterId, question, answer, onInsertCallout]);
 
   const top = Math.min(position.top, window.innerHeight - 360);
   const left = Math.min(
@@ -136,7 +94,7 @@ export function AskAiInlineForm({
             fill="currentColor"
           />
         </svg>
-        <span className="text-xs font-semibold text-text">Ask AI</span>
+        <span className="text-xs font-semibold text-text">Study Help</span>
       </div>
 
       <div className="p-4">
@@ -153,7 +111,7 @@ export function AskAiInlineForm({
               type="text"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask a question about this..."
+              placeholder="Ask for a clearer explanation, example, or memory hook..."
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text placeholder:text-text-muted/50 focus:border-accent/40 focus:outline-none"
             />
             {error && <p className="mt-2 text-[10px] text-coral">{error}</p>}
@@ -187,31 +145,10 @@ export function AskAiInlineForm({
               <button
                 type="button"
                 onClick={handleKeepAsNote}
-                disabled={saving}
-                className="h-7 rounded-lg bg-accent/10 px-2.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-40"
+                className="h-7 rounded-lg bg-accent/10 px-2.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20"
               >
-                Keep as Note
+                Insert in Note
               </button>
-              {subjectId != null && (
-                <button
-                  type="button"
-                  onClick={handleKeepAsFlashcard}
-                  disabled={saving}
-                  className="h-7 rounded-lg bg-accent/10 px-2.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-40"
-                >
-                  Keep as Flashcard
-                </button>
-              )}
-              {subjectId != null && (
-                <button
-                  type="button"
-                  onClick={handleKeepBoth}
-                  disabled={saving}
-                  className="h-7 rounded-lg bg-accent/10 px-2.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-40"
-                >
-                  Keep Both
-                </button>
-              )}
               <button
                 type="button"
                 onClick={onDismiss}

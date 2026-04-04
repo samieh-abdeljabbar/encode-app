@@ -62,8 +62,73 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: 'See the [release notes](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}) for details.'
-          releaseDraft: false
-          prerelease: true
+          releaseName: "Encode ${{ github.ref_name }}"
+          releaseBody: ""
+          releaseDraft: true
+          prerelease: false
           args: --target ${{ matrix.target }}
+
+  label-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update release body with download guide
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+
+          # Get all asset names from the release
+          ASSETS=$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)
+
+          # Build the download table
+          BODY="## Download Encode
+
+          | Platform | File | Description |
+          |----------|------|-------------|"
+
+          # Categorize each asset
+          while IFS= read -r asset; do
+            case "$asset" in
+              *.dmg)
+                if echo "$asset" | grep -qi "aarch64"; then
+                  BODY="$BODY
+          | **macOS (Apple Silicon)** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | For M1/M2/M3/M4 Macs |"
+                else
+                  BODY="$BODY
+          | **macOS (Intel)** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | For older Intel-based Macs |"
+                fi
+                ;;
+              *.AppImage)
+                BODY="$BODY
+          | **Linux** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | Portable — runs on most distros |"
+                ;;
+              *.deb)
+                BODY="$BODY
+          | **Linux (Debian/Ubuntu)** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | For apt-based distros |"
+                ;;
+              *.msi)
+                BODY="$BODY
+          | **Windows (MSI)** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | Standard Windows installer |"
+                ;;
+              *.exe)
+                BODY="$BODY
+          | **Windows (EXE)** | [\`$asset\`](https://github.com/${{ github.repository }}/releases/download/$TAG/$asset) | NSIS installer |"
+                ;;
+            esac
+          done <<< "$ASSETS"
+
+          BODY="$BODY
+
+          ### Which one should I download?
+
+          - **Windows** — Download the \`.msi\` file (recommended) or \`.exe\`
+          - **macOS (M1/M2/M3/M4)** — Download the \`aarch64.dmg\` file
+          - **macOS (Intel)** — Download the \`x64.dmg\` file
+          - **Linux** — Download \`.AppImage\` (works everywhere) or \`.deb\` (Debian/Ubuntu)
+
+          > **Note:** macOS users may need to right-click → Open on first launch due to Gatekeeper."
+
+          gh release edit "$TAG" --notes "$BODY" --draft=false

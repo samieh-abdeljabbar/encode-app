@@ -27,8 +27,8 @@ impl Database {
     /// Open an in-memory database for testing. Available in test and integration test builds.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn open_memory() -> Result<Self, String> {
-        let conn =
-            Connection::open_in_memory().map_err(|e| format!("Failed to open in-memory db: {e}"))?;
+        let conn = Connection::open_in_memory()
+            .map_err(|e| format!("Failed to open in-memory db: {e}"))?;
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|e| format!("Failed to enable foreign keys: {e}"))?;
         Self::init(conn)

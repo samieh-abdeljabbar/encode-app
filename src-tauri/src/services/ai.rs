@@ -37,8 +37,16 @@ pub fn build_system_prompt(profile: &ProfileConfig, feature_prompt: &str) -> Str
     let mut parts = Vec::new();
 
     if !profile.role.is_empty() || !profile.domain.is_empty() {
-        let role = if profile.role.is_empty() { "learner" } else { &profile.role };
-        let domain = if profile.domain.is_empty() { "general studies" } else { &profile.domain };
+        let role = if profile.role.is_empty() {
+            "learner"
+        } else {
+            &profile.role
+        };
+        let domain = if profile.domain.is_empty() {
+            "general studies"
+        } else {
+            &profile.domain
+        };
         let mut ctx = format!("You are helping a {role} studying {domain}.");
         if !profile.learning_context.is_empty() {
             ctx.push_str(&format!(" Context: {}.", profile.learning_context));
@@ -178,14 +186,20 @@ async fn call_openai_compatible(
         .map_err(|e| format!("Request failed: {e}"))?;
 
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Failed to read response: {e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Provider returned {status}: {}", &text[..text.len().min(200)]));
+        return Err(format!(
+            "Provider returned {status}: {}",
+            &text[..text.len().min(200)]
+        ));
     }
 
-    let json: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Failed to parse response: {e}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}"))?;
 
     let content = json["choices"][0]["message"]["content"]
         .as_str()
@@ -226,14 +240,20 @@ async fn call_claude(
         .map_err(|e| format!("Request failed: {e}"))?;
 
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Failed to read response: {e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Provider returned {status}: {}", &text[..text.len().min(200)]));
+        return Err(format!(
+            "Provider returned {status}: {}",
+            &text[..text.len().min(200)]
+        ));
     }
 
-    let json: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Failed to parse response: {e}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}"))?;
 
     let content = json["content"][0]["text"]
         .as_str()
@@ -253,9 +273,8 @@ async fn call_gemini(
     user: &str,
     timeout_ms: u64,
 ) -> Result<(String, String), String> {
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    );
+    let url =
+        format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent");
 
     let body = serde_json::json!({
         "system_instruction": {
@@ -277,14 +296,20 @@ async fn call_gemini(
         .map_err(|e| format!("Request failed: {e}"))?;
 
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Failed to read response: {e}"))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {e}"))?;
 
     if !status.is_success() {
-        return Err(format!("Provider returned {status}: {}", &text[..text.len().min(200)]));
+        return Err(format!(
+            "Provider returned {status}: {}",
+            &text[..text.len().min(200)]
+        ));
     }
 
-    let json: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Failed to parse response: {e}"))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Failed to parse response: {e}"))?;
 
     let content = json["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
@@ -297,8 +322,8 @@ async fn call_gemini(
 // ── CLI provider ──
 
 const CLI_BLOCKLIST: &[&str] = &[
-    "rm", "dd", "bash", "sh", "zsh", "curl", "wget", "python", "node",
-    "sudo", "chmod", "chown", "kill", "mkfs", "fdisk",
+    "rm", "dd", "bash", "sh", "zsh", "curl", "wget", "python", "node", "sudo", "chmod", "chown",
+    "kill", "mkfs", "fdisk",
 ];
 
 fn validate_cli_command(command: &str) -> Result<(), String> {
@@ -369,7 +394,8 @@ fn call_cli_blocking(
         }
     }
 
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("CLI command failed: {e}"))?;
 
     if !output.status.success() {
@@ -409,7 +435,15 @@ pub async fn ai_request(
             if key.is_empty() {
                 return Err("No API key configured for claude".to_string());
             }
-            call_claude(http, key, &model, &system, &request.user_prompt, request.timeout_ms).await
+            call_claude(
+                http,
+                key,
+                &model,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
+            )
+            .await
         }
         "openai" => {
             let key = &config.openai_api_key;
@@ -417,16 +451,30 @@ pub async fn ai_request(
                 return Err("No API key configured for openai".to_string());
             }
             call_openai_compatible(
-                http, "https://api.openai.com/v1/chat/completions",
-                Some(key), &model, &system, &request.user_prompt, request.timeout_ms,
-            ).await
+                http,
+                "https://api.openai.com/v1/chat/completions",
+                Some(key),
+                &model,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
+            )
+            .await
         }
         "gemini" => {
             let key = &config.gemini_api_key;
             if key.is_empty() {
                 return Err("No API key configured for gemini".to_string());
             }
-            call_gemini(http, key, &model, &system, &request.user_prompt, request.timeout_ms).await
+            call_gemini(
+                http,
+                key,
+                &model,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
+            )
+            .await
         }
         "deepseek" => {
             let key = &config.deepseek_api_key;
@@ -434,24 +482,39 @@ pub async fn ai_request(
                 return Err("No API key configured for deepseek".to_string());
             }
             call_openai_compatible(
-                http, "https://api.deepseek.com/v1/chat/completions",
-                Some(key), &model, &system, &request.user_prompt, request.timeout_ms,
-            ).await
+                http,
+                "https://api.deepseek.com/v1/chat/completions",
+                Some(key),
+                &model,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
+            )
+            .await
         }
         "ollama" => {
             let endpoint = format!("{}/v1/chat/completions", config.ollama_url);
             call_openai_compatible(
-                http, &endpoint,
-                None, &model, &system, &request.user_prompt, request.timeout_ms,
-            ).await
+                http,
+                &endpoint,
+                None,
+                &model,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
+            )
+            .await
         }
         "cli" => {
             if config.cli_command.is_empty() {
                 return Err("No CLI command configured".to_string());
             }
             call_cli_blocking(
-                &config.cli_command, &config.cli_args,
-                &system, &request.user_prompt, request.timeout_ms,
+                &config.cli_command,
+                &config.cli_args,
+                &system,
+                &request.user_prompt,
+                request.timeout_ms,
             )
         }
         _ => Err(format!("Unknown provider: {provider}")),
@@ -472,30 +535,43 @@ pub async fn ai_request(
 
 /// Log an AI call result. Call this after ai_request returns.
 /// Separated from ai_request because the DB connection isn't async.
-pub fn log_result(
-    conn: &Connection,
-    feature: &str,
-    response: Result<&AiResponse, &str>,
-) {
+pub fn log_result(conn: &Connection, feature: &str, response: Result<&AiResponse, &str>) {
     match response {
-        Ok(r) => log_ai_run(conn, feature, &r.provider, &r.model, "success", r.latency_ms, None),
+        Ok(r) => log_ai_run(
+            conn,
+            feature,
+            &r.provider,
+            &r.model,
+            "success",
+            r.latency_ms,
+            None,
+        ),
         Err(e) => log_ai_run(conn, feature, "unknown", "unknown", "error", 0, Some(e)),
     }
 }
 
 pub fn check_status(config: &AiConfig) -> AiStatus {
     let provider = config.provider.clone();
-    let configured = provider != "none";
+    let configured = match provider.as_str() {
+        "none" => true,
+        "cli" => !config.cli_command.is_empty(),
+        _ => true,
+    };
     let has_api_key = match provider.as_str() {
         "claude" => !config.claude_api_key.is_empty(),
         "openai" => !config.openai_api_key.is_empty(),
         "gemini" => !config.gemini_api_key.is_empty(),
         "deepseek" => !config.deepseek_api_key.is_empty(),
-        "ollama" => true, // no key needed
+        "ollama" => true,
+        "none" => true,
         "cli" => !config.cli_command.is_empty(),
         _ => false,
     };
-    AiStatus { provider, configured, has_api_key }
+    AiStatus {
+        provider,
+        configured,
+        has_api_key,
+    }
 }
 
 #[derive(Serialize)]
@@ -639,7 +715,8 @@ mod tests {
         let mut config = default_config();
         config.provider = "none".to_string();
         let status = check_status(&config);
-        assert!(!status.configured);
+        assert!(status.configured);
+        assert!(status.has_api_key);
     }
 
     #[test]
@@ -715,7 +792,7 @@ mod tests {
         let mut config = default_config();
         config.provider = "cli".to_string();
         let status = check_status(&config);
-        assert!(status.configured);
+        assert!(!status.configured);
         assert!(!status.has_api_key);
     }
 
