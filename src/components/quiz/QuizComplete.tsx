@@ -87,7 +87,7 @@ export function QuizComplete({
         <div className="mt-6 flex justify-center gap-3">
           <button
             type="button"
-            onClick={() => navigate("/library")}
+            onClick={() => navigate("/workspace")}
             className="h-9 rounded-xl border border-border bg-panel px-5 text-xs font-medium text-text transition-all hover:bg-panel-active"
           >
             Back to Library

@@ -37,7 +37,7 @@ export function QuickSwitcher({ open, onClose }: Props) {
           type: "subject" as const,
           id: s.id,
           name: s.name,
-          path: "/library",
+          path: "/workspace",
         }));
 
         const chapterLists = await Promise.all(

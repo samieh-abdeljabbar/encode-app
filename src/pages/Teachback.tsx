@@ -158,7 +158,7 @@ export function Teachback() {
           <p className="mb-2 text-sm text-coral">{error}</p>
           <button
             type="button"
-            onClick={() => navigate("/library")}
+            onClick={() => navigate("/workspace")}
             className="text-sm text-accent hover:underline"
           >
             Back to Library
@@ -330,7 +330,7 @@ export function Teachback() {
           </button>
           <button
             type="button"
-            onClick={() => navigate("/library")}
+            onClick={() => navigate("/workspace")}
             className="h-10 rounded-xl border border-border bg-panel px-5 text-sm font-medium text-text transition-all hover:bg-panel-active"
           >
             Back to Library
@@ -345,7 +345,7 @@ export function Teachback() {
     <div className="mx-auto flex h-full max-w-2xl flex-col p-6">
       <button
         type="button"
-        onClick={() => navigate("/library")}
+        onClick={() => navigate("/workspace")}
         className="mb-4 flex items-center gap-1 text-xs text-text-muted hover:text-text"
       >
         <ArrowLeft size={12} />

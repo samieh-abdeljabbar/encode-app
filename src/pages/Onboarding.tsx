@@ -129,7 +129,7 @@ export function Onboarding({
     // Save profile if filled
     if (role || domain || context) await saveProfile();
     onComplete();
-    navigate("/library");
+    navigate("/workspace");
   }, [role, domain, context, saveProfile, onComplete, navigate]);
 
   const inputClass =

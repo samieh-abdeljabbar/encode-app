@@ -124,7 +124,7 @@ export function ChapterView() {
           <p className="mb-2 text-sm text-coral">{error}</p>
           <button
             type="button"
-            onClick={() => navigate("/library")}
+            onClick={() => navigate("/workspace")}
             className="text-sm text-accent hover:underline"
           >
             Back to Library
@@ -157,7 +157,7 @@ export function ChapterView() {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => navigate("/library")}
+              onClick={() => navigate("/workspace")}
               className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-text"
             >
               <ArrowLeft size={16} />

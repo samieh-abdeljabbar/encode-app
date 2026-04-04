@@ -18,7 +18,7 @@ export function ReaderHeader({
       <div className="mx-auto flex max-w-3xl items-center gap-4">
         <button
           type="button"
-          onClick={() => navigate("/library")}
+          onClick={() => navigate("/workspace")}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-panel-active hover:text-text"
         >
           <ArrowLeft size={16} />

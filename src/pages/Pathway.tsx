@@ -466,7 +466,7 @@ export function Pathway() {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => navigate("/library")}
+            onClick={() => navigate("/workspace")}
             className="h-10 rounded-xl bg-accent px-6 text-sm font-medium text-white shadow-sm hover:bg-accent/90"
           >
             Start Studying

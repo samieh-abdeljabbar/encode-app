@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/layout/Shell";
 import { ThemeProvider } from "./components/layout/ThemeProvider";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -7,7 +7,6 @@ import { checkAiStatus } from "./lib/tauri";
 import { Cards } from "./pages/Cards";
 import { ChapterView } from "./pages/ChapterView";
 import { Graph } from "./pages/Graph";
-import { Library } from "./pages/Library";
 import { Notes } from "./pages/Notes";
 import { Onboarding } from "./pages/Onboarding";
 import { Pathway } from "./pages/Pathway";
@@ -71,7 +70,10 @@ function AppContent() {
         <Route element={<Shell />}>
           <Route path="/" element={<Queue />} />
           <Route path="/workspace" element={<Workspace />} />
-          <Route path="/library" element={<Library />} />
+          <Route
+            path="/library"
+            element={<Navigate to="/workspace" replace />}
+          />
           <Route path="/chapter" element={<ChapterView />} />
           <Route path="/reader" element={<Reader />} />
           <Route path="/review" element={<Review />} />
