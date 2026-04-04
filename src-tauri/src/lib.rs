@@ -144,6 +144,7 @@ pub fn run() {
             write_file,
             commands::ai::check_ai_status,
             commands::ai::list_ai_runs,
+            commands::ai::ask_inline_question,
             commands::cards::create_card,
             commands::cards::list_cards,
             commands::cards::update_card,

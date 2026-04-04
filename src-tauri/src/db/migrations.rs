@@ -7,6 +7,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (3, include_str!("../../migrations/003_teachback_miss_source.sql")),
     (4, include_str!("../../migrations/004_notes.sql")),
     (5, include_str!("../../migrations/005_ai_generated_source.sql")),
+    (6, include_str!("../../migrations/006_ai_inline_source.sql")),
 ];
 
 pub fn read_user_version(conn: &Connection) -> Result<u32, String> {
@@ -57,7 +58,7 @@ mod tests {
         run_all(&conn).expect("second run (idempotent)");
 
         let version = read_user_version(&conn).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]

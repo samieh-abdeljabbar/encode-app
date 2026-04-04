@@ -9,7 +9,10 @@ import {
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AskAiInlineForm } from "./AskAiInlineForm";
 import { FlashcardInlineForm } from "./FlashcardInlineForm";
+import { askAiExtension } from "./cm-ask-ai";
+import type { AskAiHandler } from "./cm-ask-ai";
 import { livePreviewDecorations } from "./cm-decorations";
 import { markdownFoldService } from "./cm-fold";
 import { imageDropHandler } from "./cm-images";
@@ -45,6 +48,13 @@ export function MarkdownEditor({
     insertPos: number;
   } | null>(null);
 
+  const [askAiForm, setAskAiForm] = useState<{
+    top: number;
+    left: number;
+    selectedText: string;
+    insertPos: number;
+  } | null>(null);
+
   const flashcardFormRef = useRef(flashcardForm);
   flashcardFormRef.current = flashcardForm;
 
@@ -63,6 +73,18 @@ export function MarkdownEditor({
     },
     [],
   );
+
+  const handleAskAi: AskAiHandler = useCallback((selectedText, coords) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const sel = view.state.selection.main;
+    setAskAiForm({
+      top: coords.top,
+      left: coords.left,
+      selectedText,
+      insertPos: sel.to,
+    });
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once — value used only for initial doc
   useEffect(() => {
@@ -124,6 +146,7 @@ export function MarkdownEditor({
         tableRendering,
         mathRendering,
         slashCommands(handleSlashAction),
+        askAiExtension(handleAskAi),
         imageDropHandler,
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -177,6 +200,24 @@ export function MarkdownEditor({
     [],
   );
 
+  const handleAiInsertCallout = useCallback(
+    (markdown: string) => {
+      const view = viewRef.current;
+      if (!view || !askAiForm) return;
+      // Insert callout after the selection
+      const insertAt = askAiForm.insertPos;
+      const prefix =
+        view.state.doc.lineAt(insertAt).to === insertAt ? "\n" : "\n\n";
+      view.dispatch({
+        changes: { from: insertAt, insert: prefix + markdown },
+        selection: { anchor: insertAt + prefix.length + markdown.length },
+      });
+      view.focus();
+      setAskAiForm(null);
+    },
+    [askAiForm],
+  );
+
   return (
     <>
       <div ref={containerRef} className="h-full overflow-auto" />
@@ -187,6 +228,16 @@ export function MarkdownEditor({
           chapterId={chapterId}
           onCreated={handleFlashcardCreated}
           onCancel={() => setFlashcardForm(null)}
+        />
+      )}
+      {askAiForm && (
+        <AskAiInlineForm
+          position={{ top: askAiForm.top, left: askAiForm.left }}
+          selectedText={askAiForm.selectedText}
+          subjectId={subjectId}
+          chapterId={chapterId}
+          onInsertCallout={handleAiInsertCallout}
+          onDismiss={() => setAskAiForm(null)}
         />
       )}
     </>

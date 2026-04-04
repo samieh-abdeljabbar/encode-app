@@ -100,6 +100,8 @@ export const writeFile = (relativePath: string, content: string) =>
 // AI IPC
 export const checkAiStatus = () => invoke<AiStatus>("check_ai_status");
 export const listAiRuns = () => invoke<AiRunInfo[]>("list_ai_runs");
+export const askInlineQuestion = (context: string, question: string) =>
+  invoke<string>("ask_inline_question", { context, question });
 
 // --- Library commands ---
 
