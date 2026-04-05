@@ -11,13 +11,16 @@ import {
   unregisterShortcut,
 } from "../../lib/shortcuts";
 import { setLastSurface } from "../../lib/tauri";
+import { useUpdaterStore } from "../../lib/updater";
 import { QuickSwitcher } from "./QuickSwitcher";
 import { Ribbon } from "./Ribbon";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
+import { UpdatePrompt } from "./UpdatePrompt";
 
 export function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const checkForUpdates = useUpdaterStore((s) => s.checkForUpdates);
 
   const location = useLocation();
   const label = getPageLabel(location.pathname);
@@ -43,6 +46,10 @@ export function Shell() {
     if (!isRestorableRoute(route)) return;
     setLastSurface(route).catch(() => {});
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    checkForUpdates().catch(() => {});
+  }, [checkForUpdates]);
 
   return (
     <div className="flex h-screen bg-bg text-text">
@@ -76,6 +83,7 @@ export function Shell() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+      <UpdatePrompt />
     </div>
   );
 }

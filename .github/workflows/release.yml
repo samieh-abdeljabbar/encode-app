@@ -60,6 +60,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Encode ${{ github.ref_name }}"
@@ -132,3 +134,73 @@ jobs:
           > **Note:** macOS users may need to right-click → Open on first launch due to Gatekeeper."
 
           gh release edit "$TAG" --notes "$BODY" --draft=false
+
+      - name: Assemble and upload latest.json for updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          VERSION="${TAG#v}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          mkdir -p sigs
+          cd sigs
+          gh release download "$TAG" --repo "$REPO" --pattern "*.sig" || true
+          cd ..
+
+          # Helper: read a sig file if present
+          read_sig() {
+            local file="$1"
+            if [ -f "sigs/$file" ]; then
+              cat "sigs/$file"
+            else
+              echo ""
+            fi
+          }
+
+          # Find the actual asset names from the release (they contain the version)
+          ASSETS=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+
+          # macOS asset names look like: Encode.app.tar.gz (aarch64/x86_64 builds go to separate targets)
+          # Linux AppImage, Windows MSI
+          DARWIN_ARM_ARCHIVE=$(echo "$ASSETS" | grep -E "aarch64.*\.app\.tar\.gz$" | head -1 || true)
+          DARWIN_X86_ARCHIVE=$(echo "$ASSETS" | grep -E "x64.*\.app\.tar\.gz$" | head -1 || true)
+          LINUX_APPIMAGE=$(echo "$ASSETS" | grep -E "\.AppImage$" | head -1 || true)
+          WINDOWS_MSI=$(echo "$ASSETS" | grep -E "\.msi$" | head -1 || true)
+
+          DARWIN_ARM_SIG=$(read_sig "${DARWIN_ARM_ARCHIVE}.sig")
+          DARWIN_X86_SIG=$(read_sig "${DARWIN_X86_ARCHIVE}.sig")
+          LINUX_SIG=$(read_sig "${LINUX_APPIMAGE}.sig")
+          WINDOWS_SIG=$(read_sig "${WINDOWS_MSI}.sig")
+
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+
+          # Assemble latest.json using jq for proper escaping
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$PUB_DATE" \
+            --arg notes "See release notes at https://github.com/${REPO}/releases/tag/${TAG}" \
+            --arg darwin_arm_sig "$DARWIN_ARM_SIG" \
+            --arg darwin_arm_url "${BASE_URL}/${DARWIN_ARM_ARCHIVE}" \
+            --arg darwin_x86_sig "$DARWIN_X86_SIG" \
+            --arg darwin_x86_url "${BASE_URL}/${DARWIN_X86_ARCHIVE}" \
+            --arg linux_sig "$LINUX_SIG" \
+            --arg linux_url "${BASE_URL}/${LINUX_APPIMAGE}" \
+            --arg windows_sig "$WINDOWS_SIG" \
+            --arg windows_url "${BASE_URL}/${WINDOWS_MSI}" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": { signature: $darwin_arm_sig, url: $darwin_arm_url },
+                "darwin-x86_64":  { signature: $darwin_x86_sig, url: $darwin_x86_url },
+                "linux-x86_64":   { signature: $linux_sig,      url: $linux_url },
+                "windows-x86_64": { signature: $windows_sig,    url: $windows_url }
+              }
+            }' > latest.json
+
+          cat latest.json
+
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber

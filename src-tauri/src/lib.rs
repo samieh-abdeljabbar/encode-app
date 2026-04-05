@@ -94,37 +94,45 @@ pub fn run() {
         let vault = vault_path.clone();
         let db_file = encode_dir.join("encode.db");
         std::thread::spawn(move || {
-            let export_interval = std::time::Duration::from_secs(15 * 60); // 15 minutes
-            let snapshot_interval = std::time::Duration::from_secs(60 * 60); // 1 hour
-            let mut last_export = std::time::Instant::now();
-            let mut last_snapshot = std::time::Instant::now();
-
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(60));
+                if let Ok(db) = Database::open(&db_file) {
+                    let status = db.with_conn(commands::export::get_export_status_from_conn);
 
-                let needs_export = last_export.elapsed() >= export_interval;
-                let needs_snapshot = last_snapshot.elapsed() >= snapshot_interval;
+                    if let Ok(status) = status {
+                        let now = chrono::Utc::now();
+                        let export_due = commands::export::is_due_at(
+                            status.last_export_at.as_deref(),
+                            status.export_dirty,
+                            chrono::Duration::minutes(commands::export::EXPORT_INTERVAL_MINUTES),
+                            now,
+                        );
+                        let snapshot_due = commands::export::is_due_at(
+                            status.last_snapshot_at.as_deref(),
+                            status.snapshot_dirty,
+                            chrono::Duration::minutes(
+                                commands::export::SNAPSHOT_INTERVAL_MINUTES,
+                            ),
+                            now,
+                        );
 
-                if needs_export || needs_snapshot {
-                    if let Ok(db) = Database::open(&db_file) {
-                        if needs_export {
+                        if export_due {
                             let export_dir = vault.join("exports");
                             let _ = db.with_conn(|conn| {
                                 services::exporter::export_all(conn, &export_dir)?;
-                                commands::export::touch_setting(conn, "last_export_at")
+                                commands::export::record_successful_export(conn)
                             });
-                            last_export = std::time::Instant::now();
                         }
-                        if needs_snapshot {
+
+                        if snapshot_due {
                             let snap_dir = vault.join(".encode").join("snapshots");
-                            let _ = services::snapshot::create_snapshot(&db_file, &snap_dir);
-                            let _ = db.with_conn(|conn| {
-                                commands::export::touch_setting(conn, "last_snapshot_at")
-                            });
-                            last_snapshot = std::time::Instant::now();
+                            if services::snapshot::create_snapshot(&db_file, &snap_dir).is_ok() {
+                                let _ = db.with_conn(commands::export::record_successful_snapshot);
+                            }
                         }
                     }
                 }
+
+                std::thread::sleep(std::time::Duration::from_secs(60));
             }
         });
     }
@@ -140,6 +148,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             get_config,

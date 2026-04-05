@@ -61,6 +61,10 @@ const { invokeMock, mockState } = vi.hoisted(() => ({
       return {
         last_export_at: null,
         last_snapshot_at: null,
+        export_dirty: false,
+        snapshot_dirty: false,
+        next_export_due_at: null,
+        next_snapshot_due_at: null,
       };
     }
 

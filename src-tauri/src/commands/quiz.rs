@@ -13,7 +13,10 @@ pub fn list_quizzes(
 
 #[tauri::command]
 pub fn delete_quiz(state: tauri::State<'_, AppState>, quiz_id: i64) -> Result<(), String> {
-    state.db.with_conn(|conn| quiz::delete_quiz(conn, quiz_id))
+    state.db.with_conn(|conn| {
+        quiz::delete_quiz(conn, quiz_id)?;
+        crate::commands::export::mark_snapshot_dirty(conn)
+    })
 }
 
 #[tauri::command]
@@ -34,6 +37,8 @@ pub async fn generate_quiz(
             &question_type,
         )
     })?;
+    state.db
+        .with_conn(crate::commands::export::mark_snapshot_dirty)?;
 
     // 2. Try AI enhancement if configured
     let config = state.config.read().map_err(|e| e.to_string())?.clone();
@@ -124,6 +129,8 @@ pub async fn generate_subject_quiz(
             &question_type,
         )
     })?;
+    state.db
+        .with_conn(crate::commands::export::mark_snapshot_dirty)?;
 
     let config = state.config.read().map_err(|e| e.to_string())?.clone();
     if config.ai.provider != "none" {
@@ -206,6 +213,8 @@ pub async fn submit_quiz_answer(
     let mut result = state
         .db
         .with_conn(|conn| quiz::submit_answer(conn, quiz_id, question_index, &answer))?;
+    state.db
+        .with_conn(crate::commands::export::mark_snapshot_dirty)?;
 
     // If it needs self-rating (short answer), try AI evaluation
     if result.needs_self_rating {
@@ -309,9 +318,11 @@ pub fn submit_quiz_self_rating(
     question_index: i64,
     self_rating: String,
 ) -> Result<quiz::QuestionResult, String> {
-    state
-        .db
-        .with_conn(|conn| quiz::submit_self_rating(conn, quiz_id, question_index, &self_rating))
+    state.db.with_conn(|conn| {
+        let result = quiz::submit_self_rating(conn, quiz_id, question_index, &self_rating)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(result)
+    })
 }
 
 #[tauri::command]
@@ -327,7 +338,9 @@ pub fn complete_quiz(
     state: tauri::State<'_, AppState>,
     quiz_id: i64,
 ) -> Result<quiz::QuizSummary, String> {
-    state
-        .db
-        .with_conn(|conn| quiz::complete_quiz(conn, quiz_id))
+    state.db.with_conn(|conn| {
+        let summary = quiz::complete_quiz(conn, quiz_id)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(summary)
+    })
 }

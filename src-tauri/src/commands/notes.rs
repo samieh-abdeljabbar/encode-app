@@ -11,7 +11,7 @@ pub fn create_note(
     content: String,
 ) -> Result<notes::NoteInfo, String> {
     state.db.with_conn(|conn| {
-        notes::create_note(
+        let note = notes::create_note(
             conn,
             &state.vault_path,
             &title,
@@ -19,7 +19,9 @@ pub fn create_note(
             subject_id,
             chapter_id,
             &content,
-        )
+        )?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(note)
     })
 }
 
@@ -39,16 +41,19 @@ pub fn update_note(
     note_id: i64,
     content: String,
 ) -> Result<notes::NoteInfo, String> {
-    state
-        .db
-        .with_conn(|conn| notes::update_note(conn, &state.vault_path, note_id, &content))
+    state.db.with_conn(|conn| {
+        let note = notes::update_note(conn, &state.vault_path, note_id, &content)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(note)
+    })
 }
 
 #[tauri::command]
 pub fn delete_note(state: tauri::State<'_, AppState>, note_id: i64) -> Result<(), String> {
-    state
-        .db
-        .with_conn(|conn| notes::delete_note(conn, &state.vault_path, note_id))
+    state.db.with_conn(|conn| {
+        notes::delete_note(conn, &state.vault_path, note_id)?;
+        crate::commands::export::mark_snapshot_dirty(conn)
+    })
 }
 
 #[tauri::command]
@@ -76,9 +81,11 @@ pub fn rename_note(
     note_id: i64,
     new_title: String,
 ) -> Result<notes::NoteInfo, String> {
-    state
-        .db
-        .with_conn(|conn| notes::rename_note(conn, &state.vault_path, note_id, &new_title))
+    state.db.with_conn(|conn| {
+        let note = notes::rename_note(conn, &state.vault_path, note_id, &new_title)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(note)
+    })
 }
 
 #[tauri::command]
@@ -142,7 +149,9 @@ pub fn move_note(
     target_folder: Option<String>,
 ) -> Result<notes::NoteInfo, String> {
     state.db.with_conn(|conn| {
-        notes::move_note(conn, &state.vault_path, note_id, target_folder.as_deref())
+        let note = notes::move_note(conn, &state.vault_path, note_id, target_folder.as_deref())?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(note)
     })
 }
 

@@ -18,7 +18,11 @@ pub fn create_card(
         answer,
         card_type,
     };
-    state.db.with_conn(|conn| cards::create_card(conn, &input))
+    state.db.with_conn(|conn| {
+        let card = cards::create_card(conn, &input)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(card)
+    })
 }
 
 #[tauri::command]
@@ -41,19 +45,24 @@ pub fn update_card(
     status: Option<String>,
 ) -> Result<cards::CardInfo, String> {
     state.db.with_conn(|conn| {
-        cards::update_card(
+        let card = cards::update_card(
             conn,
             card_id,
             prompt.as_deref(),
             answer.as_deref(),
             status.as_deref(),
-        )
+        )?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(card)
     })
 }
 
 #[tauri::command]
 pub fn delete_card(state: tauri::State<'_, AppState>, card_id: i64) -> Result<(), String> {
-    state.db.with_conn(|conn| cards::delete_card(conn, card_id))
+    state.db.with_conn(|conn| {
+        cards::delete_card(conn, card_id)?;
+        crate::commands::export::mark_snapshot_dirty(conn)
+    })
 }
 
 #[tauri::command]

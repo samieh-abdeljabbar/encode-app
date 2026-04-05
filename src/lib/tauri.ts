@@ -171,6 +171,10 @@ export const moveChapter = (chapterId: number, newSubjectId: number) =>
 export interface ExportStatus {
   last_export_at: string | null;
   last_snapshot_at: string | null;
+  export_dirty: boolean;
+  snapshot_dirty: boolean;
+  next_export_due_at: string | null;
+  next_snapshot_due_at: string | null;
 }
 
 export interface SnapshotInfo {

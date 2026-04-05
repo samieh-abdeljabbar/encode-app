@@ -121,6 +121,7 @@ pub fn create_subject(state: tauri::State<'_, AppState>, name: String) -> Result
         .map_err(|e| format!("Failed to create subject: {e}"))?;
 
         let id = conn.last_insert_rowid();
+        crate::commands::export::mark_export_dirty(conn)?;
         Ok(Subject {
             id,
             slug,
@@ -169,6 +170,7 @@ pub fn delete_subject(state: tauri::State<'_, AppState>, id: i64) -> Result<(), 
     state.db.with_conn(|conn| {
         conn.execute("DELETE FROM subjects WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| format!("Failed to delete subject: {e}"))?;
+        crate::commands::export::mark_export_dirty(conn)?;
         Ok(())
     })
 }
@@ -200,6 +202,7 @@ pub fn create_chapter(
 
         let chapter_id = conn.last_insert_rowid();
         insert_sections(conn, chapter_id, &sections)?;
+        crate::commands::export::mark_export_dirty(conn)?;
 
         Ok(Chapter {
             id: chapter_id,
@@ -337,6 +340,7 @@ pub async fn import_url(
 
         let chapter_id = conn.last_insert_rowid();
         insert_sections(conn, chapter_id, &sections)?;
+        crate::commands::export::mark_export_dirty(conn)?;
 
         Ok(Chapter {
             id: chapter_id,
@@ -359,9 +363,10 @@ pub fn move_chapter(
     chapter_id: i64,
     new_subject_id: i64,
 ) -> Result<(), String> {
-    state
-        .db
-        .with_conn(|conn| crate::services::chapter::move_chapter(conn, chapter_id, new_subject_id))
+    state.db.with_conn(|conn| {
+        crate::services::chapter::move_chapter(conn, chapter_id, new_subject_id)?;
+        crate::commands::export::mark_export_dirty(conn)
+    })
 }
 
 #[tauri::command]
@@ -370,9 +375,10 @@ pub fn update_chapter_content(
     chapter_id: i64,
     markdown: String,
 ) -> Result<(), String> {
-    state
-        .db
-        .with_conn(|conn| crate::services::chapter::update_content(conn, chapter_id, &markdown))
+    state.db.with_conn(|conn| {
+        crate::services::chapter::update_content(conn, chapter_id, &markdown)?;
+        crate::commands::export::mark_export_dirty(conn)
+    })
 }
 
 #[tauri::command]

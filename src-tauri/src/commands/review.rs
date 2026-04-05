@@ -17,7 +17,9 @@ pub fn submit_card_rating(
     card_id: i64,
     rating: i32,
 ) -> Result<review::RatingResult, String> {
-    state
-        .db
-        .with_conn(|conn| review::submit_rating(conn, card_id, rating))
+    state.db.with_conn(|conn| {
+        let result = review::submit_rating(conn, card_id, rating)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(result)
+    })
 }

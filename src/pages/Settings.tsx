@@ -29,10 +29,13 @@ import {
 import type { AppConfig, ExportStatus, SnapshotInfo } from "../lib/tauri";
 import { THEMES } from "../lib/themes";
 
-function StatusDot({ status }: { status: "ok" | "stale" | "none" }) {
+type BackupIndicator = "ok" | "pending" | "overdue" | "none";
+
+function StatusDot({ status }: { status: BackupIndicator }) {
   const color = {
     ok: "bg-teal",
-    stale: "bg-amber",
+    pending: "bg-amber",
+    overdue: "bg-accent",
     none: "bg-text-muted/20",
   }[status];
 
@@ -62,14 +65,77 @@ function getTimeDelta(timestamp: string | null | undefined): string {
   return `${days}d ago`;
 }
 
-function getStatus(
-  timestamp: string | null | undefined,
-): "ok" | "stale" | "none" {
-  if (!timestamp) return "none";
-  const date = new Date(`${timestamp.replace(" ", "T")}Z`);
-  const hoursSince = (Date.now() - date.getTime()) / 3600000;
-  if (hoursSince < 1) return "ok";
-  return "stale";
+function parseTimestamp(timestamp: string | null | undefined): Date | null {
+  if (!timestamp) return null;
+  return new Date(`${timestamp.replace(" ", "T")}Z`);
+}
+
+function formatTimeUntil(timestamp: string | null | undefined): string {
+  const date = parseTimestamp(timestamp);
+  if (!date) return "soon";
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return "now";
+  const mins = Math.ceil(diffMs / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remainder = mins % 60;
+  if (remainder === 0) return `${hours}h`;
+  return `${hours}h ${remainder}m`;
+}
+
+function getBackupIndicator(
+  lastRunAt: string | null | undefined,
+  dirty: boolean,
+  nextDueAt: string | null | undefined,
+): BackupIndicator {
+  if (dirty) {
+    const nextDue = parseTimestamp(nextDueAt);
+    return nextDue && nextDue.getTime() <= Date.now() ? "overdue" : "pending";
+  }
+
+  if (lastRunAt) return "ok";
+  return "none";
+}
+
+function getBackupSummary(
+  label: string,
+  lastRunAt: string | null | undefined,
+  dirty: boolean,
+  nextDueAt: string | null | undefined,
+): string {
+  if (dirty) {
+    const nextDue = parseTimestamp(nextDueAt);
+    if (nextDue && nextDue.getTime() <= Date.now()) {
+      return `Pending changes. Automatic ${label} is overdue and should run soon.`;
+    }
+    return `Pending changes. Next automatic ${label} in ${formatTimeUntil(nextDueAt)}.`;
+  }
+
+  if (lastRunAt) {
+    return "No pending changes.";
+  }
+
+  return `No automatic ${label} yet.`;
+}
+
+function getGlobalBackupSummary(status: ExportStatus | null): string {
+  if (!status) {
+    return "Checking backup status...";
+  }
+
+  const parts: string[] = [];
+  if (status.export_dirty) {
+    parts.push(`export in ${formatTimeUntil(status.next_export_due_at)}`);
+  }
+  if (status.snapshot_dirty) {
+    parts.push(`snapshot in ${formatTimeUntil(status.next_snapshot_due_at)}`);
+  }
+
+  if (parts.length > 0) {
+    return `Pending changes. Next automatic ${parts.join(", next ")}.`;
+  }
+
+  return "Automatic backup is active. No pending changes.";
 }
 
 export function Settings() {
@@ -94,6 +160,13 @@ export function Settings() {
 
   useEffect(() => {
     loadStatus();
+  }, [loadStatus]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void loadStatus();
+    }, 30000);
+    return () => window.clearInterval(intervalId);
   }, [loadStatus]);
 
   const handleExportAll = async () => {
@@ -122,8 +195,16 @@ export function Settings() {
     }
   };
 
-  const exportDot = getStatus(exportStatus?.last_export_at);
-  const snapshotDot = getStatus(exportStatus?.last_snapshot_at);
+  const exportDot = getBackupIndicator(
+    exportStatus?.last_export_at,
+    exportStatus?.export_dirty ?? false,
+    exportStatus?.next_export_due_at,
+  );
+  const snapshotDot = getBackupIndicator(
+    exportStatus?.last_snapshot_at,
+    exportStatus?.snapshot_dirty ?? false,
+    exportStatus?.next_snapshot_due_at,
+  );
 
   return (
     <div className="mx-auto max-w-5xl px-7 py-7">
@@ -159,6 +240,14 @@ export function Settings() {
               {exportStatus?.last_export_at
                 ? `Last: ${exportStatus.last_export_at}`
                 : "No exports yet"}
+            </div>
+            <div className="mb-4 text-xs text-text-muted">
+              {getBackupSummary(
+                "export",
+                exportStatus?.last_export_at,
+                exportStatus?.export_dirty ?? false,
+                exportStatus?.next_export_due_at,
+              )}
             </div>
             <button
               type="button"
@@ -199,6 +288,14 @@ export function Settings() {
                 ? `Last: ${exportStatus.last_snapshot_at}`
                 : "No snapshots yet"}
             </div>
+            <div className="mb-4 text-xs text-text-muted">
+              {getBackupSummary(
+                "snapshot",
+                exportStatus?.last_snapshot_at,
+                exportStatus?.snapshot_dirty ?? false,
+                exportStatus?.next_snapshot_due_at,
+              )}
+            </div>
             <button
               type="button"
               onClick={handleSnapshot}
@@ -216,7 +313,7 @@ export function Settings() {
 
         <div className="mt-6 flex items-center gap-2.5 rounded-2xl bg-accent-soft/30 px-4 py-3.5 text-sm text-text-muted">
           <Clock size={10} className="shrink-0 text-accent/50" />
-          Exports run every 15 min, snapshots every hour — automatically
+          {getGlobalBackupSummary(exportStatus)}
         </div>
       </section>
 

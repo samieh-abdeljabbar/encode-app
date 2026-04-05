@@ -48,6 +48,8 @@ pub async fn start_teachback(
     let mut result = state
         .db
         .with_conn(|conn| teachback::start_teachback(conn, chapter_id))?;
+    state.db
+        .with_conn(crate::commands::export::mark_snapshot_dirty)?;
 
     let config = state.config.read().map_err(|e| e.to_string())?.clone();
     if config.ai.provider != "none" {
@@ -158,7 +160,7 @@ pub async fn submit_teachback(
 
                 let result = state.db.with_conn(|conn| {
                     ai::log_result(conn, "teachback.evaluate", Ok(&ai_response));
-                    teachback::finalize_teachback(
+                    let result = teachback::finalize_teachback(
                         conn,
                         teachback_id,
                         &response,
@@ -166,7 +168,9 @@ pub async fn submit_teachback(
                         &strongest,
                         &biggest_gap,
                         None,
-                    )
+                    )?;
+                    crate::commands::export::mark_snapshot_dirty(conn)?;
+                    Ok(result)
                 })?;
                 Ok(result)
             }
@@ -227,9 +231,11 @@ pub fn submit_teachback_self_rating(
     response: String,
     ratings: teachback::RubricScores,
 ) -> Result<teachback::TeachbackResult, String> {
-    state
-        .db
-        .with_conn(|conn| teachback::submit_self_rating(conn, teachback_id, &response, &ratings))
+    state.db.with_conn(|conn| {
+        let result = teachback::submit_self_rating(conn, teachback_id, &response, &ratings)?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(result)
+    })
 }
 
 #[tauri::command]

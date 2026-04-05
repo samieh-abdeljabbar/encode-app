@@ -292,14 +292,16 @@ pub fn save_card_study_help_note(
 ) -> Result<notes::StudyHelpNoteResult, String> {
     state.db.with_conn(|conn| {
         let card = cards::get_card_info_pub(conn, card_id)?;
-        notes::append_to_study_help_note(
+        let result = notes::append_to_study_help_note(
             conn,
             &state.vault_path,
             Some(card.subject_id),
             card.chapter_id,
             &note_markdown,
             1,
-        )
+        )?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(result)
     })
 }
 
@@ -362,14 +364,16 @@ pub async fn create_quiz_missed_help_note(
     let note_markdown = build_quiz_note_markdown(&attempts, &payload.items)?;
 
     state.db.with_conn(|conn| {
-        notes::append_to_study_help_note(
+        let result = notes::append_to_study_help_note(
             conn,
             &state.vault_path,
             subject_id,
             chapter_id,
             &note_markdown,
             attempts.len() as i64,
-        )
+        )?;
+        crate::commands::export::mark_snapshot_dirty(conn)?;
+        Ok(result)
     })
 }
 
