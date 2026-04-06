@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Globe,
   MessageSquare,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import {
   createNote,
   createNoteFolder,
   createSubject,
+  deleteChapter,
   deleteNote,
   deleteNoteFolder,
   deleteSubject,
@@ -32,6 +34,8 @@ import {
   loadReaderSession,
   moveChapter,
   moveNote,
+  renameChapter,
+  renameNote,
   updateChapterContent,
 } from "../lib/tauri";
 import type { Chapter, NoteInfo, ReaderSession, Subject } from "../lib/tauri";
@@ -376,6 +380,12 @@ export function Workspace() {
   const [newFolderName, setNewFolderName] = useState("");
   const [importUrlValue, setImportUrlValue] = useState("");
   const [modalSubjectId, setModalSubjectId] = useState<number | null>(null);
+  const [renamingNoteId, setRenamingNoteId] = useState<number | null>(null);
+  const [noteTitleDraft, setNoteTitleDraft] = useState("");
+  const [renamingChapterId, setRenamingChapterId] = useState<number | null>(
+    null,
+  );
+  const [chapterTitleDraft, setChapterTitleDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -558,6 +568,50 @@ export function Workspace() {
     }
   };
 
+  const handleStartRenameChapter = (chapter: Chapter) => {
+    setRenamingChapterId(chapter.id);
+    setChapterTitleDraft(chapter.title);
+  };
+
+  const handleCancelRenameChapter = () => {
+    setRenamingChapterId(null);
+    setChapterTitleDraft("");
+  };
+
+  const handleSubmitRenameChapter = async (
+    chapterId: number,
+    subjectId: number,
+  ) => {
+    const trimmed = chapterTitleDraft.trim();
+    if (!trimmed) {
+      handleCancelRenameChapter();
+      return;
+    }
+    try {
+      await renameChapter(chapterId, trimmed);
+      await loadChaptersForSubject(subjectId, true);
+      if (selection?.type === "chapter" && selection.chapterId === chapterId) {
+        setSelection({ ...selection, chapterTitle: trimmed });
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+    handleCancelRenameChapter();
+  };
+
+  const handleDeleteChapter = async (chapterId: number, subjectId: number) => {
+    try {
+      await deleteChapter(chapterId);
+      await loadChaptersForSubject(subjectId, true);
+      await loadSubjects();
+      if (selection?.type === "chapter" && selection.chapterId === chapterId) {
+        setSelection(null);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const handleCreateChapter = async () => {
     if (!newChapterTitle.trim() || !modalSubjectId) return;
     setLoading(true);
@@ -687,6 +741,33 @@ export function Workspace() {
       await loadNotes();
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  const handleStartRenameNote = (note: NoteInfo) => {
+    setRenamingNoteId(note.id);
+    setNoteTitleDraft(note.title);
+  };
+
+  const handleCancelRenameNote = () => {
+    setRenamingNoteId(null);
+    setNoteTitleDraft("");
+  };
+
+  const handleSubmitRenameNote = async (noteId: number) => {
+    const trimmed = noteTitleDraft.trim();
+    const current = notes.find((note) => note.id === noteId);
+    if (!current || !trimmed || trimmed === current.title) {
+      handleCancelRenameNote();
+      return;
+    }
+    try {
+      await renameNote(noteId, trimmed);
+      await loadNotes();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      handleCancelRenameNote();
     }
   };
 
@@ -875,11 +956,7 @@ export function Workspace() {
                 <div key={subject.id}>
                   {/* Subject row — drop target for chapters */}
                   <div
-                    className={`group my-1 flex items-center rounded-[22px] px-1 py-1 transition-colors ${
-                      isSelectedSubject
-                        ? "bg-accent/10 shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
-                        : "hover:bg-accent/[0.06]"
-                    }`}
+                    className="group my-1 flex items-center px-1 py-0.5"
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.currentTarget.style.outline =
@@ -920,8 +997,8 @@ export function Workspace() {
                       onDragOver={(e) => e.preventDefault()}
                       className={`flex flex-1 items-center gap-2 rounded-[18px] px-3 py-2 text-xs transition-colors ${
                         isSelectedSubject
-                          ? "font-medium text-accent"
-                          : "text-text-muted hover:text-text"
+                          ? "bg-accent/10 font-medium text-accent shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
+                          : "text-text-muted hover:bg-accent/[0.06] hover:text-text"
                       }`}
                     >
                       {isOpen ? (
@@ -1051,63 +1128,97 @@ export function Workspace() {
                       const isChapterSelected =
                         selection?.type === "chapter" &&
                         selection.chapterId === chapter.id;
+                      const isChapterRenaming =
+                        renamingChapterId === chapter.id;
                       return (
-                        <button
-                          key={chapter.id}
-                          type="button"
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/plain", "drag");
-                            e.dataTransfer.effectAllowed = "move";
-                            dragRef.current = {
-                              type: "chapter",
-                              id: chapter.id,
-                              sourceSubjectId: subject.id,
-                            };
-                          }}
-                          onClick={() =>
-                            setSelection({
-                              type: "chapter",
-                              chapterId: chapter.id,
-                              subjectId: subject.id,
-                              subjectName: subject.name,
-                              chapterTitle: chapter.title,
-                            })
-                          }
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setContextMenu({
-                              x: e.clientX,
-                              y: e.clientY,
-                              type: "chapter",
-                              id: chapter.id,
-                              extra: {
-                                subjectId: subject.id,
-                                subjectName: subject.name,
-                              },
-                            });
-                          }}
-                          className={`flex w-full items-center gap-2 rounded py-1.5 pl-8 pr-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
-                            isChapterSelected
-                              ? "bg-accent/10 font-medium text-accent"
-                              : "text-text-muted hover:bg-panel-active hover:text-text"
-                          }`}
-                        >
-                          <FileText size={11} className="shrink-0" />
-                          <span
-                            className="flex-1"
-                            style={{
-                              wordBreak: "break-word",
-                              lineHeight: "1.4",
-                            }}
-                          >
-                            {chapter.title}
-                          </span>
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[chapter.status] ?? "bg-text-muted/30"}`}
-                            title={chapter.status}
-                          />
-                        </button>
+                        <div key={chapter.id} className="py-0.5">
+                          {isChapterRenaming ? (
+                            <div className="rounded-[18px] py-2 pl-8 pr-3">
+                              <input
+                                type="text"
+                                value={chapterTitleDraft}
+                                onChange={(e) =>
+                                  setChapterTitleDraft(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    void handleSubmitRenameChapter(
+                                      chapter.id,
+                                      subject.id,
+                                    );
+                                  }
+                                  if (e.key === "Escape") {
+                                    handleCancelRenameChapter();
+                                  }
+                                }}
+                                onBlur={() => {
+                                  void handleSubmitRenameChapter(
+                                    chapter.id,
+                                    subject.id,
+                                  );
+                                }}
+                                autoFocus
+                                className="w-full rounded-[18px] border border-accent/30 bg-panel px-3 py-1.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-accent/30"
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/plain", "drag");
+                                e.dataTransfer.effectAllowed = "move";
+                                dragRef.current = {
+                                  type: "chapter",
+                                  id: chapter.id,
+                                  sourceSubjectId: subject.id,
+                                };
+                              }}
+                              onClick={() =>
+                                setSelection({
+                                  type: "chapter",
+                                  chapterId: chapter.id,
+                                  subjectId: subject.id,
+                                  subjectName: subject.name,
+                                  chapterTitle: chapter.title,
+                                })
+                              }
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  type: "chapter",
+                                  id: chapter.id,
+                                  extra: {
+                                    subjectId: subject.id,
+                                    subjectName: subject.name,
+                                  },
+                                });
+                              }}
+                              className={`flex w-full items-center gap-2 rounded-[18px] py-2 pl-8 pr-3 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                                isChapterSelected
+                                  ? "bg-accent/10 font-medium text-accent shadow-[inset_0_0_0_1px_rgba(45,106,79,0.08)]"
+                                  : "text-text-muted hover:bg-accent/[0.06] hover:text-text"
+                              }`}
+                            >
+                              <FileText size={11} className="shrink-0" />
+                              <span
+                                className="flex-1"
+                                style={{
+                                  wordBreak: "break-word",
+                                  lineHeight: "1.4",
+                                }}
+                              >
+                                {chapter.title}
+                              </span>
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[chapter.status] ?? "bg-text-muted/30"}`}
+                                title={chapter.status}
+                              />
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
 
@@ -1206,56 +1317,73 @@ export function Workspace() {
             {rootNotes.map((note) => {
               const isNoteSelected =
                 selection?.type === "note" && selection.noteId === note.id;
+              const isRenaming = renamingNoteId === note.id;
               return (
-                <div
-                  key={note.id}
-                  className={`my-1 rounded-[20px] px-1 py-1 transition-colors ${
-                    isNoteSelected
-                      ? "bg-purple-400/10 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
-                      : "hover:bg-purple-400/[0.05]"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    draggable="true"
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/plain", "drag");
-                      e.dataTransfer.effectAllowed = "move";
-                      dragRef.current = {
-                        type: "note",
-                        id: note.id,
-                        sourceFolder: "",
-                      };
-                    }}
-                    onClick={() => navigate(`/workspace?note=${note.id}`)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                        type: "note",
-                        id: note.id,
-                      });
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-[16px] px-3 py-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
-                      isNoteSelected
-                        ? "text-purple-400"
-                        : "text-text-muted hover:text-text"
-                    }`}
-                  >
-                    <FileText size={12} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className="block"
-                        style={{ wordBreak: "break-word", lineHeight: "1.4" }}
-                      >
-                        {note.title}
+                <div key={note.id} className="my-1 px-1.5 py-0.5">
+                  {isRenaming ? (
+                    <div className="rounded-[20px] px-3.5 py-2.5">
+                      <input
+                        type="text"
+                        value={noteTitleDraft}
+                        onChange={(e) => setNoteTitleDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            void handleSubmitRenameNote(note.id);
+                          }
+                          if (e.key === "Escape") {
+                            handleCancelRenameNote();
+                          }
+                        }}
+                        onBlur={() => {
+                          void handleSubmitRenameNote(note.id);
+                        }}
+                        autoFocus
+                        className="w-full rounded-[20px] border border-purple-400/30 bg-panel px-3 py-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-purple-400/30"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      draggable="true"
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", "drag");
+                        e.dataTransfer.effectAllowed = "move";
+                        dragRef.current = {
+                          type: "note",
+                          id: note.id,
+                          sourceFolder: "",
+                        };
+                      }}
+                      onClick={() => navigate(`/workspace?note=${note.id}`)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          type: "note",
+                          id: note.id,
+                        });
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-[20px] px-3.5 py-2.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                        isNoteSelected
+                          ? "bg-purple-400/10 text-purple-400 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
+                          : "text-text-muted hover:bg-purple-400/[0.08] hover:text-text"
+                      }`}
+                    >
+                      <FileText size={12} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className="block"
+                          style={{ wordBreak: "break-word", lineHeight: "1.4" }}
+                        >
+                          {note.title}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-text-muted/50">
+                          {note.chapter_title ?? note.subject_name ?? "Note"}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block text-[10px] text-text-muted/50">
-                        {note.chapter_title ?? note.subject_name ?? "Note"}
-                      </span>
-                    </span>
-                  </button>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -1356,63 +1484,82 @@ export function Workspace() {
                       const isNoteSelected =
                         selection?.type === "note" &&
                         selection.noteId === note.id;
+                      const isRenaming = renamingNoteId === note.id;
                       return (
-                        <div
-                          key={note.id}
-                          className={`my-1 rounded-[20px] py-1 pl-5 pr-1 transition-colors ${
-                            isNoteSelected
-                              ? "bg-purple-400/10 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
-                              : "hover:bg-purple-400/[0.05]"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            draggable="true"
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData("text/plain", "drag");
-                              e.dataTransfer.effectAllowed = "move";
-                              dragRef.current = {
-                                type: "note",
-                                id: note.id,
-                                sourceFolder: folder,
-                              };
-                            }}
-                            onClick={() =>
-                              navigate(`/workspace?note=${note.id}`)
-                            }
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setContextMenu({
-                                x: e.clientX,
-                                y: e.clientY,
-                                type: "note",
-                                id: note.id,
-                              });
-                            }}
-                            className={`flex w-full items-center gap-2 rounded-[16px] px-3 py-2 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
-                              isNoteSelected
-                                ? "text-purple-400"
-                                : "text-text-muted hover:text-text"
-                            }`}
-                          >
-                            <FileText size={11} className="mt-0.5 shrink-0" />
-                            <span className="min-w-0 flex-1">
-                              <span
-                                className="block"
-                                style={{
-                                  wordBreak: "break-word",
-                                  lineHeight: "1.4",
+                        <div key={note.id} className="my-1 py-0.5 pl-5 pr-1.5">
+                          {isRenaming ? (
+                            <div className="rounded-[20px] px-3.5 py-2.5">
+                              <input
+                                type="text"
+                                value={noteTitleDraft}
+                                onChange={(e) =>
+                                  setNoteTitleDraft(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    void handleSubmitRenameNote(note.id);
+                                  }
+                                  if (e.key === "Escape") {
+                                    handleCancelRenameNote();
+                                  }
                                 }}
-                              >
-                                {note.title}
+                                onBlur={() => {
+                                  void handleSubmitRenameNote(note.id);
+                                }}
+                                autoFocus
+                                className="w-full rounded-[20px] border border-purple-400/30 bg-panel px-3 py-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-purple-400/30"
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              draggable="true"
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("text/plain", "drag");
+                                e.dataTransfer.effectAllowed = "move";
+                                dragRef.current = {
+                                  type: "note",
+                                  id: note.id,
+                                  sourceFolder: folder,
+                                };
+                              }}
+                              onClick={() =>
+                                navigate(`/workspace?note=${note.id}`)
+                              }
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                  type: "note",
+                                  id: note.id,
+                                });
+                              }}
+                              className={`flex w-full items-center gap-2 rounded-[20px] px-3.5 py-2.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing select-none ${
+                                isNoteSelected
+                                  ? "bg-purple-400/10 text-purple-400 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.10)]"
+                                  : "text-text-muted hover:bg-purple-400/[0.08] hover:text-text"
+                              }`}
+                            >
+                              <FileText size={11} className="mt-0.5 shrink-0" />
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className="block"
+                                  style={{
+                                    wordBreak: "break-word",
+                                    lineHeight: "1.4",
+                                  }}
+                                >
+                                  {note.title}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-text-muted/50">
+                                  {note.chapter_title ??
+                                    note.subject_name ??
+                                    "Note"}
+                                </span>
                               </span>
-                              <span className="mt-0.5 block text-[10px] text-text-muted/50">
-                                {note.chapter_title ??
-                                  note.subject_name ??
-                                  "Note"}
-                              </span>
-                            </span>
-                          </button>
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -1566,6 +1713,34 @@ export function Workspace() {
                 <ClipboardCheck size={12} />
                 Take Quiz
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const chapterId = contextMenu.id as number;
+                  const chapter = Object.values(chaptersMap)
+                    .flat()
+                    .find((c) => c.id === chapterId);
+                  setContextMenu(null);
+                  if (chapter) handleStartRenameChapter(chapter);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <Pencil size={12} />
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const subjectId = (contextMenu.extra as { subjectId: number })
+                    ?.subjectId;
+                  setContextMenu(null);
+                  void handleDeleteChapter(contextMenu.id as number, subjectId);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-coral hover:bg-coral/5"
+              >
+                <Trash2 size={12} />
+                Delete
+              </button>
             </>
           )}
           {contextMenu.type === "note-folder" && (
@@ -1596,9 +1771,21 @@ export function Workspace() {
           )}
           {contextMenu.type === "note" && (
             <>
+              <button
+                type="button"
+                onClick={() => {
+                  const note = notes.find((item) => item.id === contextMenu.id);
+                  setContextMenu(null);
+                  if (note) handleStartRenameNote(note);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-text hover:bg-panel-active"
+              >
+                <FileText size={12} />
+                Rename Note
+              </button>
               {/* Move to folder submenu */}
               {noteFolders.length > 0 && (
-                <div className="border-b border-border-subtle pb-1 mb-1">
+                <div className="mb-1 border-b border-border-subtle pb-1">
                   <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted/50">
                     Move to
                   </div>

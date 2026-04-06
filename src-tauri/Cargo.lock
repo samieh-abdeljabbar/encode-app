@@ -884,7 +884,7 @@ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
 name = "encode"
-version = "2.0.0-alpha.6"
+version = "2.0.6"
 dependencies = [
  "chrono",
  "dirs",

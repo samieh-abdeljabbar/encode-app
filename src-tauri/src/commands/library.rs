@@ -176,6 +176,37 @@ pub fn delete_subject(state: tauri::State<'_, AppState>, id: i64) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn rename_chapter(
+    state: tauri::State<'_, AppState>,
+    chapter_id: i64,
+    new_title: String,
+) -> Result<(), String> {
+    let slug = slugify(&new_title);
+    state.db.with_conn(|conn| {
+        conn.execute(
+            "UPDATE chapters SET title = ?1, slug = ?2 WHERE id = ?3",
+            rusqlite::params![new_title.trim(), slug, chapter_id],
+        )
+        .map_err(|e| format!("Failed to rename chapter: {e}"))?;
+        crate::commands::export::mark_export_dirty(conn)?;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn delete_chapter(state: tauri::State<'_, AppState>, chapter_id: i64) -> Result<(), String> {
+    state.db.with_conn(|conn| {
+        conn.execute(
+            "DELETE FROM chapters WHERE id = ?1",
+            rusqlite::params![chapter_id],
+        )
+        .map_err(|e| format!("Failed to delete chapter: {e}"))?;
+        crate::commands::export::mark_export_dirty(conn)?;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 pub fn create_chapter(
     state: tauri::State<'_, AppState>,
     subject_id: i64,

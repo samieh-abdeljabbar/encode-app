@@ -20,6 +20,7 @@ import { UpdatePrompt } from "./UpdatePrompt";
 export function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const checkForUpdates = useUpdaterStore((s) => s.checkForUpdates);
 
   const location = useLocation();
@@ -51,9 +52,26 @@ export function Shell() {
     checkForUpdates().catch(() => {});
   }, [checkForUpdates]);
 
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 1200px)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsCollapsed(e.matches);
+    };
+    handler(mql);
+    mql.addEventListener("change", handler as (e: MediaQueryListEvent) => void);
+    return () =>
+      mql.removeEventListener(
+        "change",
+        handler as (e: MediaQueryListEvent) => void,
+      );
+  }, []);
+
   return (
     <div className="flex h-screen bg-bg text-text">
-      <Ribbon />
+      <Ribbon
+        collapsed={isCollapsed}
+        onToggle={() => setIsCollapsed((c) => !c)}
+      />
       <main className="flex flex-1 flex-col overflow-hidden">
         <div data-tauri-drag-region className="h-5 shrink-0">
           <span className="sr-only">Drag window</span>

@@ -166,6 +166,12 @@ export const searchContent = (query: string) =>
 export const moveChapter = (chapterId: number, newSubjectId: number) =>
   invoke<void>("move_chapter", { chapterId, newSubjectId });
 
+export const renameChapter = (chapterId: number, newTitle: string) =>
+  invoke<void>("rename_chapter", { chapterId, newTitle });
+
+export const deleteChapter = (chapterId: number) =>
+  invoke<void>("delete_chapter", { chapterId });
+
 // --- Export/backup commands ---
 
 export interface ExportStatus {

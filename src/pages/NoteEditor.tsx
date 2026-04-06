@@ -383,7 +383,7 @@ export function NoteEditor({
                   </h1>
                   <Pencil
                     size={12}
-                    className="shrink-0 text-text-muted/0 transition-colors group-hover:text-text-muted/60"
+                    className="shrink-0 text-text-muted/50 transition-colors group-hover:text-text-muted/80"
                   />
                 </button>
               )}
