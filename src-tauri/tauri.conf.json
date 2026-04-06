@@ -1,6 +1,6 @@
 {
   "productName": "Encode",
-  "version": "2.0.0-alpha.6",
+  "version": "2.0.6",
   "identifier": "com.encode.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE1MTk3MTg3REMzNzVGNjgKUldSb1h6ZmNoM0VacFhGQ3poT1NFdlFtOUw1eC9MWVczNnoxZ3RRa29MMy9ha2p1S2lTZXdRbzUK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGOEVGQjg0MDRBRjlDQUMKUldTc25LOEVoUHVPbi9Nbm1nMGpHQlRxUGkwbE9td0gvb09lOFArWGhTY0JjNnU3UEQ1QThPSTQK",
       "endpoints": [
         "https://github.com/samieh-abdeljabbar/encode-app/releases/latest/download/latest.json"
       ]
